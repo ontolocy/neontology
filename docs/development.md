@@ -84,3 +84,15 @@ The documentation is built with mkdocs.
 mkdocs serve    # see how the docs look during development
 mkdocs build    # generate the documentation as a static html site
 ```
+
+## Release
+
+Increment the version, push to Github and upload to pypi!
+
+```bash
+git tag va.b.c
+git push origin va.b.c
+rm -rf dist
+python3 -m build
+python -m twine upload dist/*
+```
