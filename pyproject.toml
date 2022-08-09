@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+markers = [
+    "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')"
+]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "neontology.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "neo4j.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "pandas.*"
+ignore_missing_imports = true
+
+[tool.isort]
+profile = "black"
+
+[tool.pydocstyle]
+convention = "google"
+add_ignore = ["D104", "D100", "D202", "D107", "D101", "D106"]

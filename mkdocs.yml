@@ -1,0 +1,8 @@
+site_name: Neontology
+theme: readthedocs
+nav:
+    - Home: index.md
+    - Usage: usage.md
+    - FastAPI Neo4j Example: fastapi.md
+    - Advanced Usage: advanced-usage.md
+    - Setting Up Neo4j: setting-up-neo4j.md

@@ -1,0 +1,86 @@
+# Development
+
+## Setup
+
+You will need the requirements from requirements-dev.txt
+
+You will need to install watchman for [pyre](https://pyre-check.org/docs/getting-started/)
+
+```bash
+sudo apt install watchman
+```
+
+Where possible, configuration information goes in pyproject.toml.
+
+## Testing
+
+We use pytest for testing.
+
+Run all the tests (stopping as soon as something fails):
+
+```bash
+pytest -x
+```
+
+Many of the tests require access to a neo4j instance. These are identified with the 'uses_graph' mark. We can skip these tests like this:
+
+```bash
+pytest -m "not uses_graph"
+```
+
+And check the coverage with:
+
+```bash
+pytest --cov=src/neontology
+pytest --cov=src/neontology --cov-report=html
+```
+
+You can browse to the generated report at `htmlcov/index.html` or spin up a locally hosted version:
+
+```bash
+python -m http.server --directory htmlcov
+```
+
+## Linting
+
+We use black for formatting.
+
+```bash
+black src
+```
+
+We sort imports with isort (in black compatability mode).
+
+```bash
+isort src
+```
+
+Then we double check with flake8.
+
+flake8 config is defined in setup.cfg
+
+```bash
+flake8 .
+```
+
+We use pyre and mypy for double checking typing:
+
+```bash
+mypy src
+pyre
+```
+
+Finally, we try to maintain some consistency of docstrings with pydocstyle:
+
+```bash
+pydocstyle src
+```
+
+## Documentation
+
+The documentation is built with mkdocs.
+
+```bash
+mkdocs serve    # see how the docs look during development
+mkdocs build    # generate the documentation as a static html site
+```

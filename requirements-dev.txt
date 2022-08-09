@@ -1,0 +1,12 @@
+# running the tests
+coverage>=6.4
+pytest>=7.1
+pytest-cov>=3.0
+py2neo>=2021.2
+# doing the linting
+mypy>=0.961
+black>=22.3
+flake8>=4.0
+pyre-check>=0.9
+isort>=5.10
+pydocstyle[toml]>=6.1
