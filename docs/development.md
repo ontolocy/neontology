@@ -60,7 +60,7 @@ Then we double check with flake8.
 flake8 config is defined in setup.cfg
 
 ```bash
-flake8 .
+flake8 src
 ```
 
 We use pyre and mypy for double checking typing:
