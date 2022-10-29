@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime, time, timedelta
 from typing import Any, ClassVar, Dict, List, Optional, Set
 
-from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Date as Neo4jDate
+from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Time as Neo4jTime
 from pydantic import BaseModel, Field, PrivateAttr, root_validator, validator
 
@@ -186,6 +186,5 @@ class CommonModel(BaseModel, ABC):
         for key in values:
             if isinstance(values[key], (Neo4jDateTime, Neo4jDate, Neo4jTime)):
                 values[key] = values[key].to_native()
-
 
         return values
