@@ -12,7 +12,6 @@ pip install neontology
 
 ```python
 from typing import ClassVar
-import pandas as pd
 from neontology import BaseNode, BaseRelationship, init_neontology, auto_constrain
 
 NEO4J_URI="neo4j+s://dbid.databases.neo4j.io"

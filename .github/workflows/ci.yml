@@ -14,6 +14,19 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+
+    services:
+      neo4j:
+        # Docker Hub Image
+        image: neo4j:4.4-community
+        # ports to expose
+        ports:
+          - 7687:7687
+          - 7474:7474
+        # environment variables
+        env:
+          NEO4J_AUTH: ${{secrets.TEST_NEO4J_AUTH}}
+
     strategy:
       fail-fast: true
       max-parallel: 1
@@ -23,7 +36,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
@@ -40,7 +53,7 @@ jobs:
     - name: Test with pytest
       env:
         TEST_NEO4J_URI: ${{secrets.TEST_NEO4J_URI}}
-        TEST_NEO4J_USERNAME: ${{secrets.TEST_NEO4J_USERNAME}}
+        TEST_NEO4J_USERNAME: neo4j
         TEST_NEO4J_PASSWORD: ${{secrets.TEST_NEO4J_PASSWORD}}
       run: |
         pytest -x
