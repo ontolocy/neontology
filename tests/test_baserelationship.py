@@ -294,6 +294,42 @@ def test_merge_df(use_graph):
     assert result[0]["type_r"] == "NEWRELTYPE"
 
 
+def test_merge_df_alt_prop(use_graph):
+    class SubclassNode(PracticeNode):
+        __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+        myprop: str
+
+    source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
+    source_node.merge()
+
+    target_node = PracticeNode(pp="Target Node")
+    target_node.merge()
+
+    class NewRelType(BaseRelationship):
+        source: PracticeNode
+        target: PracticeNode
+
+        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
+
+    rel_records = [{"source": "My Prop Value", "target": "Target Node"}]
+
+    df = pd.DataFrame.from_records(rel_records)
+
+    NewRelType.merge_df(df, SubclassNode, PracticeNode, source_prop="myprop")
+
+    cypher = """
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
+    WITH r, TYPE(r) as type_r
+    RETURN COLLECT(DISTINCT r{.*, type_r})
+    """
+
+    result = use_graph.evaluate(cypher)
+
+    assert len(result) == 1
+
+    assert result[0]["type_r"] == "NEWRELTYPE"
+
+
 def test_merge_df_bad_node_type(use_graph):
     class DifferentNode(PracticeNode):
         __primarylabel__: ClassVar[Optional[str]] = "DifferentNode"
