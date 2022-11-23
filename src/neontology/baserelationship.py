@@ -94,8 +94,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             **merge_props,
         }
 
-        print(params)
-
         return params
 
     def merge(
@@ -198,9 +196,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
         """
-
-        print(cypher)
-        print(rel_list)
 
         graph = GraphConnection()
 
