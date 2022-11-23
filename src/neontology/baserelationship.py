@@ -244,10 +244,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         for record in records:
             hydrated = dict(record)
 
-            print(record)
-            print(f"source prop: {source_prop}")
-            print(f"source prop: {target_prop}")
-
             hydrated["source"] = source_type.construct(
                 **{source_prop: record["source"]}
             )
