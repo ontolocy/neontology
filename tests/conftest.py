@@ -47,7 +47,7 @@ def neo4j_db():
     constraints = graph.evaluate(all_constraints_cypher)
 
     for constraint_name in constraints:
-        print(constraint_name)
+
         drop_cypher = f"""
         DROP CONSTRAINT {constraint_name}
         """

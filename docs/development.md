@@ -93,6 +93,6 @@ Increment the version, push to Github and upload to pypi!
 git tag va.b.c
 git push origin va.b.c
 rm -rf dist
-python3 -m build
+python -m build
 python -m twine upload dist/*
 ```
