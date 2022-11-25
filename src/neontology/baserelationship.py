@@ -224,9 +224,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             target_type: explicitly state the class to use for target node
         """
 
-        print(f"source prop: {source_prop}")
-        print(f"source prop: {target_prop}")
-
         hydrated_list = []
 
         if source_type is None:
