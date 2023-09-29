@@ -7,11 +7,9 @@ from .graphconnection import GraphConnection
 
 
 def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseNode]]:
-
     node_types = {}
 
     for subclass in base_type.__subclasses__():
-
         # we can define 'abstract' nodes which don't have a label
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph
@@ -22,7 +20,6 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
             node_types[subclass.__primarylabel__] = subclass
 
         if subclass.__subclasses__():
-
             subclass_node_types = get_node_types(subclass)
 
             node_types.update(subclass_node_types)
@@ -33,11 +30,9 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
 def get_rels_by_type(
     base_type: Type[BaseRelationship] = BaseRelationship,
 ) -> Dict[str, dict]:
-
     rel_types: dict = defaultdict(dict)
 
     for rel_subclass in base_type.__subclasses__():
-
         # we can define 'abstract' relationships which don't have a label
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph
@@ -47,12 +42,11 @@ def get_rels_by_type(
         ):
             rel_types[rel_subclass.__relationshiptype__] = {
                 "rel_class": rel_subclass,
-                "source_class": rel_subclass.__fields__["source"].type_,
-                "target_class": rel_subclass.__fields__["target"].type_,
+                "source_class": rel_subclass.model_fields["source"].annotation,
+                "target_class": rel_subclass.model_fields["target"].annotation,
             }
 
         if rel_subclass.__subclasses__():
-
             subclass_rel_types = get_rels_by_type(rel_subclass)
 
             rel_types.update(subclass_rel_types)
@@ -69,7 +63,6 @@ def all_subclasses(cls: type) -> set:
 def get_rels_by_node(
     base_type: Type[BaseRelationship] = BaseRelationship, by_source: bool = True
 ) -> Dict[str, Set[str]]:
-
     if by_source is True:
         node_dir = "source_class"
 
@@ -81,7 +74,6 @@ def get_rels_by_node(
     by_node: Dict[str, Set[str]] = defaultdict(set)
 
     for rel_type, entry in all_rels.items():
-
         try:
             node_label = entry[node_dir].__primarylabel__
         except AttributeError:
@@ -101,14 +93,12 @@ def get_rels_by_node(
 def get_rels_by_source(
     base_type: Type[BaseRelationship] = BaseRelationship,
 ) -> Dict[str, Set[str]]:
-
     return get_rels_by_node(by_source=True)
 
 
 def get_rels_by_target(
     base_type: Type[BaseRelationship] = BaseRelationship,
 ) -> Dict[str, Set[str]]:
-
     return get_rels_by_node(by_source=False)
 
 

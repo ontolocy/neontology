@@ -5,21 +5,27 @@ from typing import Any, ClassVar, Dict, List, Optional, Set
 from neo4j.time import Date as Neo4jDate
 from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Time as Neo4jTime
-from pydantic import BaseModel, Field, PrivateAttr, root_validator, validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 
 class CommonModel(BaseModel, ABC):
-    class Config:
-        validate_assignment = True
-        extra = "forbid"
-        underscore_attrs_are_private = True
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(
+        validate_assignment=True,
+        extra="forbid",
+        arbitrary_types_allowed=True,
+    )
 
-        # if set to True, we will throw validation errors trying to pickle self._graph
-        copy_on_model_validation = False
-
-    created: datetime = Field(default_factory=datetime.now, set_on_create=True)
-    merged: Optional[datetime] = Field(default=None)
+    created: datetime = Field(
+        default_factory=datetime.now, json_schema_extra={"set_on_create": True}
+    )
+    merged: Optional[datetime] = Field(default=None, validate_default=True)
 
     _set_on_match: List[str] = PrivateAttr()
     _set_on_create: List[str] = PrivateAttr()
@@ -46,19 +52,17 @@ class CommonModel(BaseModel, ABC):
         self._set_on_create = self._get_prop_usage("set_on_create")
         self._always_set = [
             x
-            for x in self.dict().keys()
+            for x in self.model_dump().keys()
             if x not in self._set_on_match + self._set_on_create + ["source", "target"]
         ]
 
     @classmethod
     def _get_prop_usage(cls, usage_type: str) -> List[str]:
-
-        all_props = cls.schema()["properties"]
+        all_props = cls.model_json_schema()["properties"]
 
         selected_props = []
 
         for prop, entry in all_props.items():
-
             if entry.get(usage_type) is True:
                 selected_props.append(prop)
 
@@ -85,7 +89,6 @@ class CommonModel(BaseModel, ABC):
 
     @classmethod
     def export_type_converter(cls, value: Any) -> Any:
-
         if isinstance(value, dict):
             raise TypeError("Neo4j doesn't support dict types for properties.")
 
@@ -94,7 +97,6 @@ class CommonModel(BaseModel, ABC):
             return cls.export_type_converter(new_value)
 
         elif isinstance(value, list):
-
             # items in a list must all be the same type
             item_type = type(value[0])
             for item in value:
@@ -136,7 +138,7 @@ class CommonModel(BaseModel, ABC):
             dict: a dictionary export of this model instance
         """
 
-        export_dict = self.dict(exclude_none=True, **kwargs)
+        export_dict = self.model_dump(exclude_none=True, **kwargs)
 
         export_dict = self._export_dict_converter(export_dict)
 
@@ -146,7 +148,7 @@ class CommonModel(BaseModel, ABC):
     # validators
     #
 
-    @validator("merged", always=True)
+    @field_validator("merged")
     def set_merged_to_created(
         cls, value: Optional[datetime], values: Dict[str, Any]
     ) -> datetime:
@@ -163,11 +165,12 @@ class CommonModel(BaseModel, ABC):
         """
 
         if value is None:
-            return values["created"]
+            return values.data["created"]
         else:
             return value
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def neo4j_datetime_to_native(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         """Datetimes come back from Neo4j as a non standard DateTime type.
 
@@ -182,6 +185,9 @@ class CommonModel(BaseModel, ABC):
         Returns:
             Dict[str, Any]: Returns the dictionary, with any Neo4jDateTimes updated.
         """
+
+        if not isinstance(values, dict):
+            raise ValueError
 
         for key in values:
             if isinstance(values[key], (Neo4jDateTime, Neo4jDate, Neo4jTime)):
