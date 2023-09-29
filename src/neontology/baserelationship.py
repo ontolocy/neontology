@@ -152,9 +152,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
 
         if source_type is None:
-            print(cls.model_fields["source"])
-            print(dir(cls.model_fields["source"]))
-            print(cls.model_fields["source"].annotation)
             source_type = cls.model_fields["source"].annotation
 
         if target_type is None:
