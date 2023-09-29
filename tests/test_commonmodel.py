@@ -15,14 +15,12 @@ class PracticeModel(CommonModel):
 
 
 def test_common_model_creation():
-
     common = PracticeModel()
 
     assert isinstance(common.created, datetime)
 
 
 def test_merged_equals_created():
-
     common = PracticeModel()
 
     assert common.created == common.merged
@@ -32,7 +30,7 @@ def test_set_on_match():
     """Check that we successfully identify field to set on match"""
 
     class TestModel(PracticeModel):
-        only_set_on_match: str = Field(set_on_match=True)
+        only_set_on_match: str = Field(json_schema_extra={"set_on_match": True})
         normal_field: str
 
     test_model = TestModel(only_set_on_match="Foo", normal_field="Bar")
@@ -46,7 +44,7 @@ def test_set_on_create():
     """Check that we successfully identify field to set on match"""
 
     class TestModel(PracticeModel):
-        only_set_on_create: str = Field(set_on_create=True)
+        only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
         normal_field: str
 
     test_model = TestModel(only_set_on_create="Foo", normal_field="Bar")

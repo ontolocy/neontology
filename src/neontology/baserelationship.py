@@ -31,7 +31,6 @@ R = TypeVar("R", bound="BaseRelationship")
 
 
 class BaseRelationship(CommonModel):  # pyre-ignore[13]
-
     source: BaseNode
     target: BaseNode
 
@@ -153,17 +152,17 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
 
         if source_type is None:
-            source_type = cls.__fields__["source"].type_
+            source_type = cls.model_fields["source"].annotation
 
         if target_type is None:
-            target_type = cls.__fields__["target"].type_
+            target_type = cls.model_fields["target"].annotation
 
         for rel in rels:
             if isinstance(rel, cls) is False:
                 raise TypeError("Relationship was incorrect type.")
-            if type(rel.source) != source_type:
+            if type(rel.source) is not source_type:
                 raise TypeError("Received an inappropriate kind of source node.")
-            if type(rel.target) != target_type:
+            if type(rel.target) is not target_type:
                 raise TypeError("Received an inappropriate kind of target node.")
 
         if source_prop is None:
@@ -227,10 +226,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         hydrated_list = []
 
         if source_type is None:
-            source_type = cls.__fields__["source"].type_
+            source_type = cls.model_fields["source"].annotation
 
         if target_type is None:
-            target_type = cls.__fields__["target"].type_
+            target_type = cls.model_fields["target"].annotation
 
         if source_prop is None:
             source_prop = source_type.__primaryproperty__
@@ -241,10 +240,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         for record in records:
             hydrated = dict(record)
 
-            hydrated["source"] = source_type.construct(
+            hydrated["source"] = source_type.model_construct(
                 **{source_prop: record["source"]}
             )
-            hydrated["target"] = target_type.construct(
+            hydrated["target"] = target_type.model_construct(
                 **{target_prop: record["target"]}
             )
 
@@ -281,7 +280,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
 
         if df.empty is False:
-
             records = df.replace([np.nan], None).to_dict(orient="records")
             cls.merge_records(
                 records,
