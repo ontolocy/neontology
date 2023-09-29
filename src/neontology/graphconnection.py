@@ -35,7 +35,6 @@ class GraphConnection(object):
             cls._instance = object.__new__(cls)
 
             if GraphConnection._instance:
-
                 try:
                     driver = GraphConnection._instance.driver = GraphDatabase.driver(  # type: ignore
                         neo4j_uri, auth=(neo4j_username, neo4j_password)
@@ -110,7 +109,7 @@ class GraphConnection(object):
         """
 
         with self.driver.session() as session:
-            session.write_transaction(self.run_transaction_single, cypher, params)
+            session.execute_write(self.run_transaction_single, cypher, params)
 
     def cypher_write_single(self, cypher: str, params: Dict[str, Any] = {}) -> None:
         """Execute a write transaction.
@@ -121,9 +120,7 @@ class GraphConnection(object):
         """
 
         with self.driver.session() as session:
-            return session.write_transaction(
-                self.run_transaction_single, cypher, params
-            )
+            return session.execute_write(self.run_transaction_single, cypher, params)
 
     def cypher_write_many(self, cypher: str, params: Dict[str, Any] = {}) -> None:
         """Execute a write transaction.
@@ -134,7 +131,7 @@ class GraphConnection(object):
         """
 
         with self.driver.session() as session:
-            return session.write_transaction(self.run_transaction_many, cypher, params)
+            return session.execute_write(self.run_transaction_many, cypher, params)
 
     def cypher_read(
         self, cypher: str, params: Dict[str, Any] = {}
@@ -150,7 +147,7 @@ class GraphConnection(object):
         """
 
         with self.driver.session() as session:
-            return session.read_transaction(self.run_transaction_single, cypher, params)
+            return session.execute_read(self.run_transaction_single, cypher, params)
 
     def cypher_read_many(
         self, cypher: str, params: Dict[str, Any] = {}
@@ -166,10 +163,9 @@ class GraphConnection(object):
         """
 
         with self.driver.session() as session:
-            return session.read_transaction(self.run_transaction_many, cypher, params)
+            return session.execute_read(self.run_transaction_many, cypher, params)
 
     def apply_constraint(self, label: str, property: str) -> None:
-
         cypher = f"""
         CREATE CONSTRAINT IF NOT EXISTS
         FOR (n:{label})

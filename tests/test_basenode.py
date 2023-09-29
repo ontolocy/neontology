@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 import pandas as pd
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 import pytest
 
 from neontology import BaseNode
@@ -18,14 +18,12 @@ class PracticeNode(BaseNode):
 
 
 def test_set_pp_field_valid():
-
     tn = PracticeNode(pp="Some Value")
 
     assert tn.pp == "Some Value"
 
 
 def test_create(use_graph):
-
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -60,6 +58,102 @@ def test_none_primary_label():
 
     with pytest.raises(NotImplementedError):
         SpecialPracticeNode(pp="Test Node")
+
+
+def test_create_multilabel(use_graph):
+    class MultipleLabelNode(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "PrimaryLabel"
+        __secondarylabels__: ClassVar[Optional[list]] = ["ExtraLabel1", "ExtraLabel2"]
+        pp: str
+
+    tn = MultipleLabelNode(pp="Test Node")
+
+    tn.create()
+
+    cypher = """
+    MATCH (n:ExtraLabel1)
+    WHERE n.pp = 'Test Node'
+    RETURN n
+    """
+
+    result = use_graph.evaluate(cypher)
+
+    assert result.has_label("PrimaryLabel")
+    assert result.has_label("ExtraLabel1")
+    assert result.has_label("ExtraLabel2")
+
+    assert result.get("pp") == "Test Node"
+
+
+def test_create_multilabel_inheritance(use_graph):
+    class Mammal(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
+        pp: str
+
+    class Human(Mammal):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "Human"
+        pp: str
+
+    tn = Human(pp="Bob")
+
+    tn.create()
+
+    cypher = """
+    MATCH (n:Human)
+    WHERE n.pp = 'Bob'
+    RETURN n
+    """
+
+    result = use_graph.evaluate(cypher)
+
+    assert result.has_label("Human")
+    assert result.has_label("Mammal")
+
+    assert result.get("pp") == "Bob"
+
+
+def test_create_multilabel_inheritance_multiple(use_graph):
+    class Animal(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
+        pp: str
+
+    class Human(Animal):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "Human"
+        pp: str
+
+    class Elephant(Animal):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "Elephant"
+        pp: str
+
+    human = Human(pp="Bob")
+
+    human.create()
+
+    elephant = Elephant(pp="Bob")
+
+    # this should create a new node because the primary label is different
+    elephant.create()
+
+    elephant2 = Elephant(pp="Bob")
+
+    # this shouldn't create a new node because the primary label is the same
+    elephant2.merge()
+
+    cypher = """
+    MATCH (n:Animal)
+    WHERE n.pp = 'Bob'
+    RETURN COUNT(DISTINCT n)
+    """
+
+    result = use_graph.evaluate(cypher)
+
+    assert result == 2
 
 
 def test_merge_defined_label_inherited(use_graph):
@@ -161,7 +255,6 @@ def test_creation_datetime(use_graph):
 
 
 def test_match_nodes(use_graph):
-
     tn = PracticeNode(pp="Special Test Node")
 
     tn2 = PracticeNode(pp="Special Test Node2")
@@ -181,7 +274,6 @@ def test_match_nodes(use_graph):
 
 
 def test_match_node(use_graph):
-
     tn = PracticeNode(pp="Special Test Node")
 
     tn.create()
@@ -194,7 +286,6 @@ def test_match_node(use_graph):
 
 
 def test_match_none(use_graph):
-
     bn = PracticeNode(pp="Test Node")
     bn.create()
 
@@ -219,7 +310,6 @@ def test_match_many_none(use_graph):
 
 
 def test_delete_node(use_graph):
-
     tn = PracticeNode(pp="Special Test Node")
 
     tn.create()
@@ -298,7 +388,9 @@ def test_set_on_match(use_graph):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "TestModel"
         pp: str = "test_node"
-        only_set_on_match: Optional[str] = Field(set_on_match=True)
+        only_set_on_match: Optional[str] = Field(
+            json_schema_extra={"set_on_match": True}, default=None
+        )
         normal_field: str
 
     test_node = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
@@ -330,7 +422,7 @@ def test_set_on_create(use_graph):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "TestModel"
         pp: str = "test_node"
-        only_set_on_create: str = Field(set_on_create=True)
+        only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
         normal_field: str
 
     test_node = TestModel(only_set_on_create="Foo", normal_field="Bar", pp="test_node")
@@ -358,7 +450,6 @@ def test_set_on_create(use_graph):
 
 def test_merge_df_with_duplicates(use_graph):
     class Person(BaseNode):
-
         __primaryproperty__: ClassVar[str] = "identifier"
         __primarylabel__: ClassVar[
             str
@@ -366,12 +457,12 @@ def test_merge_df_with_duplicates(use_graph):
 
         name: str
         age: int
-        identifier: Optional[str] = None
+        identifier: Optional[str] = Field(default=None, validate_default=True)
 
-        @validator("identifier", always=True)
+        @field_validator("identifier")
         def set_identifier(cls, v, values):
             if v is None:
-                v = f"{values['name']}_{values['age']}"
+                v = f"{values.data['name']}_{values.data['age']}"
 
             return v
 

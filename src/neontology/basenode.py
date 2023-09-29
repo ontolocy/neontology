@@ -10,9 +10,9 @@ B = TypeVar("B", bound="BaseNode")
 
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
-
     __primaryproperty__: ClassVar[str]
     __primarylabel__: ClassVar[Optional[str]]
+    __secondarylabels__: ClassVar[Optional[list]] = []
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -42,7 +42,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return params
 
     def get_primary_property_value(self) -> Union[str, int]:
-
         return self._get_merge_parameters()["pp"]
 
     def create(self) -> None:
@@ -56,23 +55,27 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         params = {"pp": pp_value, "all_props": all_props}
 
+        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+
         cypher = f"""
-        CREATE (n:{self.__primarylabel__} {{ {self.__primaryproperty__}: $pp }})
+        CREATE (n:{":".join(all_labels)} {{ {self.__primaryproperty__}: $pp }})
         SET n += $all_props
         RETURN n
         """
-
         graph = GraphConnection()
         result = graph.cypher_write_single(cypher, params)
-        return self.__class__.parse_obj(result["n"])
+        result_node = self.__class__(**dict(result["n"]))
+        return result_node
 
     def merge(self) -> None:
         """Merge this node into the graph."""
 
         params = self._get_merge_parameters()
 
+        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+
         cypher = f"""
-        MERGE (n:{self.__primarylabel__} {{ {self.__primaryproperty__}: $pp }})
+        MERGE (n:{":".join(all_labels)} {{ {self.__primaryproperty__}: $pp }})
         ON MATCH SET n += $set_on_match
         ON CREATE SET n += $set_on_create
         SET n += $always_set
@@ -82,7 +85,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         graph = GraphConnection()
         result = graph.cypher_write_single(cypher, params)
 
-        return self.__class__.parse_obj(result["n"])
+        result_node = self.__class__(**dict(result["n"]))
+
+        return result_node
 
     @classmethod
     def create_nodes(cls: Type[B], nodes: List[B]) -> List[Union[str, int]]:
@@ -107,9 +112,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             for x in nodes
         ]
 
+        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{cls.__primarylabel__} {{{cls.__primaryproperty__}: node.pp}})
+        create (n:{":".join(all_labels)} {{{cls.__primaryproperty__}: node.pp}})
         SET n = node.props
         RETURN n
         """
@@ -119,7 +126,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             cypher=cypher, params={"node_list": node_list}
         )
 
-        matched_nodes = [cls.parse_obj(x["n"]) for x in results]
+        matched_nodes = [cls(**dict(x["n"])) for x in results]
 
         return matched_nodes
 
@@ -143,9 +150,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         node_list = [x._get_merge_parameters() for x in nodes]
 
+        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{cls.__primarylabel__} {{{cls.__primaryproperty__}: node.pp}})
+        MERGE (n:{":".join(all_labels)} {{{cls.__primaryproperty__}: node.pp}})
         ON MATCH SET n += node.set_on_match
         ON CREATE SET n += node.set_on_create
         SET n += node.always_set
@@ -157,7 +166,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             cypher=cypher, params={"node_list": node_list}
         )
 
-        matched_nodes = [cls.parse_obj(x["n"]) for x in results]
+        matched_nodes = [cls(**dict(x["n"])) for x in results]
 
         return matched_nodes
 
@@ -245,8 +254,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         result = graph.cypher_read(cypher, params)
 
         if result:
-
-            return cls.parse_obj(result["n"])
+            return cls(**dict(result["n"]))
 
         else:
             return None
@@ -301,6 +309,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         graph = GraphConnection()
         records = graph.cypher_read_many(cypher, params)
 
-        nodes = [cls.parse_obj(x["n"]) for x in records]
+        nodes = [cls(**dict(x["n"])) for x in records]
 
         return nodes

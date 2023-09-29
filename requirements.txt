@@ -1,5 +1,5 @@
-neo4j>=4.0
-pydantic>=1.0
+neo4j>=5.0
+pydantic>=2.0
 pandas
 numpy
 python-dotenv

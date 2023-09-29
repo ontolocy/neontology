@@ -4,6 +4,10 @@ Easily ingest data into a Neo4j graph database with Python and pandas. Neontolog
 
 Read the documentation [here](https://neontology.readthedocs.io/en/latest/)
 
+## Note on v1.0.0
+
+With [v1.0.0](docs/changelog.md), we have upgraded to Pydantic v2 which brings some major changes (and improvements!). Read their [migration guide](https://docs.pydantic.dev/2.0/migration/) to see what changes you might need to make to your models.
+
 ## Installation
 
 ```bash
@@ -89,8 +93,8 @@ Alternatively, you can explicitly provide access information:
 
 ```python
 init_neontology(
-    neo4j_uri=neo4j+s://mydatabaseid.databases.neo4j.io,
-    neo4j_username=neo4j,
-    neo4j_password=password
+    neo4j_uri="neo4j+s://mydatabaseid.databases.neo4j.io",
+    neo4j_username="neo4j",
+    neo4j_password="password"
 )
 ```

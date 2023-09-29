@@ -25,7 +25,6 @@ class PracticeRelationship(BaseRelationship):
 
 
 def test_base_relationship():
-
     source_node = PracticeNode(pp="Source Node")
 
     target_node = PracticeNode(pp="Target Node")
@@ -39,7 +38,6 @@ def test_base_relationship():
 
 
 def test_source_target_type():
-
     source_node = "Not a BaseNode"
     target_node = "Also not a BaseNode"
 
@@ -52,7 +50,6 @@ def test_source_target_type():
 
 
 def test_merge_relationship(use_graph):
-
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -76,7 +73,6 @@ def test_merge_relationship(use_graph):
 
 
 def test_merge_relationship_merge_on_match(use_graph):
-
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -85,7 +81,7 @@ def test_merge_relationship_merge_on_match(use_graph):
 
     class TestRel(PracticeRelationship):
         __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL"
-        prop_to_merge_on: str = Field(merge_on=True)
+        prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
         my_prop: str
 
     br = TestRel(
@@ -128,7 +124,6 @@ def test_merge_relationship_merge_on_match(use_graph):
 
 
 def test_merge_relationship_merge_on_create(use_graph):
-
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -137,7 +132,7 @@ def test_merge_relationship_merge_on_create(use_graph):
 
     class TestRel(PracticeRelationship):
         __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL"
-        prop_to_merge_on: str = Field(merge_on=True)
+        prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
         my_prop: str
 
     br = TestRel(
@@ -183,7 +178,6 @@ def test_merge_relationship_merge_on_create(use_graph):
 
 
 def test_default_relationship_type():
-
     source_node = PracticeNode(pp="Source Node")
 
     target_node = PracticeNode(pp="Target Node")
@@ -194,7 +188,6 @@ def test_default_relationship_type():
 
 
 def test_default_relationship_type_inherited():
-
     source_node = PracticeNode(pp="Source Node")
 
     target_node = PracticeNode(pp="Target Node")
@@ -210,7 +203,6 @@ def test_default_relationship_type_inherited():
 
 
 def test_defined_relationship_type_inherited():
-
     source_node = PracticeNode(pp="Source Node")
 
     target_node = PracticeNode(pp="Target Node")
@@ -226,7 +218,6 @@ def test_defined_relationship_type_inherited():
 
 
 def test_merge_relationships_defined_types(use_graph):
-
     node1 = PracticeNode(pp="Source Node")
     node1.create()
 
@@ -380,3 +371,37 @@ def test_merge_empty_df():
     result = PracticeRelationship.merge_df(df)
 
     assert result is None
+
+
+def test_merge_records(use_graph):
+    class SubclassNode(PracticeNode):
+        __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+        myprop: str
+
+    source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
+    source_node.merge()
+
+    target_node = PracticeNode(pp="Target Node")
+    target_node.merge()
+
+    class NewRelType(BaseRelationship):
+        source: SubclassNode
+        target: PracticeNode
+
+        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
+
+    records = [{"source": "Source Node", "target": "Target Node"}]
+
+    NewRelType.merge_records(records)
+
+    cypher = """
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
+    WITH r, TYPE(r) as type_r
+    RETURN COLLECT(DISTINCT r{.*, type_r})
+    """
+
+    result = use_graph.evaluate(cypher)
+
+    assert len(result) == 1
+
+    assert result[0]["type_r"] == "NEWRELTYPE"
