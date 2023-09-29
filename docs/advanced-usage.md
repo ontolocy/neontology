@@ -46,7 +46,7 @@ Note that methods such as `.match` and `auto_constrain` use only the primary lab
 When we run MERGE operations with neo4j, sometimes we want to only alter properties under certain circumstances.
 
 !!! NOTE
-    From v0.2.0, changes in v2 of Pydantic mean that these properties are now defined in a dict called 'json_schema_extra' rather than directly on the field.
+    From v1.0.0, changes in v2 of Pydantic mean that these properties are now defined in a dict called 'json_schema_extra' rather than directly on the field.
 
 You can control this behaviour in Neontology by passing certain parameters in the 'json_schema_extra' dictionary when you define fields:
 
@@ -73,7 +73,7 @@ class MyNode(BaseNode):
 When merging relationships, we might want to merge on certain properties to avoid creating an excessive number of relationships.
 
 !!! NOTE
-    From v0.2.0, changes in v2 of Pydantic mean that this property is now defined in a dict called 'json_schema_extra' rather than directly on the field.
+    From v1.0.0, changes in v2 of Pydantic mean that this property is now defined in a dict called 'json_schema_extra' rather than directly on the field.
 
 To do this use the 'merge_on' key in the 'json_schema_extra' parameter when defining a field.
 

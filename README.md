@@ -4,9 +4,9 @@ Easily ingest data into a Neo4j graph database with Python and pandas. Neontolog
 
 Read the documentation [here](https://neontology.readthedocs.io/en/latest/)
 
-## Note on v0.2.0
+## Note on v1.0.0
 
-With [v0.2.0](docs/changelog.md), we have upgraded to Pydantic v2 which brings some major changes (and improvements!). Read their [migration guide](https://docs.pydantic.dev/2.0/migration/) to see what changes you might need to make to your models.
+With [v1.0.0](docs/changelog.md), we have upgraded to Pydantic v2 which brings some major changes (and improvements!). Read their [migration guide](https://docs.pydantic.dev/2.0/migration/) to see what changes you might need to make to your models.
 
 ## Installation
 
