@@ -17,7 +17,7 @@ pip install neontology
 ## Example
 
 ```python
-from typing import ClassVar
+from typing import ClassVar, Optional, List
 import pandas as pd
 from neontology import BaseNode, BaseRelationship, init_neontology, auto_constrain
 
@@ -25,6 +25,7 @@ from neontology import BaseNode, BaseRelationship, init_neontology, auto_constra
 class PersonNode(BaseNode):
     __primarylabel__: ClassVar[str] = "Person"
     __primaryproperty__: ClassVar[str] = "name"
+    __secondarylabels__: ClassVar[Optional[List]] = ["individual", "somebody"]
     
     name: str
     age: int
