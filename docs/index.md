@@ -1,6 +1,6 @@
 # Getting Started
 
-Easily ingest data into a Neo4j graph database with Python and pandas. Neontology is a simple object-graph mapper which lets you use Pydantic compatible models to define Nodes and Relationships.
+Easily ingest data into a Neo4j graph database with Python, Pydantic and pandas. Neontology is a simple object-graph mapper which lets you use Pydantic compatible models to define Nodes and Relationships.
 
 ## Install Neontology
 
