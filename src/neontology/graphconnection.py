@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from neo4j import GraphDatabase, Neo4jDriver
 from neo4j import Record as Neo4jRecord
 from neo4j import Transaction as Neo4jTransaction
+from neo4j import Result as Neo4jResult
 
 
 class GraphConnection(object):
@@ -173,6 +174,17 @@ class GraphConnection(object):
         """
 
         self.cypher_write(cypher)
+
+    def evaluate_query_single(self, cypher, params={}):
+        result = self.driver.execute_query(
+            cypher, parameters_=params, result_transformer_=Neo4jResult.single
+        )
+
+        if result:
+            return result.value()
+
+        else:
+            return None
 
 
 def init_neontology(
