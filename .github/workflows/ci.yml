@@ -12,13 +12,12 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     services:
       neo4j:
         # Docker Hub Image
-        image: neo4j:4.4-community
+        image: neo4j:5-community
         # ports to expose
         ports:
           - 7687:7687
@@ -31,29 +30,29 @@ jobs:
       fail-fast: true
       max-parallel: 1
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Test with pytest
-      env:
-        TEST_NEO4J_URI: bolt://localhost:7687
-        TEST_NEO4J_USERNAME: neo4j
-        TEST_NEO4J_PASSWORD: ${{secrets.TEST_NEO4J_PASSWORD}}
-      run: |
-        pytest -x
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Lint with flake8
+        run: |
+          # stop the build if there are Python syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Test with pytest
+        env:
+          TEST_NEO4J_URI: bolt://localhost:7687
+          TEST_NEO4J_USERNAME: neo4j
+          TEST_NEO4J_PASSWORD: ${{secrets.TEST_NEO4J_PASSWORD}}
+        run: |
+          pytest -x
