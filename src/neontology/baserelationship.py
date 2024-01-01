@@ -141,7 +141,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         Sometimes the source and target label may be ambiguous (e.g. where we have subclassed nodes)
             In this case you can explicitly pass in the relevant types
 
-        Sometimes we want to match nodes on a property which isn't the primary property, so we can specify what property to use.
+        Sometimes we want to match nodes on a property which isn't the primary property,
+        so we can specify what property to use.
 
         Args:
             cls (Type[R]): this class
