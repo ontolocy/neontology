@@ -7,6 +7,8 @@ from neo4j import Record as Neo4jRecord
 from neo4j import Transaction as Neo4jTransaction
 from neo4j import Result as Neo4jResult
 
+from .result import NeontologyResult, neo4j_records_to_neontology_records
+
 
 class GraphConnection(object):
     """Class for managing connections to Neo4j."""
@@ -41,6 +43,12 @@ class GraphConnection(object):
                         neo4j_uri, auth=(neo4j_username, neo4j_password)
                     )
                     driver.verify_connectivity()
+
+                    from .utils import get_node_types, get_rels_by_type
+
+                    # capture all possible types of node and relationship
+                    cls.global_nodes = get_node_types()
+                    cls.global_rels = get_rels_by_type()
 
                 except Exception as error:
                     print(
@@ -185,6 +193,18 @@ class GraphConnection(object):
 
         else:
             return None
+
+    def evaluate_query(self, cypher, params={}):
+        result = self.driver.execute_query(cypher, parameters_=params)
+
+        neo4j_records = result.records
+        neontology_records = neo4j_records_to_neontology_records(
+            neo4j_records, self.global_nodes, self.global_rels
+        )
+
+        return NeontologyResult(
+            records=neo4j_records, neontology_records=neontology_records
+        )
 
 
 def init_neontology(
