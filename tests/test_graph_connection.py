@@ -76,12 +76,13 @@ def test_evaluate_query_single_collected(use_graph):
 
     match_cypher = """
     MATCH (n:TestNode)
-    RETURN COLLECT(n.name)
+    WITH n as nodes ORDER BY n.name
+    RETURN COLLECT(nodes.name)
     """
 
     result = gc.evaluate_query_single(match_cypher)
 
-    assert result == ["Foo", "Bar"]
+    assert result == ["Bar", "Foo"]
 
 
 def test_evaluate_query_empty(use_graph):
@@ -184,3 +185,25 @@ def test_evaluate_query_params(use_graph):
 
     assert len(result.records) == 1
     assert result.nodes[0].pp == "bar"
+
+
+def test_undefined_label(use_graph):
+    gc = GraphConnection()
+
+    create_cypher = """
+    CREATE (tn1:TestNode {name: "Foo"})
+    CREATE (tn2:TestNode {name: "Bar"})
+    """
+
+    result = gc.evaluate_query_single(create_cypher)
+
+    match_cypher = """
+    MATCH (n:TestNode)
+    RETURN n
+    """
+
+    with pytest.warns():
+        result = gc.evaluate_query(match_cypher)
+
+    assert len(result.records) == 2
+    assert len(result.nodes) == 0
