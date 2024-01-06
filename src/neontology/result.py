@@ -1,11 +1,10 @@
-from typing import List
 import itertools
 import warnings
+from typing import List
 
 from neo4j import Record as Neo4jRecord
 from neo4j.graph import Node as Neo4jNode
 from neo4j.graph import Relationship as Neo4jRelationship
-
 from pydantic import BaseModel, computed_field
 
 

@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, Neo4jDriver
 from neo4j import Record as Neo4jRecord
-from neo4j import Transaction as Neo4jTransaction
 from neo4j import Result as Neo4jResult
+from neo4j import Transaction as Neo4jTransaction
 
 from .result import NeontologyResult, neo4j_records_to_neontology_records
 
