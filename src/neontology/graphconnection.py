@@ -194,8 +194,15 @@ class GraphConnection(object):
         else:
             return None
 
-    def evaluate_query(self, cypher, params={}):
+    def evaluate_query(self, cypher, params={}, refresh_classes: bool = True):
         result = self.driver.execute_query(cypher, parameters_=params)
+
+        if refresh_classes is True:
+            from .utils import get_node_types, get_rels_by_type
+
+            # capture all currently defined types of node and relationship
+            self.global_nodes = get_node_types()
+            self.global_rels = get_rels_by_type()
 
         neo4j_records = result.records
         neontology_records = neo4j_records_to_neontology_records(

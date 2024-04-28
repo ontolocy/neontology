@@ -97,6 +97,8 @@ class CommonModel(BaseModel, ABC):
             return cls.export_type_converter(new_value)
 
         elif isinstance(value, list):
+            if len(value) == 0:
+                return []
             # items in a list must all be the same type
             item_type = type(value[0])
             for item in value:

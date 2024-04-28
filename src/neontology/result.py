@@ -8,8 +8,35 @@ from neo4j.graph import Relationship as Neo4jRelationship
 from pydantic import BaseModel, computed_field
 
 
+def neo4j_node_to_neontology_node(neo4j_node, node_classes):
+    node_labels = list(neo4j_node.labels)
+
+    primary_labels = set(node_labels).intersection(set(node_classes.keys()))
+
+    secondary_labels = set(node_labels).difference(set(node_classes.keys()))
+
+    if len(primary_labels) == 1:
+        primary_label = primary_labels.pop()
+
+        node = node_classes[primary_label](**dict(neo4j_node))
+
+        # warn if the secondary labels aren't what's expected
+
+        if set(node.__secondarylabels__) != secondary_labels:
+            warnings.warn(f"Unexpected secondary labels returned: {secondary_labels}")
+
+        return node
+
+    # gracefully handle cases where we don't have a class defined
+    # for the identified label or where we get more than one valid primary label
+    else:
+        warnings.warn(f"Unexpected primary labels returned: {primary_labels}")
+
+        return None
+
+
 def neo4j_records_to_neontology_records(
-    records: List[Neo4jRecord], node_classes: list, rel_classes: list
+    records: List[Neo4jRecord], node_classes: dict, rel_classes: dict
 ) -> list:
     new_records = []
 
@@ -17,21 +44,10 @@ def neo4j_records_to_neontology_records(
         new_record = {"nodes": {}, "relationships": {}}
         for key, entry in record.items():
             if isinstance(entry, Neo4jNode):
-                node_label = list(entry.labels)[0]
+                neontology_node = neo4j_node_to_neontology_node(entry, node_classes)
 
-                # gracefully handle cases where we don't have a class defined
-                # for the identified label
-                try:
-                    node = node_classes[node_label](**dict(entry))
-                    new_record["nodes"][key] = node
-                except KeyError:
-                    warnings.warn(
-                        (
-                            f"Could not find a class for {node_label} label."
-                            " Did you define the class before initializing Neontology?"
-                        )
-                    )
-                    pass
+                if neontology_node:
+                    new_record["nodes"][key] = neontology_node
 
             elif isinstance(entry, Neo4jRelationship):
                 rel_type = entry.type
@@ -43,6 +59,16 @@ def neo4j_records_to_neontology_records(
                         (
                             f"Could not find a class for {rel_type} relationship type."
                             " Did you define the class before initializing Neontology?"
+                        )
+                    )
+                    continue
+
+                if not entry.nodes[0].labels or not entry.nodes[1].labels:
+                    warnings.warn(
+                        (
+                            f"{rel_type} relationship type query did not include nodes."
+                            " To get neontology relationships, return source and target "
+                            "nodes as part of result."
                         )
                     )
                     continue

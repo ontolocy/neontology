@@ -34,11 +34,11 @@ def test_create(use_graph):
     RETURN n
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result.has_label("PracticeNode")
+    assert result.nodes[0].__primarylabel__ == "PracticeNode"
 
-    assert result.get("pp") == "Test Node"
+    assert result.nodes[0].pp == "Test Node"
 
 
 def test_no_primary_label():
@@ -77,13 +77,15 @@ def test_create_multilabel(use_graph):
     RETURN n
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result.has_label("PrimaryLabel")
-    assert result.has_label("ExtraLabel1")
-    assert result.has_label("ExtraLabel2")
+    assert result.nodes[0].__primarylabel__ == "PrimaryLabel"
 
-    assert result.get("pp") == "Test Node"
+    # confirm the secondary labels were written to the database
+    assert "ExtraLabel1" in result.records[0].values()[0].labels
+    assert "ExtraLabel2" in result.records[0].values()[0].labels
+
+    assert result.nodes[0].pp == "Test Node"
 
 
 def test_create_multilabel_inheritance(use_graph):
@@ -107,12 +109,12 @@ def test_create_multilabel_inheritance(use_graph):
     RETURN n
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result.has_label("Human")
-    assert result.has_label("Mammal")
+    assert "Human" in result.records[0].values()[0].labels
+    assert "Mammal" in result.records[0].values()[0].labels
 
-    assert result.get("pp") == "Bob"
+    assert result.nodes[0].pp == "Bob"
 
 
 def test_create_multilabel_inheritance_multiple(use_graph):
@@ -151,33 +153,38 @@ def test_create_multilabel_inheritance_multiple(use_graph):
     RETURN COUNT(DISTINCT n)
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert result == 2
 
 
 def test_merge_defined_label_inherited(use_graph):
-    class SpecialPracticeNode(BaseNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SpecialTestLabel"
+    class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
-
+        __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
         pp: str
 
-    tn = SpecialPracticeNode(pp="Special Test Node")
+    class Human(Mammal):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "Human"
+        pp: str
+
+    tn = Human(pp="Bob")
 
     tn.merge()
 
     cypher = """
-    MATCH (n:SpecialTestLabel)
-    WHERE n.pp = 'Special Test Node'
+    MATCH (n:Human)
+    WHERE n.pp = 'Bob'
     RETURN n
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result.has_label("SpecialTestLabel")
+    assert "Human" in result.records[0].values()[0].labels
+    assert "Mammal" in result.records[0].values()[0].labels
 
-    assert result.get("pp") == "Special Test Node"
+    assert result.nodes[0].pp == "Bob"
 
 
 def test_merge_multiple_defined_label_inherited(use_graph):
@@ -198,7 +205,7 @@ def test_merge_multiple_defined_label_inherited(use_graph):
     RETURN COLLECT(DISTINCT n.pp) as node_names
     """
 
-    results = use_graph.evaluate(cypher)
+    results = use_graph.evaluate_query_single(cypher)
 
     assert "Special Test Node" in results
     assert "Special Test Node2" in results
@@ -222,7 +229,7 @@ def test_create_multiple_defined_label_inherited(use_graph):
     RETURN COLLECT(DISTINCT n.pp) as node_names
     """
 
-    results = use_graph.evaluate(cypher)
+    results = use_graph.evaluate_query_single(cypher)
 
     assert "Special Test Node" in results
     assert "Special Test Node2" in results
@@ -243,15 +250,12 @@ def test_creation_datetime(use_graph):
     cypher = """
     MATCH (n:PracticeNode)
     WHERE n.pp = 'Test Node'
-    RETURN n
+    RETURN n.created.year
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    # if the created date has been stored as a Neo4j datetime,
-    # it should come back as an interchange DateTime format from py2neo
-    # we call to_native to convert it back to a native Python datetime
-    assert result.get("created").to_native() == my_datetime
+    assert result == 2022
 
 
 def test_match_nodes(use_graph):
@@ -271,6 +275,38 @@ def test_match_nodes(use_graph):
     assert "Special Test Node" in pps
 
     assert "Special Test Node2" in pps
+
+
+def test_match_nodes_limit(use_graph):
+    tn = PracticeNode(pp="Special Test Node")
+    tn.merge()
+
+    tn2 = PracticeNode(pp="Special Test Node2")
+
+    tn2.merge()
+
+    results = PracticeNode.match_nodes(limit=1)
+
+    assert len(results) == 1
+
+    # match nodes returns the most recently created node first
+    assert results[0].pp == "Special Test Node2"
+
+
+def test_match_nodes_skip(use_graph):
+    tn = PracticeNode(pp="Special Test Node")
+    tn.merge()
+
+    tn2 = PracticeNode(pp="Special Test Node2")
+
+    tn2.merge()
+
+    results = PracticeNode.match_nodes(limit=1, skip=1)
+
+    assert len(results) == 1
+
+    # match nodes returns the most recently created node first
+    assert results[0].pp == "Special Test Node"
 
 
 def test_match_node(use_graph):
@@ -376,9 +412,27 @@ def test_neo4j_dict_create(use_graph, field_type, python_value, neo4j_values):
     RETURN n
     """
 
-    cypher_result = use_graph.evaluate(cypher)
+    cypher_result = use_graph.evaluate_query(cypher)
 
-    assert cypher_result.get("test_prop") in neo4j_values
+    assert cypher_result.records[0]["n"].get("test_prop") in neo4j_values
+
+
+def test_empty_list_property(use_graph):
+    class TestModelListProp(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel"
+        pp: str
+        test_prop: list
+
+    pp = "test_node"
+
+    testmodel = TestModelListProp(test_prop=[], pp=pp)
+
+    testmodel.create()
+
+    result = TestModelListProp.match(pp)
+
+    assert result.test_prop == []
 
 
 def test_set_on_match(use_graph):
@@ -402,17 +456,17 @@ def test_set_on_match(use_graph):
     RETURN n
     """
 
-    cypher_result = use_graph.evaluate(cypher)
+    cypher_result = use_graph.evaluate_query(cypher)
 
-    assert cypher_result.get("only_set_on_match") is None
-    assert cypher_result.get("normal_field") == "Bar"
+    assert cypher_result.records[0]["n"]["only_set_on_match"] is None
+    assert cypher_result.records[0]["n"].get("normal_field") == "Bar"
 
     test_node2 = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
     test_node2.merge()
 
-    cypher_result2 = use_graph.evaluate(cypher)
+    cypher_result2 = use_graph.evaluate_query(cypher)
 
-    assert cypher_result2.get("only_set_on_match") == "Foo"
+    assert cypher_result2.records[0]["n"].get("only_set_on_match") == "Foo"
 
 
 def test_set_on_create(use_graph):
@@ -434,26 +488,26 @@ def test_set_on_create(use_graph):
     RETURN n
     """
 
-    cypher_result = use_graph.evaluate(cypher)
+    cypher_result = use_graph.evaluate_query(cypher)
 
-    assert cypher_result.get("only_set_on_create") == "Foo"
-    assert cypher_result.get("normal_field") == "Bar"
+    assert cypher_result.records[0]["n"].get("only_set_on_create") == "Foo"
+    assert cypher_result.records[0]["n"].get("normal_field") == "Bar"
 
     test_node2 = TestModel(only_set_on_create="Fee", normal_field="Fi", pp="test_node")
     test_node2.merge()
 
-    cypher_result2 = use_graph.evaluate(cypher)
+    cypher_result2 = use_graph.evaluate_query(cypher)
 
-    assert cypher_result2.get("only_set_on_create") == "Foo"
-    assert cypher_result2.get("normal_field") == "Fi"
+    assert cypher_result2.records[0]["n"].get("only_set_on_create") == "Foo"
+    assert cypher_result2.records[0]["n"].get("normal_field") == "Fi"
 
 
 def test_merge_df_with_duplicates(use_graph):
     class Person(BaseNode):
         __primaryproperty__: ClassVar[str] = "identifier"
-        __primarylabel__: ClassVar[
-            str
-        ] = "PersonLabel"  # optionally specify the label to use
+        __primarylabel__: ClassVar[str] = (
+            "PersonLabel"  # optionally specify the label to use
+        )
 
         name: str
         age: int

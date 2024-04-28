@@ -283,14 +283,16 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         graph.cypher_write(cypher, params)
 
     @classmethod
-    def match_nodes(cls: Type[B], limit: int = 100, skip: int = 0) -> List[B]:
+    def match_nodes(
+        cls: Type[B], limit: Optional[int] = None, skip: Optional[int] = None
+    ) -> List[B]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
 
         Args:
-            limit (int, optional): Maximum number of results to return. Defaults to 100.
-            skip (int, optional): Skip through this many results (for pagination). Defaults to 0.
+            limit (int, optional): Maximum number of results to return. Defaults to None.
+            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
             Optional[List[B]]: A list of node instances.
@@ -300,11 +302,17 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         MATCH(n:{cls.__primarylabel__})
         RETURN n{{.*}}
         ORDER BY n.created DESC
-        SKIP $skip
-        LIMIT $limit
         """
 
-        params = {"skip": skip, "limit": limit}
+        params = {}
+
+        if skip:
+            cypher += " SKIP $skip "
+            params["skip"] = skip
+
+        if limit:
+            cypher += " LIMIT $limit "
+            params["limit"] = limit
 
         graph = GraphConnection()
         records = graph.cypher_read_many(cypher, params)

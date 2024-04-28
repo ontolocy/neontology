@@ -3,7 +3,6 @@
 import os
 
 import pytest
-from py2neo import Graph
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
@@ -26,7 +25,7 @@ def neo4j_db():
 
     print("initialised neontology")
 
-    graph = Graph(neo4j_uri, auth=(neo4j_username, neo4j_password))
+    graph_connection = GraphConnection()
 
     # confirm we're starting with an empty database
     cypher = """
@@ -34,7 +33,7 @@ def neo4j_db():
     RETURN COUNT(n)
     """
 
-    node_count = graph.evaluate(cypher)
+    node_count = graph_connection.evaluate_query_single(cypher)
     assert (
         node_count == 0
     ), f"Looks like there are {node_count} nodes in the database, it should be empty."
@@ -44,18 +43,16 @@ def neo4j_db():
     RETURN COLLECT(DISTINCT name)
     """
 
-    constraints = graph.evaluate(all_constraints_cypher)
+    constraints = graph_connection.evaluate_query_single(all_constraints_cypher)
 
     for constraint_name in constraints:
 
         drop_cypher = f"""
         DROP CONSTRAINT {constraint_name}
         """
-        graph.evaluate(drop_cypher)
+        graph_connection.evaluate_query_single(drop_cypher)
 
-    yield graph
-
-    graph_connection = GraphConnection()
+    yield graph_connection
 
     # tidy up by explicitly closing the graph connection here
     # otherwise something weird happens which closes the connection before
@@ -82,4 +79,4 @@ def use_graph(neo4j_db):
     DETACH DELETE n
     """
 
-    neo4j_db.evaluate(cypher)
+    neo4j_db.evaluate_query_single(cypher)

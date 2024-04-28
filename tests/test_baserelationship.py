@@ -65,7 +65,7 @@ def test_merge_relationship(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 
@@ -98,7 +98,7 @@ def test_merge_relationship_merge_on_match(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 
@@ -114,7 +114,7 @@ def test_merge_relationship_merge_on_match(use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate(cypher)
+    result2 = use_graph.evaluate_query_single(cypher)
 
     assert len(result2) == 1
 
@@ -149,7 +149,7 @@ def test_merge_relationship_merge_on_create(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 
@@ -165,7 +165,7 @@ def test_merge_relationship_merge_on_create(use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate(cypher)
+    result2 = use_graph.evaluate_query_single(cypher)
 
     assert len(result2) == 2
 
@@ -241,7 +241,7 @@ def test_merge_relationships_defined_types(use_graph):
     RETURN COLLECT(r{.*, type_r})
     """
 
-    results = use_graph.evaluate(cypher)
+    results = use_graph.evaluate_query_single(cypher)
 
     assert len(results) == 2
 
@@ -278,7 +278,7 @@ def test_merge_df(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 
@@ -314,7 +314,7 @@ def test_merge_df_alt_prop(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 
@@ -400,7 +400,7 @@ def test_merge_records(use_graph):
     RETURN COLLECT(DISTINCT r{.*, type_r})
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
     assert len(result) == 1
 

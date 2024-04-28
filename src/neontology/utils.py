@@ -102,6 +102,17 @@ def get_rels_by_target(
     return get_rels_by_node(by_source=False)
 
 
+def apply_constraints(node_types):
+    """Apply constraints based on primary properties for arbitrary set of node types"""
+
+    graph = GraphConnection()
+
+    for node_type in node_types:
+        graph.apply_constraint(
+            node_type.__primarylabel__, node_type.__primaryproperty__
+        )
+
+
 def auto_constrain() -> None:
     """Automatically apply constraints
 
@@ -110,7 +121,6 @@ def auto_constrain() -> None:
     Apply constraints based on the primary label and primary property for each node.
     """
 
-    graph = GraphConnection()
+    node_types = get_node_types().values()
 
-    for node_label, node_type in get_node_types().items():
-        graph.apply_constraint(node_label, node_type.__primaryproperty__)
+    apply_constraints(node_types)
