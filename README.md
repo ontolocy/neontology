@@ -1,8 +1,15 @@
 # Neontology: Neo4j, Python and Pydantic
 
+[![PyPI - Version](https://img.shields.io/pypi/v/neontology)](https://pypi.org/project/neontology/)
+[![Read the Docs](https://img.shields.io/readthedocs/neontology)](https://neontology.readthedocs.io/en/latest/)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/neontology)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/ontolocy/neontology/ci.yml)
+![GitHub License](https://img.shields.io/github/license/ontolocy/neontology)
+[![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://docs.pydantic.dev/)
+
 Easily ingest data into a Neo4j graph database with Python, Pydantic and pandas. Neontology is a simple object-graph mapper which lets you use [Pydantic](https://pydantic-docs.helpmanual.io/) models to define Nodes and Relationships. It imposes certain restrictions on how you model data, which aims to make life easier for most users but may provide too many limitations for others. The focus of Neontology is getting data into the database, for running complex queries and accessing data, consider using the Neo4j browser or bloom.
 
-Read the documentation [here](https://neontology.readthedocs.io/en/latest/)
+Read the documentation [here](https://neontology.readthedocs.io/en/latest/).
 
 ## Note on v1
 
