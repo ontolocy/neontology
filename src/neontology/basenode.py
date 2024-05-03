@@ -207,28 +207,36 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         input_df = df.replace([np.nan], None).copy()
 
+        # create a unique identifier field based on all rows
+        # we'll use this later to match up deduplicated rows to the original ordering
+        input_df["unique_identifier"] = input_df.astype(str).values.sum(axis=1)
+
         if deduplicate is True:
             # we don't wan't to waste time attempting to merge identical records
-            unique_df = input_df.drop_duplicates(ignore_index=True).copy()
+            unique_df = input_df.drop_duplicates(
+                subset="unique_identifier", ignore_index=True
+            ).copy()
         else:
             unique_df = input_df
 
-        records = unique_df.to_dict(orient="records")
+        model_data = unique_df.drop("unique_identifier", axis=1).copy()
+
+        records = model_data.to_dict(orient="records")
 
         unique_df["generated_nodes"] = pd.Series(cls.merge_records(records))
 
         # now we need to get the mapping from unique id to primary property
         # so that we can return the data in the same shape it was received
         input_df.insert(0, "ontolocy_merging_order", range(0, len(input_df)))
-        merge_cols = list(input_df.columns)
-        merge_cols.remove("ontolocy_merging_order")
         output_df = input_df.merge(
-            unique_df,
-            how="inner",
-            on=merge_cols,
-        ).sort_values("ontolocy_merging_order", ignore_index=True)
+            unique_df, how="outer", on="unique_identifier", suffixes=(None, "_y")
+        )
 
-        return output_df.generated_nodes
+        ordered_nodes = output_df.sort_values(
+            "ontolocy_merging_order", ignore_index=True
+        ).generated_nodes.copy()
+
+        return ordered_nodes
 
     @classmethod
     def match(cls: Type[B], pp: str) -> Optional[B]:

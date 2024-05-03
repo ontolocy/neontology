@@ -546,6 +546,41 @@ def test_merge_df_with_duplicates(use_graph):
     assert results[3].name == "ted"
 
 
+def test_merge_df_with_lists(use_graph):
+    class Person(BaseNode):
+        __primaryproperty__: ClassVar[str] = "name"
+        __primarylabel__: ClassVar[str] = (
+            "PersonLabel"  # optionally specify the label to use
+        )
+
+        name: str
+        age: int
+        favorite_colors: Optional[list] = None
+
+    people_records = [
+        {"name": "arthur", "age": 70, "favorite_colors": ["red"]},
+        {"name": "betty", "age": 65, "favorite_colors": ["red", "blue"]},
+        {"name": "ted", "age": 50, "favorite_colors": []},
+        {"name": "ben", "age": 75},
+    ]
+
+    people_df = pd.DataFrame.from_records(people_records)
+
+    Person.merge_df(people_df, deduplicate=False)
+
+    arthur = Person.match("arthur")
+    assert arthur.favorite_colors == ["red"]
+
+    betty = Person.match("betty")
+    assert betty.favorite_colors == ["red", "blue"]
+
+    ted = Person.match("ted")
+    assert ted.favorite_colors == []
+
+    ben = Person.match("ben")
+    assert ben.favorite_colors == None
+
+
 def test_merge_empty_df():
     df = pd.DataFrame()
 
