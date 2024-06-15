@@ -36,9 +36,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 
-    _merge_on: List[
-        str
-    ] = PrivateAttr()  # what relationship properties should we merge on
+    _merge_on: List[str] = (
+        PrivateAttr()
+    )  # what relationship properties should we merge on
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -50,7 +50,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         # but shouldn't be put in the graph or even instantiated
         if self.__relationshiptype__ is None:
             raise NotImplementedError(
-                "Nodes to be used in the graph must define a primary label."
+                "Relationships to be used in the graph must define a relationship type."
             )
 
     @classmethod
@@ -102,30 +102,28 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_label = self.source.__primarylabel__
         target_label = self.target.__primarylabel__
 
-        source_pp = self.source.__primaryproperty__
-        target_pp = self.target.__primaryproperty__
+        source_prop = self.source.__primaryproperty__
+        target_prop = self.target.__primaryproperty__
 
-        params = self._get_merge_parameters(
-            source_prop=source_pp, target_prop=target_pp
+        rel_props = self._get_merge_parameters(
+            source_prop=source_prop, target_prop=target_prop
         )
+
+        merge_on_props = self._merge_on
 
         rel_type = self.get_relationship_type()
 
-        # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{x}: ${x}" for x in self._merge_on])
+        gc = GraphConnection()
 
-        cypher = f"""
-        MATCH (source:{source_label} {{ {source_pp}: $source_prop }}),
-            (target:{target_label} {{ {target_pp}: $target_prop }})
-        MERGE (source)-[r:{rel_type} {{ {merge_props} }}]->(target)
-        ON MATCH SET r += $set_on_match
-        ON CREATE SET r += $set_on_create
-        SET r += $always_set
-        """
-
-        graph = GraphConnection()
-
-        graph.cypher_write(cypher, params)
+        gc.merge_relationships(
+            source_label,
+            target_label,
+            source_prop,
+            target_prop,
+            rel_type,
+            merge_on_props,
+            [rel_props],
+        )
 
     @classmethod
     def merge_relationships(
@@ -175,31 +173,25 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_label = source_type.__primarylabel__
         target_label = target_type.__primarylabel__
 
-        # build a string of properties to merge on "prop_name: $prop_name"
-        # we need to instantiate the class so that _merge_on is generated as part of __init__
-        merge_props = ", ".join([f"{x}: ${x}" for x in cls._get_prop_usage("merge_on")])
+        rel_type = cls.get_relationship_type()
+
+        merge_on_props = cls._get_prop_usage("merge_on")
 
         rel_list: List[Dict[str, Any]] = [
             x._get_merge_parameters(source_prop, target_prop) for x in rels
         ]
 
-        rel_type = cls.get_relationship_type()
+        gc = GraphConnection()
 
-        cypher = f"""
-        UNWIND $rel_list AS rel
-        MATCH (source:{source_label})
-        WHERE source.{source_prop} = rel.source_prop
-        MATCH (target:{target_label})
-        WHERE target.{target_prop} = rel.target_prop
-        MERGE (source)-[r:{rel_type} {{ {merge_props} }}]->(target)
-        ON MATCH SET r += rel.set_on_match
-        ON CREATE SET r += rel.set_on_create
-        SET r += rel.always_set
-        """
-
-        graph = GraphConnection()
-
-        graph.cypher_write(cypher=cypher, params={"rel_list": rel_list})
+        gc.merge_relationships(
+            source_label,
+            target_label,
+            source_prop,
+            target_prop,
+            rel_type,
+            merge_on_props,
+            rel_list,
+        )
 
     @classmethod
     def merge_records(

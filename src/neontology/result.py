@@ -1,6 +1,7 @@
 import itertools
 import warnings
-from typing import List
+from typing import List, Any
+
 
 from neo4j import Record as Neo4jRecord
 from neo4j.graph import Node as Neo4jNode
@@ -37,7 +38,7 @@ def neo4j_node_to_neontology_node(neo4j_node, node_classes):
 
 def neo4j_records_to_neontology_records(
     records: List[Neo4jRecord], node_classes: dict, rel_classes: dict
-) -> list:
+) -> tuple:
     new_records = []
 
     for record in records:
@@ -89,26 +90,21 @@ def neo4j_records_to_neontology_records(
 
         new_records.append(new_record)
 
-    return new_records
+    nodes_list_of_lists = [x["nodes"].values() for x in new_records]
+
+    nodes = list(itertools.chain.from_iterable(nodes_list_of_lists))
+
+    nodes_list_of_lists = [x["relationships"].values() for x in new_records]
+    rels = list(itertools.chain.from_iterable(nodes_list_of_lists))
+
+    return new_records, nodes, rels
 
 
 class NeontologyResult(BaseModel):
-    records: list
+    records: Any
     neontology_records: list
-
-    @computed_field
-    @property
-    def nodes(self) -> list:
-        nodes_list_of_lists = [x["nodes"].values() for x in self.neontology_records]
-        return list(itertools.chain.from_iterable(nodes_list_of_lists))
-
-    @computed_field
-    @property
-    def relationships(self) -> list:
-        nodes_list_of_lists = [
-            x["relationships"].values() for x in self.neontology_records
-        ]
-        return list(itertools.chain.from_iterable(nodes_list_of_lists))
+    nodes: list
+    relationships: list
 
     @computed_field
     @property

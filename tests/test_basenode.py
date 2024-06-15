@@ -1,5 +1,5 @@
 # type: ignore
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, List
 from datetime import datetime
 from uuid import UUID
 
@@ -61,6 +61,10 @@ def test_none_primary_label():
 
 
 def test_create_multilabel(use_graph):
+    # Not all engines support multiple labels
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        return
+
     class MultipleLabelNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "PrimaryLabel"
@@ -89,6 +93,10 @@ def test_create_multilabel(use_graph):
 
 
 def test_create_multilabel_inheritance(use_graph):
+    # Not all engines support multiple labels
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        return
+
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -118,6 +126,10 @@ def test_create_multilabel_inheritance(use_graph):
 
 
 def test_create_multilabel_inheritance_multiple(use_graph):
+    # Not all engines support multiple labels
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        return
+
     class Animal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
@@ -159,6 +171,10 @@ def test_create_multilabel_inheritance_multiple(use_graph):
 
 
 def test_merge_defined_label_inherited(use_graph):
+    # Not all engines support multiple labels
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        return
+
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -187,13 +203,14 @@ def test_merge_defined_label_inherited(use_graph):
     assert result.nodes[0].pp == "Bob"
 
 
-def test_merge_multiple_defined_label_inherited(use_graph):
-    class SpecialPracticeNode(BaseNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SpecialTestLabel"
-        __primaryproperty__: ClassVar[str] = "pp"
+class SpecialPracticeNode(BaseNode):
+    __primarylabel__: ClassVar[Optional[str]] = "SpecialTestLabel1"
+    __primaryproperty__: ClassVar[str] = "pp"
 
-        pp: str
+    pp: str
 
+
+def test_merge_multiple_defined_label(use_graph):
     tn = SpecialPracticeNode(pp="Special Test Node")
 
     tn2 = SpecialPracticeNode(pp="Special Test Node2")
@@ -201,7 +218,7 @@ def test_merge_multiple_defined_label_inherited(use_graph):
     SpecialPracticeNode.merge_nodes([tn, tn2])
 
     cypher = """
-    MATCH (n:SpecialTestLabel)
+    MATCH (n:SpecialTestLabel1)
     RETURN COLLECT(DISTINCT n.pp) as node_names
     """
 
@@ -211,13 +228,7 @@ def test_merge_multiple_defined_label_inherited(use_graph):
     assert "Special Test Node2" in results
 
 
-def test_create_multiple_defined_label_inherited(use_graph):
-    class SpecialPracticeNode(BaseNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SpecialTestLabel"
-        __primaryproperty__: ClassVar[str] = "pp"
-
-        pp: str
-
+def test_create_multiple_defined_label(use_graph):
     tn = SpecialPracticeNode(pp="Special Test Node")
 
     tn2 = SpecialPracticeNode(pp="Special Test Node2")
@@ -225,7 +236,7 @@ def test_create_multiple_defined_label_inherited(use_graph):
     SpecialPracticeNode.create_nodes([tn, tn2])
 
     cypher = """
-    MATCH (n:SpecialTestLabel)
+    MATCH (n:SpecialTestLabel1)
     RETURN COLLECT(DISTINCT n.pp) as node_names
     """
 
@@ -240,6 +251,10 @@ def test_creation_datetime(use_graph):
     Check we can manually define the created datetime, and then check we can
     query for it using neo4j DateTime type.
     """
+
+    # Not all engines support the same datetime/timestamp operations
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        return
 
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
@@ -361,78 +376,143 @@ def test_delete_node(use_graph):
     assert result is None
 
 
+class ModelTestString(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelString"
+    pp: str
+    test_prop_string: str
+
+
+class ModelTestInt(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelInt"
+    pp: str
+    test_prop_int: int
+
+
+class ModelTestTuple(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelTuple"
+    pp: str
+    test_prop_tuple: tuple
+
+
+class ModelTestSet(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelSet"
+    pp: str
+    test_prop_set: set
+
+
+class ModelTestUUID(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelUUID"
+    pp: str
+    test_prop_uuid: UUID
+
+
+class ModelTestDateTime(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelDateTime"
+    pp: str
+    test_prop_datetime: datetime
+
+
+class ModelTestStringList(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelStringList"
+    pp: str
+    test_prop_list: list
+
+
+class ModelTestIntListExplicit(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "TestModelIntListExplicit"
+    pp: str
+    test_prop_int_list_exp: List[int]
+
+
 @pytest.mark.parametrize(
-    "field_type,python_value,neo4j_values",
+    "test_model,test_prop,input_value,expected_value",
     [
-        (str, "hello world", ["hello world"]),
-        (tuple, ("hello", "world"), [["hello", "world"]]),
-        (set, {"foo", "bar"}, [["bar", "foo"], ["foo", "bar"]]),
+        (ModelTestString, "test_prop_string", "hello world", ["hello world"]),
+        (ModelTestInt, "test_prop_int", 5071, [5071]),
+        (ModelTestTuple, "test_prop_tuple", ("hello", "world"), [["hello", "world"]]),
         (
-            UUID,
+            ModelTestSet,
+            "test_prop_set",
+            {"foo", "bar"},
+            [["bar", "foo"], ["foo", "bar"]],
+        ),
+        (
+            ModelTestUUID,
+            "test_prop_uuid",
             UUID("32d4a4cb-29c3-4aa8-9b55-7790431819e3"),
             ["32d4a4cb-29c3-4aa8-9b55-7790431819e3"],
         ),
         (
-            datetime,
+            ModelTestDateTime,
+            "test_prop_datetime",
             datetime(year=1984, month=1, day=2),
             [datetime(year=1984, month=1, day=2)],
         ),
         (
-            list,
+            ModelTestStringList,
+            "test_prop_list",
             ["foo", "bar"],
             [["foo", "bar"]],
         ),
         (
-            list,
+            ModelTestIntListExplicit,
+            "test_prop_int_list_exp",
             [1, 2, 3],
             [[1, 2, 3]],
         ),
     ],
 )
-def test_neo4j_dict_create(use_graph, field_type, python_value, neo4j_values):
-    class TestModel(BaseNode):
-        __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "TestModel"
-        pp: str
-        test_prop: field_type
-
+def test_property_types(use_graph, test_model, test_prop, input_value, expected_value):
     pp = "test_node"
 
-    testmodel = TestModel(test_prop=python_value, pp=pp)
+    input_data = {"pp": pp}
+    input_data[test_prop] = input_value
+
+    testmodel = test_model(**input_data)
 
     testmodel.create()
 
-    result = TestModel.match(pp)
+    result = test_model.match(pp)
 
-    assert result.test_prop == python_value
+    assert result.model_dump()[test_prop] == input_value
 
-    cypher = """
-    MATCH (n:TestModel)
+    cypher = f"""
+    MATCH (n:{test_model.__primarylabel__})
     WHERE n.pp = 'test_node'
-    RETURN n
+    RETURN n.{test_prop}
     """
 
-    cypher_result = use_graph.evaluate_query(cypher)
+    cypher_result = use_graph.evaluate_query_single(cypher)
 
-    assert cypher_result.records[0]["n"].get("test_prop") in neo4j_values
+    # in the case of sets, we may get the result back ordered one of two ways
+    # therefore, we check that the result is one of the expected values rather
+    assert cypher_result in expected_value
 
 
 def test_empty_list_property(use_graph):
     class TestModelListProp(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "TestModel"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel1"
         pp: str
-        test_prop: list
+        list_prop: list
 
     pp = "test_node"
 
-    testmodel = TestModelListProp(test_prop=[], pp=pp)
+    testmodel = TestModelListProp(list_prop=[], pp=pp)
 
     testmodel.create()
 
     result = TestModelListProp.match(pp)
 
-    assert result.test_prop == []
+    assert result.list_prop == []
 
 
 def test_set_on_match(use_graph):
@@ -440,7 +520,7 @@ def test_set_on_match(use_graph):
 
     class TestModel(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "TestModel"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel2"
         pp: str = "test_node"
         only_set_on_match: Optional[str] = Field(
             json_schema_extra={"set_on_match": True}, default=None
@@ -451,22 +531,22 @@ def test_set_on_match(use_graph):
     test_node.merge()
 
     cypher = """
-    MATCH (n:TestModel)
+    MATCH (n:TestModel2)
     WHERE n.pp = 'test_node'
     RETURN n
     """
 
     cypher_result = use_graph.evaluate_query(cypher)
 
-    assert cypher_result.records[0]["n"]["only_set_on_match"] is None
-    assert cypher_result.records[0]["n"].get("normal_field") == "Bar"
+    assert cypher_result.nodes[0].only_set_on_match is None
+    assert cypher_result.nodes[0].normal_field == "Bar"
 
     test_node2 = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
     test_node2.merge()
 
     cypher_result2 = use_graph.evaluate_query(cypher)
 
-    assert cypher_result2.records[0]["n"].get("only_set_on_match") == "Foo"
+    assert cypher_result2.nodes[0].only_set_on_match == "Foo"
 
 
 def test_set_on_create(use_graph):
@@ -474,7 +554,7 @@ def test_set_on_create(use_graph):
 
     class TestModel(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "TestModel"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel3"
         pp: str = "test_node"
         only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
         normal_field: str
@@ -483,43 +563,44 @@ def test_set_on_create(use_graph):
     test_node.merge()
 
     cypher = """
-    MATCH (n:TestModel)
+    MATCH (n:TestModel3)
     WHERE n.pp = 'test_node'
     RETURN n
     """
 
     cypher_result = use_graph.evaluate_query(cypher)
 
-    assert cypher_result.records[0]["n"].get("only_set_on_create") == "Foo"
-    assert cypher_result.records[0]["n"].get("normal_field") == "Bar"
+    assert cypher_result.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result.nodes[0].normal_field == "Bar"
 
     test_node2 = TestModel(only_set_on_create="Fee", normal_field="Fi", pp="test_node")
     test_node2.merge()
 
     cypher_result2 = use_graph.evaluate_query(cypher)
 
-    assert cypher_result2.records[0]["n"].get("only_set_on_create") == "Foo"
-    assert cypher_result2.records[0]["n"].get("normal_field") == "Fi"
+    assert cypher_result2.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result2.nodes[0].normal_field == "Fi"
+
+
+class Person(BaseNode):
+    __primaryproperty__: ClassVar[str] = "identifier"
+    __primarylabel__: ClassVar[str] = (
+        "PersonLabel1"  # optionally specify the label to use
+    )
+
+    name: str
+    age: int
+    identifier: Optional[str] = Field(default=None, validate_default=True)
+
+    @field_validator("identifier")
+    def set_identifier(cls, v, values):
+        if v is None:
+            v = f"{values.data['name']}_{values.data['age']}"
+
+        return v
 
 
 def test_merge_df_with_duplicates(use_graph):
-    class Person(BaseNode):
-        __primaryproperty__: ClassVar[str] = "identifier"
-        __primarylabel__: ClassVar[str] = (
-            "PersonLabel"  # optionally specify the label to use
-        )
-
-        name: str
-        age: int
-        identifier: Optional[str] = Field(default=None, validate_default=True)
-
-        @field_validator("identifier")
-        def set_identifier(cls, v, values):
-            if v is None:
-                v = f"{values.data['name']}_{values.data['age']}"
-
-            return v
-
     people_records = [
         {"name": "arthur", "age": 70},
         {"name": "betty", "age": 65},
@@ -550,7 +631,7 @@ def test_merge_df_with_lists(use_graph):
     class Person(BaseNode):
         __primaryproperty__: ClassVar[str] = "name"
         __primarylabel__: ClassVar[str] = (
-            "PersonLabel"  # optionally specify the label to use
+            "PersonLabel2"  # optionally specify the label to use
         )
 
         name: str
@@ -578,7 +659,7 @@ def test_merge_df_with_lists(use_graph):
     assert ted.favorite_colors == []
 
     ben = Person.match("ben")
-    assert ben.favorite_colors == None
+    assert ben.favorite_colors is None
 
 
 def test_merge_empty_df():

@@ -31,7 +31,7 @@ class CommonModel(BaseModel, ABC):
     _set_on_create: List[str] = PrivateAttr()
     _always_set: List[str] = PrivateAttr()
 
-    _neo4j_supported_types: ClassVar[Any] = (
+    _supported_types: ClassVar[Any] = (
         list,
         bool,
         int,
@@ -109,7 +109,7 @@ class CommonModel(BaseModel, ABC):
 
             return [cls.export_type_converter(x) for x in value]
 
-        elif isinstance(value, cls._neo4j_supported_types) is False:
+        elif isinstance(value, cls._supported_types) is False:
             return str(value)
 
         else:

@@ -1,5 +1,8 @@
 from collections import defaultdict
-from typing import Dict, Set, Type
+from typing import Dict, Set, Type, get_args, get_origin, Union, List
+
+from pydantic import BaseModel
+from jinja2 import Template
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship
@@ -108,7 +111,7 @@ def apply_constraints(node_types):
     graph = GraphConnection()
 
     for node_type in node_types:
-        graph.apply_constraint(
+        graph.engine.apply_constraint(
             node_type.__primarylabel__, node_type.__primaryproperty__
         )
 
@@ -124,3 +127,182 @@ def auto_constrain() -> None:
     node_types = get_node_types().values()
 
     apply_constraints(node_types)
+
+
+def extract_type_mapping(annotation, show_optional: bool = True):
+    if isinstance(annotation, type):
+        # we have a plain type, just return the name
+        return annotation.__name__
+    elif get_origin(annotation) == Union:
+        # We can only support union's of a single type plus none (i.e. Optional)
+        if len(get_args(annotation)) == 2 and type(None) in get_args(annotation):
+            # we need to extract
+            for entry in get_args(annotation):
+                if isinstance(entry, type(None)):
+                    pass
+                else:
+                    # we do this recursively in case the next layer down is something like List[int]
+                    if show_optional is True:
+                        return f"Optional[{extract_type_mapping(entry)}]"
+                    else:
+                        return extract_type_mapping(entry)
+        else:
+            raise TypeError(f"Unsupported union type: {annotation}")
+    elif get_origin(annotation) == list:
+        if len(get_args(annotation)) == 1:
+            # field type will be something like typing.List[str]
+            # just return the List[str] bit
+            return str(annotation).split(".")[1]
+        else:
+            raise TypeError(f"Cannot have lists of multiple types: {annotation}")
+    else:
+        raise TypeError(f"Unsupported type annotation: {annotation}")
+
+
+class SchemaProperty(BaseModel):
+    name: str
+    type_annotation: str
+    required: bool
+
+
+class RelationshipSchema(BaseModel):
+    name: str
+    relationship_type: str
+    source_labels: List[str]
+    target_labels: List[str]
+
+    properties: List[SchemaProperty]
+
+
+class NodeSchema(BaseModel):
+    label: str
+    title: str
+    secondary_labels: List[str]
+    properties: List[SchemaProperty]
+    outgoing_relationships: List[RelationshipSchema] = []
+
+
+def generate_node_schema(
+    node_type: type[BaseNode], outgoing_rels: bool = True
+) -> NodeSchema:
+    schema_dict = {}
+    schema_dict["label"] = node_type.__primarylabel__
+    schema_dict["title"] = node_type.__name__
+    schema_dict["secondary_labels"] = node_type.__secondarylabels__
+
+    model_properties = []
+
+    for field_name, field_props in node_type.model_fields.items():
+        field_type = extract_type_mapping(field_props.annotation, show_optional=True)
+
+        node_property = SchemaProperty(
+            type_annotation=field_type,
+            name=field_name,
+            required=field_props.is_required(),
+        )
+
+        if field_props.is_required() is True:
+            model_properties.insert(0, node_property)
+
+        # put optional fields at the end
+        else:
+            model_properties.append(node_property)
+
+    schema_dict["properties"] = model_properties
+    schema_dict["outgoing_relationships"] = []
+
+    outgoing_rels = get_rels_by_source().get(node_type.__primarylabel__, [])
+    all_rel_types = get_rels_by_type()
+
+    for rel in outgoing_rels:
+        rel_props = []
+
+        # first pull out any additional properties on the relationship
+        for field_name, field_props in all_rel_types[rel][
+            "rel_class"
+        ].model_fields.items():
+            if field_name not in ["source", "target"]:
+                field_type = extract_type_mapping(
+                    field_props.annotation, show_optional=True
+                )
+
+                prop_entry = SchemaProperty(
+                    type_annotation=field_type,
+                    name=field_name,
+                    required=field_props.is_required(),
+                )
+
+                if field_props.is_required() is True:
+                    rel_props.insert(0, prop_entry)
+
+                # put optional fields at the end
+                else:
+                    rel_props.append(prop_entry)
+
+        # handle situations where we have an abstract target label defined
+        if (
+            hasattr(all_rel_types[rel]["target_class"], "__primarylabel__")
+            and all_rel_types[rel]["target_class"].__primarylabel__
+        ):
+            target_labels = [all_rel_types[rel]["target_class"].__primarylabel__]
+
+        else:
+            # return concrete subclasses of the abstract node class given
+            retrieved_node_types = get_node_types(all_rel_types[rel]["target_class"])
+            target_labels = retrieved_node_types.keys()
+
+        rel_schema = RelationshipSchema(
+            relationship_type=rel,
+            name=rel,
+            target_labels=target_labels,
+            source_labels=[schema_dict["label"]],
+            properties=rel_props,
+        )
+
+        schema_dict["outgoing_relationships"].append(rel_schema)
+
+    return NodeSchema(**schema_dict)
+
+
+def schema_to_markdown(node_schema) -> str:
+    """Take a node schema and produce markdown ontology documentation"""
+
+    schema_template_raw = """
+# {{model_schema.label}}
+
+Primary Label: {{model_schema.label}}
+
+Python Class Name: {{model_schema.title}}
+
+{%if model_schema.secondary_labels %}{{model_schema.secondary_labels}}{% endif %}
+
+## Node Properties
+
+| Property Name | Type | Required |
+| ------------- | ---- | -------- |
+{% for field in model_schema.properties -%}
+| {{field.name}} | {{field.type_annotation}} | {{field.required}} |
+{% endfor %}
+
+{% if model_schema.outgoing_relationships %}
+## Outgoing Relationships
+
+{% for outgoing_rel in model_schema.outgoing_relationships -%}
+### {{ outgoing_rel.relationship_type }}
+
+Target Label(s): {{ outgoing_rel.target_labels |join(', ') }}
+{% if outgoing_rel.properties %}
+| Property Name | Type | Required |
+| ------------- | ---- | -------- |
+{% for rel_prop in outgoing_rel.properties -%}
+| {{rel_prop.name}} | {{rel_prop.type_annotation}} | {{rel_prop.required}} |
+{% endfor %}
+{% endif %}
+
+{% endfor %}
+{% endif %}
+"""
+
+    schema_template = Template(schema_template_raw)
+
+    return schema_template.render(model_schema=node_schema).strip()

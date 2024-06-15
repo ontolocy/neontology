@@ -9,5 +9,6 @@ flake8>=4.0
 pyre-check>=0.9
 isort>=5.10
 pydocstyle[toml]>=6.1
+ruff
 # doing the docs
 mkdocs==1.*
