@@ -7,7 +7,7 @@ import pandas as pd
 from pydantic import Field, field_validator
 import pytest
 
-from neontology import BaseNode
+from neontology import BaseNode, BaseRelationship, retrieve_nodes, retrieve_property
 
 
 class PracticeNode(BaseNode):
@@ -86,8 +86,8 @@ def test_create_multilabel(use_graph):
     assert result.nodes[0].__primarylabel__ == "PrimaryLabel"
 
     # confirm the secondary labels were written to the database
-    assert "ExtraLabel1" in result.records[0].values()[0].labels
-    assert "ExtraLabel2" in result.records[0].values()[0].labels
+    assert "ExtraLabel1" in result.records_raw[0].values()[0].labels
+    assert "ExtraLabel2" in result.records_raw[0].values()[0].labels
 
     assert result.nodes[0].pp == "Test Node"
 
@@ -119,8 +119,8 @@ def test_create_multilabel_inheritance(use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    assert "Human" in result.records[0].values()[0].labels
-    assert "Mammal" in result.records[0].values()[0].labels
+    assert "Human" in result.records_raw[0].values()[0].labels
+    assert "Mammal" in result.records_raw[0].values()[0].labels
 
     assert result.nodes[0].pp == "Bob"
 
@@ -197,8 +197,8 @@ def test_merge_defined_label_inherited(use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    assert "Human" in result.records[0].values()[0].labels
-    assert "Mammal" in result.records[0].values()[0].labels
+    assert "Human" in result.records_raw[0].values()[0].labels
+    assert "Mammal" in result.records_raw[0].values()[0].labels
 
     assert result.nodes[0].pp == "Bob"
 
@@ -627,17 +627,18 @@ def test_merge_df_with_duplicates(use_graph):
     assert results[3].name == "ted"
 
 
+class Person2(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[str] = (
+        "PersonLabel2"  # optionally specify the label to use
+    )
+
+    name: str
+    age: int
+    favorite_colors: Optional[list] = None
+
+
 def test_merge_df_with_lists(use_graph):
-    class Person(BaseNode):
-        __primaryproperty__: ClassVar[str] = "name"
-        __primarylabel__: ClassVar[str] = (
-            "PersonLabel2"  # optionally specify the label to use
-        )
-
-        name: str
-        age: int
-        favorite_colors: Optional[list] = None
-
     people_records = [
         {"name": "arthur", "age": 70, "favorite_colors": ["red"]},
         {"name": "betty", "age": 65, "favorite_colors": ["red", "blue"]},
@@ -647,18 +648,18 @@ def test_merge_df_with_lists(use_graph):
 
     people_df = pd.DataFrame.from_records(people_records)
 
-    Person.merge_df(people_df, deduplicate=False)
+    Person2.merge_df(people_df, deduplicate=False)
 
-    arthur = Person.match("arthur")
+    arthur = Person2.match("arthur")
     assert arthur.favorite_colors == ["red"]
 
-    betty = Person.match("betty")
+    betty = Person2.match("betty")
     assert betty.favorite_colors == ["red", "blue"]
 
-    ted = Person.match("ted")
+    ted = Person2.match("ted")
     assert ted.favorite_colors == []
 
-    ben = Person.match("ben")
+    ben = Person2.match("ben")
     assert ben.favorite_colors is None
 
 
@@ -669,3 +670,98 @@ def test_merge_empty_df():
 
     assert len(result) == 0
     assert isinstance(result, pd.Series)
+
+
+class AugmentedPerson(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[str] = "AugmentedPerson"
+
+    name: str
+
+    @retrieve_nodes
+    def followers(self):
+        return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN o"
+
+    @retrieve_property
+    def follower_count(self):
+        return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
+
+
+class AugmentedPersonRelationship(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "AUGMENTED_PERSON_FOLLOWS"
+
+    source: AugmentedPerson
+    target: AugmentedPerson
+
+    follow_tag: Optional[str] = None
+
+
+def test_related_nodes(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    alice.merge()
+
+    bob = AugmentedPerson(name="Bob")
+    bob.merge()
+
+    follows = AugmentedPersonRelationship(
+        source=alice, target=bob, follow_tag="test-tag"
+    )
+    follows.merge()
+
+    follows2 = AugmentedPersonRelationship(
+        source=bob, target=alice, follow_tag="second-tag"
+    )
+    follows2.merge()
+
+    alice_rels = alice.related_nodes()
+
+    assert len(alice_rels) == 1
+    assert alice_rels[0].name == "Bob"
+
+    bobs_followers = bob.related_nodes(
+        relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
+        incoming=True,
+        outgoing=False,
+        relationship_properties={"follow_tag": "test-tag"},
+    )
+
+    assert len(bobs_followers) == 1
+    assert bobs_followers[0].name == "Alice"
+
+    bobs_rels = bob.related_nodes(incoming=True, distinct=True)
+
+    assert len(bobs_rels) == 1
+    assert bobs_rels[0].name == "Alice"
+
+
+def test_retrieve_property(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    alice.merge()
+
+    bob = AugmentedPerson(name="Bob")
+    bob.merge()
+
+    follows = AugmentedPersonRelationship(
+        source=alice, target=bob, follow_tag="test-tag"
+    )
+    follows.merge()
+
+    assert bob.follower_count() == 1
+
+
+def test_retrieve_nodes(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    alice.merge()
+
+    bob = AugmentedPerson(name="Bob")
+    bob.merge()
+
+    follows = AugmentedPersonRelationship(
+        source=alice, target=bob, follow_tag="test-tag"
+    )
+    follows.merge()
+
+    followers = bob.followers()
+
+    assert len(followers) == 1
+    assert followers[0].name == "Alice"

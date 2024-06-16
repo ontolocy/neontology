@@ -6,7 +6,8 @@ from neo4j import Result as Neo4jResult
 
 
 from ..graphengine import GraphEngineBase
-from ..result import NeontologyResult, neo4j_records_to_neontology_records
+from ..result import NeontologyResult
+from .neo4jengine import neo4j_records_to_neontology_records
 
 
 class MemgraphEngine(GraphEngineBase):
@@ -44,7 +45,7 @@ class MemgraphEngine(GraphEngineBase):
         try:
             self.driver.verify_connectivity()
             return True
-        except:
+        except:  # noqa: E722
             return False
 
     def close_connection(self) -> None:
@@ -64,8 +65,8 @@ class MemgraphEngine(GraphEngineBase):
         )
 
         return NeontologyResult(
-            records=neo4j_records,
-            neontology_records=neontology_records,
+            records_raw=neo4j_records,
+            records=neontology_records,
             nodes=nodes,
             relationships=rels,
         )

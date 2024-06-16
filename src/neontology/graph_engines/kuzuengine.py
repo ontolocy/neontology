@@ -272,8 +272,8 @@ class KuzuEngine(GraphEngineBase):
         )
 
         return NeontologyResult(
-            records=result_df,
-            neontology_records=neontology_records,
+            records_raw=result_df,
+            records=neontology_records,
             nodes=nodes,
             relationships=rels,
         )

@@ -183,8 +183,8 @@ print(results.nodes[0].name)
 
 The returned `NeontologyResult` object has the following properties:
 
-* `records` - the raw records returned by the Neo4j driver
-* `neontology_records` - the records converted into equivalent Neontology objects
+* `records_raw` - the raw records returned by the Neo4j driver
+* `records` - the records converted into equivalent Neontology objects
 * `nodes` - a list of all the Neontology/Pydantic nodes returned
 * `relationships` - a list of all the Neontology/Pydantic relationships returned
 * `node_link_data` - a dictionary with 'nodes' and 'links' keys and corresponding values which can be used with other tools such as NetworkX and D3.

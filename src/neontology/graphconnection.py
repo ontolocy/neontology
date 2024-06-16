@@ -33,24 +33,15 @@ class GraphConnection(object):
 
             if GraphConnection._instance:
                 try:
-                    graph_engine = GraphConnection._instance.engine = (
-                        graph_engine_class(graph_config)
-                    )
+                    GraphConnection._instance.engine = graph_engine_class(graph_config)
 
                 except Exception:
-                    print(
-                        "Error: connection not established. Have you run init_neontology?"
-                    )
                     GraphConnection._instance = None
-                    raise RuntimeError
-
-                if graph_engine.verify_connection() is False:
-                    print(
+                    raise RuntimeError(
                         "Error: connection not established. Have you run init_neontology?"
                     )
-                    raise RuntimeError
 
-                # capture all possible types of node and relationship
+                # capture all currently defined types of node and relationship
                 from .utils import get_node_types, get_rels_by_type
 
                 cls.global_nodes = get_node_types()
@@ -68,6 +59,11 @@ class GraphConnection(object):
     ) -> None:
         if self._instance:
             self.engine: GraphEngineBase = self._instance.engine
+
+        if self.engine.verify_connection() is False:
+            raise RuntimeError(
+                "Error: connection not established. Have you run init_neontology?"
+            )
 
     @classmethod
     def change_engine(cls, graph_config, graph_engine_class):
@@ -165,3 +161,4 @@ def init_neontology(
         graph_engine_class = Neo4jEngine
 
     GraphConnection(graph_config, graph_engine_class)
+    print("Neontology initialised.")

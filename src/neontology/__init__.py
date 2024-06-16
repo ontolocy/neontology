@@ -1,6 +1,6 @@
 # flake8: noqa
 
-from .basenode import BaseNode
+from .basenode import BaseNode, retrieve_nodes, retrieve_property
 from .baserelationship import BaseRelationship
 from .graphconnection import GraphConnection, init_neontology
 from .utils import auto_constrain
@@ -8,6 +8,8 @@ from .utils import auto_constrain
 __all__ = [
     # BaseNode
     "BaseNode",
+    "retrieve_nodes",
+    "retrieve_property",
     # BaseRelationship
     "BaseRelationship",
     # GraphConnection

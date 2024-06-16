@@ -1,5 +1,5 @@
 from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union
-
+import functools
 import numpy as np
 import pandas as pd
 
@@ -7,6 +7,63 @@ from .commonmodel import CommonModel
 from .graphconnection import GraphConnection
 
 B = TypeVar("B", bound="BaseNode")
+
+
+def _prepare_related_query(node, wrapped_function, *args, **kwargs):
+    print(f"INCOMING KWARGS: {kwargs}")
+    print(f"INCOMING ARGS: {args}")
+
+    try:
+        print(f"CALLING ORIGINAL FUNC WITH {node} // {args} // {kwargs}")
+
+        query, params = wrapped_function(node, *args, **kwargs)
+    except ValueError:
+        query = wrapped_function(node, *args, **kwargs)
+
+        # if the function doesn't pass params, they may be taken from user provided parameters
+        params = {**kwargs}
+
+    print("PREPARING REST OF QUERY")
+
+    # make it easy to match on this specific node
+    this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
+    params["_neontology_pp"] = node.get_primary_property_value()
+    new_query = query.replace("(#ThisNode)", this_node)
+
+    print(new_query)
+    print(params)
+
+    return new_query, params
+
+
+def retrieve_property(f):
+    """Decorator to wrap functions on BaseNode subclasses and return a single result."""
+
+    @functools.wraps(f)
+    def wrapper(self, *args, **kwargs):
+        new_query, params = _prepare_related_query(self, f, *args, **kwargs)
+
+        gc = GraphConnection()
+        result = gc.evaluate_query_single(new_query, params)
+
+        return result
+
+    return wrapper
+
+
+def retrieve_nodes(f):
+    """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
+
+    @functools.wraps(f)
+    def wrapper(self, *args, **kwargs):
+        new_query, params = _prepare_related_query(self, f, *args, **kwargs)
+
+        gc = GraphConnection()
+        result = gc.evaluate_query(new_query, params)
+
+        return result.nodes
+
+    return wrapper
 
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
@@ -274,7 +331,98 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Optional[List[B]]: A list of node instances.
         """
 
-        graph = GraphConnection()
-        result = graph.match_nodes(cls, limit, skip)
+        gc = GraphConnection()
+        result = gc.match_nodes(cls, limit, skip)
 
         return result
+
+    @retrieve_nodes
+    def related_nodes(
+        self,
+        relationship_types: list = [],
+        relationship_properties: Optional[dict] = None,
+        target_label: Optional[str] = None,
+        outgoing: bool = True,
+        incoming: bool = False,
+        depth: Optional[tuple] = None,
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+        distinct: bool = False,
+    ):
+        print(f"SELF: {self}")
+        print(f"INCOMING RELATIONSHIP TYPES: {relationship_types}")
+        print(f"INCOMING REL PROPS: {relationship_properties}")
+        print(f"INCOMING TGT LABEL: {target_label}")
+
+        if target_label:
+            target = f"o:{target_label}"
+        else:
+            target = "o"
+
+        if relationship_types:
+            rel_type_match = "r:" + "|".join(relationship_types)
+
+        else:
+            rel_type_match = ""
+
+        if relationship_properties:
+            print(f"GOT REL PROPS: {relationship_properties}")
+            rel_prop_match = (
+                "{" + ", ".join([f"{x}: ${x}" for x in relationship_properties]) + "}"
+            )
+
+            pass_on_params = dict(relationship_properties)
+
+        else:
+            print("NO REL PROPS")
+            rel_prop_match = ""
+            pass_on_params = {}
+
+        print(rel_prop_match)
+
+        if outgoing and incoming:
+            out_dir = "-"
+            in_dir = "-"
+
+        elif outgoing:
+            out_dir = "->"
+            in_dir = "-"
+
+        else:
+            out_dir = "-"
+            in_dir = "<-"
+
+        if depth:
+            min_depth, max_depth = depth
+            if not isinstance(min_depth, int) or not isinstance(max_depth, int):
+                raise ValueError("Depth values must be integers")
+            rel_depth = f"*{min_depth}..{max_depth}"
+        else:
+            rel_depth = ""
+
+        if distinct:
+            return_distinct = "DISTINCT"
+
+        else:
+            return_distinct = ""
+
+        print(rel_prop_match)
+
+        query = f"""
+        MATCH (#ThisNode){in_dir}[{rel_type_match}{rel_depth} {rel_prop_match}]{out_dir}({target})
+        RETURN {return_distinct} o
+        """
+
+        print(query)
+
+        if skip:
+            if not isinstance(skip, int):
+                raise ValueError("Skip value not an integer")
+            query += f" SKIP {skip} "
+
+        if limit:
+            if not isinstance(limit, int):
+                raise ValueError("limit value not an integer")
+            query += f" LIMIT {limit} "
+
+        return query, pass_on_params

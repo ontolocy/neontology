@@ -115,7 +115,7 @@ def test_evaluate_query_empty(use_graph):
 
     result = gc.evaluate_query(cypher)
 
-    assert result.neontology_records == []
+    assert result.records == []
     assert result.nodes == []
     assert result.relationships == []
     assert result.node_link_data == {"links": [], "nodes": []}
@@ -152,12 +152,10 @@ def test_evaluate_query_neontology_records(use_graph):
     gc = GraphConnection()
     result = gc.evaluate_query(cypher)
 
-    print(result.neontology_records)
-
-    assert result.neontology_records[0]["nodes"]["n"].pp == "foo"
-    assert result.neontology_records[0]["nodes"]["o"].pp == "bar"
-    assert result.neontology_records[0]["relationships"]["r"].source.pp == "foo"
-    assert result.neontology_records[0]["relationships"]["r"].target.pp == "bar"
+    assert result.records[0]["nodes"]["n"].pp == "foo"
+    assert result.records[0]["nodes"]["o"].pp == "bar"
+    assert result.records[0]["relationships"]["r"].source.pp == "foo"
+    assert result.records[0]["relationships"]["r"].target.pp == "bar"
 
 
 def test_evaluate_query_nodes(use_graph):
@@ -193,6 +191,24 @@ def test_evaluate_query_relationships(use_graph):
     assert result.relationships[0].__relationshiptype__ == "PRACTICE_RELATIONSHIP_GC"
     assert result.relationships[0].source.pp == "foo"
     assert result.relationships[0].target.pp == "bar"
+
+
+def test_evaluate_query_nodes_records_simple(use_graph):
+    foo = PracticeNodeGC(pp="foo")
+    bar = PracticeNodeGC(pp="bar")
+
+    foo.merge()
+    bar.merge()
+
+    cypher = "MATCH (n) RETURN n ORDER BY n.pp DESC"
+
+    gc = GraphConnection()
+    result = gc.evaluate_query(cypher)
+
+    print(result.records)
+
+    assert result.records[0]["nodes"]["n"].pp == "foo"
+    assert result.records[1]["nodes"]["n"].pp == "bar"
 
 
 def test_evaluate_query_params(use_graph):
