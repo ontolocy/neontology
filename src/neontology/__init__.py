@@ -1,18 +1,24 @@
 # flake8: noqa
 
-from .basenode import BaseNode
+from .basenode import BaseNode, related_nodes, related_property
 from .baserelationship import BaseRelationship
+from .gql import GQLIdentifier, gql_identifier_adapter
 from .graphconnection import GraphConnection, init_neontology
-from .utils import auto_constrain
+from .utils import auto_constrain_neo4j
 
 __all__ = [
     # BaseNode
     "BaseNode",
+    "related_nodes",
+    "related_property",
     # BaseRelationship
     "BaseRelationship",
     # GraphConnection
     "init_neontology",
     "GraphConnection",
     # utils
-    "auto_constrain",
+    "auto_constrain_neo4j",
+    # GQL
+    "GQLIdentifier",
+    "gql_identifier_adapter",
 ]

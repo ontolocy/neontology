@@ -1,7 +1,6 @@
-# type: ignore
-
 from datetime import datetime
 from uuid import UUID
+from typing import Optional
 
 from pydantic import Field
 import pytest
@@ -13,15 +12,20 @@ class PracticeModel(CommonModel):
     def _get_merge_parameters(self):
         return {}
 
+    optional_string: Optional[str] = None
+
 
 def test_common_model_creation():
-    common = PracticeModel()
+    common = PracticeModel(optional_string="testing123")
 
-    assert isinstance(common.created, datetime)
+    assert isinstance(common.optional_string, str)
 
 
-def test_merged_equals_created():
-    common = PracticeModel()
+def test_merged_created_deprecation():
+    now_time = datetime.now()
+
+    with pytest.warns(DeprecationWarning):
+        common = PracticeModel(merged=now_time, created=now_time)
 
     assert common.created == common.merged
 
@@ -35,9 +39,16 @@ def test_set_on_match():
 
     test_model = TestModel(only_set_on_match="Foo", normal_field="Bar")
 
-    assert test_model._set_on_create == ["created"]
+    assert test_model._set_on_create == []
     assert test_model._set_on_match == ["only_set_on_match"]
-    assert test_model._always_set == ["merged", "normal_field"]
+
+    # created and merged are included in common model for backwards compatibility
+    assert test_model._always_set == [
+        "created",
+        "merged",
+        "optional_string",
+        "normal_field",
+    ]
 
 
 def test_set_on_create():
@@ -49,9 +60,14 @@ def test_set_on_create():
 
     test_model = TestModel(only_set_on_create="Foo", normal_field="Bar")
 
-    assert test_model._set_on_create == ["created", "only_set_on_create"]
+    assert test_model._set_on_create == ["only_set_on_create"]
     assert test_model._set_on_match == []
-    assert test_model._always_set == ["merged", "normal_field"]
+    assert test_model._always_set == [
+        "created",
+        "merged",
+        "optional_string",
+        "normal_field",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -77,23 +93,25 @@ def test_set_on_create():
         ),
     ],
 )
-def test_neo4j_dict(field_type, python_value, neo4j_values):
+def test_engine_dict(field_type, python_value, neo4j_values, use_graph):
     class TestModel(PracticeModel):
         test_prop: field_type
 
     testmodel = TestModel(test_prop=python_value)
 
-    assert testmodel.neo4j_dict()["test_prop"] in neo4j_values
+    test_prop_result = testmodel.engine_dict()["test_prop"]
+
+    assert test_prop_result in neo4j_values
 
 
 @pytest.mark.parametrize(
     "field_type,python_value", [(dict, {"foo": "bar"}), (list, [123, "foo"])]
 )
-def test_neo4j_dict_bad_types(field_type, python_value):
+def test_engine_dict_bad_types(field_type, python_value, use_graph):
     class TestModel(PracticeModel):
         test_prop: field_type
 
     testmodel = TestModel(test_prop=python_value)
 
     with pytest.raises(TypeError):
-        testmodel.neo4j_dict()
+        testmodel.engine_dict()

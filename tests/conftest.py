@@ -1,32 +1,82 @@
 # type: ignore
 
 import os
+import logging
 
 import pytest
-from py2neo import Graph
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
+from neontology.graphengines import Neo4jEngine, MemgraphEngine, KuzuEngine
+
+logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(scope="session")
-def neo4j_db():
+def reset_constraints():
+    gc = GraphConnection()
 
+    try:
+        constraints = gc.engine.get_constraints()
+
+    except NotImplementedError:
+        return
+
+    for constraint_name in constraints:
+        gc.engine.drop_constraint(constraint_name)
+
+
+@pytest.fixture(
+    scope="session",
+    params=[
+        {
+            "graph_config_vars": {
+                "neo4j_uri": "TEST_NEO4J_URI",
+                "neo4j_username": "TEST_NEO4J_USERNAME",
+                "neo4j_password": "TEST_NEO4J_PASSWORD",
+            },
+            "graph_engine": Neo4jEngine,
+        },
+        {
+            "graph_config_vars": {
+                "memgraph_uri": "TEST_MEMGRAPH_URI",
+                "memgraph_username": "TEST_MEMGRAPH_USER",
+                "memgraph_password": "TEST_MEMGRAPH_PASSWORD",
+            },
+            "graph_engine": MemgraphEngine,
+        },
+        {
+            "graph_config_vars": {
+                "kuzu_db": "TMP FILE",
+            },
+            "graph_engine": KuzuEngine,
+        },
+    ],
+)
+def graph_db(request, tmp_path_factory):
     load_dotenv()
 
-    neo4j_uri = os.getenv("TEST_NEO4J_URI")
-    neo4j_username = os.getenv("TEST_NEO4J_USERNAME")
-    neo4j_password = os.getenv("TEST_NEO4J_PASSWORD")
+    graph_config_vars = request.param["graph_config_vars"]
+    graph_engine = request.param["graph_engine"]
 
-    assert neo4j_uri is not None
-    assert neo4j_username is not None
-    assert neo4j_password is not None
+    graph_config = {}
 
-    init_neontology(neo4j_uri, neo4j_username, neo4j_password)
+    # build config
+    for key, value in graph_config_vars.items():
+        if value == "TMP FILE":
+            file_path = tmp_path_factory.mktemp("graph_db") / f"{key}.pytest"
+            graph_config[key] = file_path
 
-    print("initialised neontology")
+            logger.info(f"Graph DB at {file_path}")
 
-    graph = Graph(neo4j_uri, auth=(neo4j_username, neo4j_password))
+        else:
+            graph_config[key] = os.getenv(value)
+            assert graph_config[key] is not None
+
+    init_neontology(graph_config, graph_engine)
+
+    gc = GraphConnection()
+
+    gc.change_engine(graph_config, graph_engine)
 
     # confirm we're starting with an empty database
     cypher = """
@@ -34,33 +84,13 @@ def neo4j_db():
     RETURN COUNT(n)
     """
 
-    node_count = graph.evaluate(cypher)
+    node_count = gc.evaluate_query_single(cypher)
+
     assert (
         node_count == 0
     ), f"Looks like there are {node_count} nodes in the database, it should be empty."
 
-    all_constraints_cypher = """
-    SHOW CONSTRAINTS yield name
-    RETURN COLLECT(DISTINCT name)
-    """
-
-    constraints = graph.evaluate(all_constraints_cypher)
-
-    for constraint_name in constraints:
-
-        drop_cypher = f"""
-        DROP CONSTRAINT {constraint_name}
-        """
-        graph.evaluate(drop_cypher)
-
-    yield graph
-
-    graph_connection = GraphConnection()
-
-    # tidy up by explicitly closing the graph connection here
-    # otherwise something weird happens which closes the connection before
-    # our GraphConnection gets the chance to
-    graph_connection.driver.close()
+    yield gc
 
 
 def pytest_collection_modifyitems(config, items):
@@ -71,15 +101,20 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="function")
-def use_graph(neo4j_db):
-
-    yield neo4j_db
+def use_graph(graph_db):
+    yield graph_db
 
     # at the end of every individual test function, we want to empty the database
 
     cypher = """
-    MATCH (n)
-    DETACH DELETE n
+    MATCH (n) DETACH DELETE n;
     """
 
-    neo4j_db.evaluate(cypher)
+    try:
+        graph_db.evaluate_query_single(cypher)
+    except RuntimeError:
+        pass
+
+    # not all engines will implement constraints, so we don't always have to reset them
+
+    reset_constraints()

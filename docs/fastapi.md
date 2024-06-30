@@ -62,13 +62,17 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
+
+    # here we declare the neo4j connection details explicitly (this can be bad for security)
+    # you could instead define them as environment variables or in a .env file
     init_neontology(
-        init_neontology(
-        neo4j_uri="NEO4J URI HERE",
-        neo4j_username="NEO4J USERNAME HERE",
-        neo4j_password="NEO4J PASSWORD HERE"
-        )
+        config = {
+            "neo4j_uri": "neo4j+s://mydatabaseid.databases.neo4j.io",
+            "neo4j_username": "neo4j",
+            "neo4j_password": "<neo4j password>"
+        }
     )
+
 
 @app.get("/")
 def read_root():
@@ -171,6 +175,8 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
+    # make sure you've set NEO4J_URI, NEO4J_USERNAME and NEO4J_PASSWORD environment variables
+    # they could be defined in a .env file
     init_neontology()
 
 

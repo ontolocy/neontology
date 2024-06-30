@@ -60,10 +60,23 @@ NEO4J_USERNAME="neo4j"
 NEO4J_PASSWORD="<your password>"
 
 init_neontology(
-    neo4j_uri=NEO4J_URI,
-    neo4j_username=NEO4J_USERNAME,
-    neo4j_password=NEO4J_PASSWORD
+    config = {
+        "neo4j_uri": NEO4J_URI,
+        "neo4j_username": NEO4J_USERNAME,
+        "neo4j_password": NEO4J_PASSWORD
+    }
 )   # initialise the connection to the database
+```
+
+### With a dotenv file
+
+You can use a `.env` file as below, which should automatically get picked up by neontology.
+
+```txt
+# .env
+NEO4J_URI=neo4j+s://myneo4j.example.com
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=<PASSWORD>
 ```
 
 ## Creating a node
@@ -144,8 +157,9 @@ class FollowsRel(BaseRelationship):
     source: PersonNode
     target: PersonNode
 
-
-init_neontology()  # initialise the connection to the database
+# initialise the connection to the database
+# looks for connection details as environment variables or in a .env file
+init_neontology()   
 
 alice = PersonNode(name="Alice", age=40)
 alice.create()
@@ -155,13 +169,13 @@ bob.merge()
 rel = FollowsRel(source=bob, target=alice)
 rel.merge()
 
-node_records = [{"name": "Freddy", "age": 42}, {"name": "Philipa", "age": 42}]
+node_records = [{"name": "Freddy", "age": 42}, {"name": "Phillipa", "age": 42}]
 node_df = pd.DataFrame.from_records(node_records)
 
 PersonNode.merge_df(node_df)
 
 rel_records = [
-    {"source": "Freddy", "target": "Philipa"},
+    {"source": "Freddy", "target": "Phillipa"},
     {"source": "Alice", "target": "Freddy"},
 ]
 rel_df = pd.DataFrame.from_records(rel_records)

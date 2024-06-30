@@ -19,9 +19,12 @@ class PracticeNode(BaseNode):
 
 
 class PracticeRelationship(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "PRACTICE_RELATIONSHIP"
+
     source: PracticeNode
     target: PracticeNode
-    __relationshiptype__: ClassVar[Optional[str]] = "PRACTICE_RELATIONSHIP"
+
+    practice_rel_prop: str = "Default Practice Relationship Property"
 
 
 def test_base_relationship():
@@ -56,20 +59,27 @@ def test_merge_relationship(use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.create()
 
-    br = PracticeRelationship(source=source_node, target=target_node)
+    br = PracticeRelationship(
+        source=source_node,
+        target=target_node,
+        practice_rel_prop="Default Practice Relationship Property",
+    )
     br.merge()
 
     cypher = """
     MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    RETURN r.practice_rel_prop
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
+    assert result == "Default Practice Relationship Property"
 
-    assert result[0]["type_r"] == "PRACTICE_RELATIONSHIP"
+
+class RelMergeOnMatchTest(PracticeRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL_MERGE_ON_MATCH"
+    prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
+    my_prop: str
 
 
 def test_merge_relationship_merge_on_match(use_graph):
@@ -79,12 +89,7 @@ def test_merge_relationship_merge_on_match(use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.create()
 
-    class TestRel(PracticeRelationship):
-        __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL"
-        prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
-        my_prop: str
-
-    br = TestRel(
+    br = RelMergeOnMatchTest(
         source=source_node,
         target=target_node,
         prop_to_merge_on="MergeMe",
@@ -93,20 +98,15 @@ def test_merge_relationship_merge_on_match(use_graph):
     br.merge()
 
     cypher = """
-    MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_MATCH]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN r.my_prop
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
+    assert result == "Foo"
 
-    assert result[0]["type_r"] == "TEST_REL"
-    assert result[0]["prop_to_merge_on"] == "MergeMe"
-    assert result[0]["my_prop"] == "Foo"
-
-    br2 = TestRel(
+    br2 = RelMergeOnMatchTest(
         source=source_node,
         target=target_node,
         prop_to_merge_on="MergeMe",
@@ -114,13 +114,15 @@ def test_merge_relationship_merge_on_match(use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate(cypher)
+    result2 = use_graph.evaluate_query_single(cypher)
 
-    assert len(result2) == 1
+    assert result2 == "Bar"
 
-    assert result2[0]["type_r"] == "TEST_REL"
-    assert result2[0]["prop_to_merge_on"] == "MergeMe"
-    assert result2[0]["my_prop"] == "Bar"
+
+class RelMergeOnCreateTest(PracticeRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL_MERGE_ON_CREATE"
+    prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
+    my_prop: str
 
 
 def test_merge_relationship_merge_on_create(use_graph):
@@ -130,12 +132,7 @@ def test_merge_relationship_merge_on_create(use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.create()
 
-    class TestRel(PracticeRelationship):
-        __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL"
-        prop_to_merge_on: str = Field(json_schema_extra={"merge_on": True})
-        my_prop: str
-
-    br = TestRel(
+    br = RelMergeOnCreateTest(
         source=source_node,
         target=target_node,
         prop_to_merge_on="MergeMe",
@@ -144,20 +141,15 @@ def test_merge_relationship_merge_on_create(use_graph):
     br.merge()
 
     cypher = """
-    MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_CREATE]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN COLLECT(r.my_prop)
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
+    assert result == ["Foo"]
 
-    assert result[0]["type_r"] == "TEST_REL"
-    assert result[0]["prop_to_merge_on"] == "MergeMe"
-    assert result[0]["my_prop"] == "Foo"
-
-    br2 = TestRel(
+    br2 = RelMergeOnCreateTest(
         source=source_node,
         target=target_node,
         prop_to_merge_on="Don'tMergeMe",
@@ -165,16 +157,9 @@ def test_merge_relationship_merge_on_create(use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate(cypher)
+    result2 = use_graph.evaluate_query_single(cypher)
 
-    assert len(result2) == 2
-
-    my_props = []
-
-    for res in result2:
-        my_props.append(res["my_prop"])
-
-    assert set(my_props) == {"Foo", "Bar"}
+    assert set(result2) == {"Foo", "Bar"}
 
 
 def test_default_relationship_type():
@@ -217,6 +202,14 @@ def test_defined_relationship_type_inherited():
     assert rel.get_relationship_type() == "TEST_RELATIONSHIP_TYPE"
 
 
+class NewRelType(BaseRelationship):
+    source: PracticeNode
+    target: PracticeNode
+    __relationshiptype__: ClassVar[Optional[str]] = "TEST_NEW_RELATIONSHIP_TYPE"
+
+    new_rel_prop: str
+
+
 def test_merge_relationships_defined_types(use_graph):
     node1 = PracticeNode(pp="Source Node")
     node1.create()
@@ -224,101 +217,89 @@ def test_merge_relationships_defined_types(use_graph):
     node2 = PracticeNode(pp="Target Node")
     node2.create()
 
-    class NewRelType(BaseRelationship):
-        source: PracticeNode
-        target: PracticeNode
-        __relationshiptype__: ClassVar[Optional[str]] = "TEST_RELATIONSHIP_TYPE"
+    rel1 = NewRelType(source=node1, target=node2, new_rel_prop="Rel 1")
 
-    rel1 = NewRelType(source=node1, target=node2)
-
-    rel2 = NewRelType(source=node2, target=node1)
+    rel2 = NewRelType(source=node2, target=node1, new_rel_prop="Rel 2")
 
     NewRelType.merge_relationships([rel1, rel2])
 
     cypher = """
-    MATCH (src:PracticeNode)-[r]->(tgt:PracticeNode)
-    WITH DISTINCT r, TYPE(r) as type_r
-    RETURN COLLECT(r{.*, type_r})
+    MATCH (src:PracticeNode)-[r:TEST_NEW_RELATIONSHIP_TYPE]->(tgt:PracticeNode)
+    RETURN COLLECT(r.new_rel_prop)
     """
 
-    results = use_graph.evaluate(cypher)
+    results = use_graph.evaluate_query_single(cypher)
 
     assert len(results) == 2
 
-    for result in results:
-        assert result["type_r"] == "TEST_RELATIONSHIP_TYPE"
+    assert set(results) == {"Rel 1", "Rel 2"}
+
+
+class SubclassNode(PracticeNode):
+    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+    myprop: str
+
+
+class NewRelType2(BaseRelationship):
+    source: SubclassNode
+    target: PracticeNode
+    __relationshiptype__: ClassVar[Optional[str]] = "TEST_NEW_RELATIONSHIP_TYPE2"
+
+    new_rel_prop: str
 
 
 def test_merge_df(use_graph):
-    class SubclassNode(PracticeNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-        myprop: str
-
     source_node = SubclassNode(pp="Source Node", myprop="Some Value")
     source_node.merge()
 
     target_node = PracticeNode(pp="Target Node")
     target_node.merge()
 
-    class NewRelType(BaseRelationship):
-        source: PracticeNode
-        target: PracticeNode
-
-        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
-
-    rel_records = [{"source": "Source Node", "target": "Target Node"}]
+    rel_records = [
+        {"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 3"}
+    ]
 
     df = pd.DataFrame.from_records(rel_records)
 
-    NewRelType.merge_df(df, SubclassNode, PracticeNode)
+    NewRelType2.merge_df(df, SubclassNode, PracticeNode)
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN r.new_rel_prop
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
-
-    assert result[0]["type_r"] == "NEWRELTYPE"
+    assert result == "New Rel 3"
 
 
 def test_merge_df_alt_prop(use_graph):
-    class SubclassNode(PracticeNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-        myprop: str
-
     source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
     source_node.merge()
 
     target_node = PracticeNode(pp="Target Node")
     target_node.merge()
 
-    class NewRelType(BaseRelationship):
-        source: PracticeNode
-        target: PracticeNode
-
-        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
-
-    rel_records = [{"source": "My Prop Value", "target": "Target Node"}]
+    rel_records = [
+        {
+            "source": "My Prop Value",
+            "target": "Target Node",
+            "new_rel_prop": "New Rel 4",
+        }
+    ]
 
     df = pd.DataFrame.from_records(rel_records)
 
-    NewRelType.merge_df(df, SubclassNode, PracticeNode, source_prop="myprop")
+    NewRelType2.merge_df(df, SubclassNode, PracticeNode, source_prop="myprop")
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN r.new_rel_prop
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
-
-    assert result[0]["type_r"] == "NEWRELTYPE"
+    assert result == "New Rel 4"
 
 
 def test_merge_df_bad_node_type(use_graph):
@@ -331,13 +312,7 @@ def test_merge_df_bad_node_type(use_graph):
 
     target_node = PracticeNode(pp="Target Node")
 
-    class NewRelType(BaseRelationship):
-        source: PracticeNode
-        target: PracticeNode
-
-        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
-
-    rels = [NewRelType(source=source_node, target=target_node)]
+    rels = [NewRelType(source=source_node, target=target_node, new_rel_prop="BAD")]
 
     with pytest.raises(TypeError):
         NewRelType.merge_relationships(rels, PracticeNode, DifferentNode)
@@ -353,13 +328,7 @@ def test_merge_df_bad_node_type2(use_graph):
 
     target_node = PracticeNode(pp="Target Node")
 
-    class NewRelType(BaseRelationship):
-        source: PracticeNode
-        target: PracticeNode
-
-        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
-
-    rels = [NewRelType(source=source_node, target=target_node)]
+    rels = [NewRelType(source=source_node, target=target_node, new_rel_prop="BAD2")]
 
     with pytest.raises(TypeError):
         NewRelType.merge_relationships(rels, PracticeNode, PracticeNode)
@@ -374,34 +343,23 @@ def test_merge_empty_df():
 
 
 def test_merge_records(use_graph):
-    class SubclassNode(PracticeNode):
-        __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-        myprop: str
-
     source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
     source_node.merge()
 
     target_node = PracticeNode(pp="Target Node")
     target_node.merge()
 
-    class NewRelType(BaseRelationship):
-        source: SubclassNode
-        target: PracticeNode
+    records = [
+        {"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 5"}
+    ]
 
-        __relationshiptype__: ClassVar[Optional[str]] = "NEWRELTYPE"
-
-    records = [{"source": "Source Node", "target": "Target Node"}]
-
-    NewRelType.merge_records(records)
+    NewRelType2.merge_records(records)
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    WITH r, TYPE(r) as type_r
-    RETURN COLLECT(DISTINCT r{.*, type_r})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN r.new_rel_prop
     """
 
-    result = use_graph.evaluate(cypher)
+    result = use_graph.evaluate_query_single(cypher)
 
-    assert len(result) == 1
-
-    assert result[0]["type_r"] == "NEWRELTYPE"
+    assert result == "New Rel 5"

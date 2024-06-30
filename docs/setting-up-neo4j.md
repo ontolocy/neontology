@@ -25,3 +25,22 @@ More on [stackoverflow](https://superuser.com/questions/1535269/how-to-connect-w
 ## Using Docker
 
 You can easily run the Community Edition of Neo4j free locally with [Docker](https://neo4j.com/developer/docker/).
+
+You could use a Docker Compose file to make things easier.
+
+```yml
+# docker-compose.yml
+version: "3"
+
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - 7474:7474
+      - 7373:7373
+      - 7687:7687
+    environment:
+      - NEO4J_AUTH
+```
+
+Where NEO4J_AUTH is defined as an environment variable (which could be in a `.env` file) of the format `<NEO4J USERNAME>/<NEO4J PASSWORD>`.

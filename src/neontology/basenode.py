@@ -1,18 +1,69 @@
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union
+import functools
+import warnings
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
+from pydantic import ValidationError, model_validator
 
 from .commonmodel import CommonModel
+from .gql import GQLIdentifier, gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
 
-B = TypeVar("B", bound="BaseNode")
+
+def _prepare_related_query(
+    node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any
+) -> Tuple[str, dict]:
+    try:
+        query, params = wrapped_function(node, *args, **kwargs)
+    except ValueError:
+        query = wrapped_function(node, *args, **kwargs)
+
+        # if the function doesn't pass params, they may be taken from user provided parameters
+        params = {**kwargs}
+
+    # make it easy to match on this specific node
+    this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
+    params["_neontology_pp"] = node.get_primary_property_value()
+    new_query = query.replace("(#ThisNode)", this_node)
+
+    return new_query, params
+
+
+def related_property(f: Callable) -> Callable:
+    """Decorator to wrap functions on BaseNode subclasses and return a single result."""
+
+    @functools.wraps(f)
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> Optional[Any]:
+        new_query, params = _prepare_related_query(self, f, *args, **kwargs)
+
+        gc = GraphConnection()
+        result = gc.evaluate_query_single(new_query, params)
+
+        return result
+
+    return wrapper
+
+
+def related_nodes(f: Callable) -> Callable:
+    """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
+
+    @functools.wraps(f)
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> List["BaseNode"]:
+        new_query, params = _prepare_related_query(self, f, *args, **kwargs)
+
+        gc = GraphConnection()
+        result = gc.evaluate_query(new_query, params)
+
+        return result.nodes
+
+    return wrapper
 
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
-    __primaryproperty__: ClassVar[str]
-    __primarylabel__: ClassVar[Optional[str]]
-    __secondarylabels__: ClassVar[Optional[list]] = []
+    __primaryproperty__: ClassVar[GQLIdentifier]
+    __primarylabel__: ClassVar[Optional[GQLIdentifier]]
+    __secondarylabels__: ClassVar[List[GQLIdentifier]] = []
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -33,7 +84,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
 
         params = {
-            "pp": self.neo4j_dict()[self.__primaryproperty__],
+            "pp": self.engine_dict()[self.__primaryproperty__],
             "always_set": self._get_prop_values(self._always_set),
             "set_on_match": self._get_prop_values(self._set_on_match),
             "set_on_create": self._get_prop_values(self._set_on_create),
@@ -41,56 +92,74 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return params
 
+    @model_validator(mode="after")
+    def validate_identifiers(self) -> "BaseNode":
+        try:
+            gql_identifier_adapter.validate_strings(self.__primarylabel__)
+
+        except AttributeError:
+            pass
+        except ValidationError:
+            warnings.warn(
+                (
+                    "Primary Label should contain only alphanumeric characters and underscores."
+                    " It should begin with an alphabetic character."
+                )
+            )
+
+        try:
+            gql_identifier_adapter.validate_strings(self.__primaryproperty__)
+        except AttributeError:
+            pass
+        except ValidationError:
+            warnings.warn(
+                (
+                    "Primary Property should contain only alphanumeric characters and underscores."
+                    " It should begin with an alphabetic character."
+                )
+            )
+
+        return self
+
     def get_primary_property_value(self) -> Union[str, int]:
         return self._get_merge_parameters()["pp"]
 
-    def create(self) -> None:
+    def create(self) -> "BaseNode":
         """Create this node in the graph."""
 
-        params = self.neo4j_dict()
-
-        all_props = self.neo4j_dict()
+        all_props = self.engine_dict()
 
         pp_value = all_props.pop(self.__primaryproperty__)
 
-        params = {"pp": pp_value, "all_props": all_props}
+        node_details = [{"pp": pp_value, "props": all_props}]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
 
-        cypher = f"""
-        CREATE (n:{":".join(all_labels)} {{ {self.__primaryproperty__}: $pp }})
-        SET n += $all_props
-        RETURN n
-        """
-        graph = GraphConnection()
-        result = graph.cypher_write_single(cypher, params)
-        result_node = self.__class__(**dict(result["n"]))
-        return result_node
+        pp_key = self.__primaryproperty__
 
-    def merge(self) -> None:
+        gc = GraphConnection()
+
+        results = gc.create_nodes(all_labels, pp_key, node_details, self.__class__)
+
+        return results[0]
+
+    def merge(self) -> List["BaseNode"]:
         """Merge this node into the graph."""
 
-        params = self._get_merge_parameters()
+        node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
 
-        cypher = f"""
-        MERGE (n:{":".join(all_labels)} {{ {self.__primaryproperty__}: $pp }})
-        ON MATCH SET n += $set_on_match
-        ON CREATE SET n += $set_on_create
-        SET n += $always_set
-        RETURN n
-        """
+        pp_key = self.__primaryproperty__
 
-        graph = GraphConnection()
-        result = graph.cypher_write_single(cypher, params)
+        gc = GraphConnection()
 
-        result_node = self.__class__(**dict(result["n"]))
+        results = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
 
-        return result_node
+        return results
 
     @classmethod
-    def create_nodes(cls: Type[B], nodes: List[B]) -> List[Union[str, int]]:
+    def create_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
         """Create the given nodes in the database.
 
         Args:
@@ -108,30 +177,21 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 raise TypeError("Node was incorrect type.")
 
         node_list = [
-            {"props": x.neo4j_dict(), "pp": x.neo4j_dict()[cls.__primaryproperty__]}
+            {"props": x.engine_dict(), "pp": x.engine_dict()[cls.__primaryproperty__]}
             for x in nodes
         ]
 
         all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+        pp_key = cls.__primaryproperty__
 
-        cypher = f"""
-        UNWIND $node_list AS node
-        create (n:{":".join(all_labels)} {{{cls.__primaryproperty__}: node.pp}})
-        SET n = node.props
-        RETURN n
-        """
+        gc = GraphConnection()
 
-        graph = GraphConnection()
-        results = graph.cypher_write_many(
-            cypher=cypher, params={"node_list": node_list}
-        )
+        results = gc.create_nodes(all_labels, pp_key, node_list, cls)
 
-        matched_nodes = [cls(**dict(x["n"])) for x in results]
-
-        return matched_nodes
+        return results
 
     @classmethod
-    def merge_nodes(cls: Type[B], nodes: List[B]) -> List[B]:
+    def merge_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
         """Merge multiple nodes into the database.
 
         Args:
@@ -152,26 +212,16 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
 
-        cypher = f"""
-        UNWIND $node_list AS node
-        MERGE (n:{":".join(all_labels)} {{{cls.__primaryproperty__}: node.pp}})
-        ON MATCH SET n += node.set_on_match
-        ON CREATE SET n += node.set_on_create
-        SET n += node.always_set
-        RETURN n
-        """
+        pp_key = cls.__primaryproperty__
 
-        graph = GraphConnection()
-        results = graph.cypher_write_many(
-            cypher=cypher, params={"node_list": node_list}
-        )
+        gc = GraphConnection()
 
-        matched_nodes = [cls(**dict(x["n"])) for x in results]
+        results = gc.merge_nodes(all_labels, pp_key, node_list, cls)
 
-        return matched_nodes
+        return results
 
     @classmethod
-    def merge_records(cls: Type[B], records: dict) -> List[B]:
+    def merge_records(cls, records: dict) -> List["BaseNode"]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
@@ -189,7 +239,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return cls.merge_nodes(nodes)
 
     @classmethod
-    def merge_df(cls: Type[B], df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
+    def merge_df(cls, df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
         """Merge in new nodes based on data in a dataframe.
 
         The dataframe columns must correspond to the Node properties.
@@ -207,31 +257,39 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         input_df = df.replace([np.nan], None).copy()
 
+        # create a unique identifier field based on all rows
+        # we'll use this later to match up deduplicated rows to the original ordering
+        input_df["unique_identifier"] = input_df.astype(str).values.sum(axis=1)
+
         if deduplicate is True:
             # we don't wan't to waste time attempting to merge identical records
-            unique_df = input_df.drop_duplicates(ignore_index=True).copy()
+            unique_df = input_df.drop_duplicates(
+                subset="unique_identifier", ignore_index=True
+            ).copy()
         else:
             unique_df = input_df
 
-        records = unique_df.to_dict(orient="records")
+        model_data = unique_df.drop("unique_identifier", axis=1).copy()
+
+        records = model_data.to_dict(orient="records")
 
         unique_df["generated_nodes"] = pd.Series(cls.merge_records(records))
 
         # now we need to get the mapping from unique id to primary property
         # so that we can return the data in the same shape it was received
         input_df.insert(0, "ontolocy_merging_order", range(0, len(input_df)))
-        merge_cols = list(input_df.columns)
-        merge_cols.remove("ontolocy_merging_order")
         output_df = input_df.merge(
-            unique_df,
-            how="inner",
-            on=merge_cols,
-        ).sort_values("ontolocy_merging_order", ignore_index=True)
+            unique_df, how="outer", on="unique_identifier", suffixes=(None, "_y")
+        )
 
-        return output_df.generated_nodes
+        ordered_nodes = output_df.sort_values(
+            "ontolocy_merging_order", ignore_index=True
+        ).generated_nodes.copy()
+
+        return ordered_nodes
 
     @classmethod
-    def match(cls: Type[B], pp: str) -> Optional[B]:
+    def match(cls, pp: str) -> Optional["BaseNode"]:
         """MATCH a single node of this type with the given primary property.
 
         Args:
@@ -249,12 +307,14 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         params = {"pp": pp}
 
-        graph = GraphConnection()
+        gc = GraphConnection()
 
-        result = graph.cypher_read(cypher, params)
+        result = gc.evaluate_query(
+            cypher, params, node_classes={cls.__primarylabel__: cls}
+        )
 
-        if result:
-            return cls(**dict(result["n"]))
+        if result.nodes:
+            return result.nodes[0]
 
         else:
             return None
@@ -270,45 +330,123 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             pp (str): Primary property value to match on.
         """
 
-        cypher = f"""
-        MATCH (n:{cls.__primarylabel__})
-        WHERE n.{cls.__primaryproperty__} = $pp
-        DETACH DELETE n
-        """
+        label = cls.__primarylabel__
 
-        params = {"pp": pp}
+        if label is None:
+            raise ValueError("Cannot delete nodes without a primary label.")
 
-        graph = GraphConnection()
+        pp_key = cls.__primaryproperty__
+        pp_value = pp
 
-        graph.cypher_write(cypher, params)
+        gc = GraphConnection()
+
+        gc.delete_nodes(label, pp_key, [pp_value])
 
     @classmethod
-    def match_nodes(cls: Type[B], limit: int = 100, skip: int = 0) -> List[B]:
+    def match_nodes(
+        cls, limit: Optional[int] = None, skip: Optional[int] = None
+    ) -> List["BaseNode"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
 
         Args:
-            limit (int, optional): Maximum number of results to return. Defaults to 100.
-            skip (int, optional): Skip through this many results (for pagination). Defaults to 0.
+            limit (int, optional): Maximum number of results to return. Defaults to None.
+            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
             Optional[List[B]]: A list of node instances.
         """
 
-        cypher = f"""
-        MATCH(n:{cls.__primarylabel__})
-        RETURN n{{.*}}
-        ORDER BY n.created DESC
-        SKIP $skip
-        LIMIT $limit
+        gc = GraphConnection()
+        result = gc.match_nodes(cls, limit, skip)
+
+        return result
+
+    @related_nodes
+    def get_related_nodes(
+        self,
+        relationship_types: list = [],
+        relationship_properties: Optional[dict] = None,
+        target_label: Optional[str] = None,
+        outgoing: bool = True,
+        incoming: bool = False,
+        depth: Optional[tuple] = None,
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+        distinct: bool = False,
+    ) -> tuple:
+        if target_label:
+            target = f"o:{gql_identifier_adapter.validate_strings(target_label)}"
+        else:
+            target = "o"
+
+        if relationship_types:
+            rel_type_match = "r:" + "|".join(
+                [gql_identifier_adapter.validate_strings(x) for x in relationship_types]
+            )
+
+        else:
+            rel_type_match = ""
+
+        if relationship_properties:
+            rel_prop_match = (
+                "{"
+                + ", ".join(
+                    [
+                        f"{gql_identifier_adapter.validate_strings(x)}: ${x}"
+                        for x in relationship_properties
+                    ]
+                )
+                + "}"
+            )
+
+            pass_on_params = dict(relationship_properties)
+
+        else:
+            rel_prop_match = ""
+            pass_on_params = {}
+
+        if outgoing and incoming:
+            out_dir = "-"
+            in_dir = "-"
+
+        elif outgoing:
+            out_dir = "->"
+            in_dir = "-"
+
+        elif not outgoing and not incoming:
+            raise ValueError("Must specify at least one of incoming or outgoing.")
+
+        else:
+            out_dir = "-"
+            in_dir = "<-"
+
+        if depth:
+            min_depth, max_depth = depth
+            if not isinstance(min_depth, int) or not isinstance(max_depth, int):
+                raise ValueError("Depth values must be integers")
+            rel_depth = f"*{min_depth}..{max_depth}"
+        else:
+            rel_depth = ""
+
+        if distinct:
+            return_distinct = "DISTINCT"
+
+        else:
+            return_distinct = ""
+
+        query = f"""
+        MATCH (#ThisNode){in_dir}[{rel_type_match}{rel_depth} {rel_prop_match}]{out_dir}({target})
+        RETURN {return_distinct} o
         """
 
-        params = {"skip": skip, "limit": limit}
+        if skip:
+            query += f" SKIP {int_adapter.validate_python(skip)} "
 
-        graph = GraphConnection()
-        records = graph.cypher_read_many(cypher, params)
+        if limit:
+            if not isinstance(limit, int):
+                raise ValueError("limit value not an integer")
+            query += f" LIMIT {int_adapter.validate_python(limit)} "
 
-        nodes = [cls(**dict(x["n"])) for x in records]
-
-        return nodes
+        return query, pass_on_params
