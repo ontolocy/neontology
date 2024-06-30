@@ -1,6 +1,5 @@
 from typing import Any
 
-
 from pydantic import BaseModel, computed_field
 
 
@@ -10,7 +9,7 @@ class NeontologyResult(BaseModel):
     nodes: list
     relationships: list
 
-    @computed_field
+    @computed_field  # type: ignore[misc]
     @property
     def node_link_data(self) -> dict:
         nodes = [

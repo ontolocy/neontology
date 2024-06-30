@@ -59,19 +59,21 @@ def test_merge_relationship(use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.create()
 
-    br = PracticeRelationship(source=source_node, target=target_node)
+    br = PracticeRelationship(
+        source=source_node,
+        target=target_node,
+        practice_rel_prop="Default Practice Relationship Property",
+    )
     br.merge()
 
     cypher = """
     MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
-    RETURN r
+    RETURN r.practice_rel_prop
     """
 
     result = use_graph.evaluate_query_single(cypher)
 
-    print(result)
-
-    # assert result == "Default Practice Relationship Property"
+    assert result == "Default Practice Relationship Property"
 
 
 class RelMergeOnMatchTest(PracticeRelationship):

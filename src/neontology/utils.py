@@ -1,8 +1,8 @@
 from collections import defaultdict
-from typing import Dict, Set, Type, get_args, get_origin, Union, List
+from typing import Any, Dict, List, Set, Type, Union, get_args, get_origin
 
-from pydantic import BaseModel
 from jinja2 import Template
+from pydantic import BaseModel
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship
@@ -105,18 +105,21 @@ def get_rels_by_target(
     return get_rels_by_node(by_source=False)
 
 
-def apply_constraints(node_types):
+def apply_neo4j_constraints(node_types: List[type[BaseNode]]) -> None:
     """Apply constraints based on primary properties for arbitrary set of node types"""
 
     graph = GraphConnection()
 
     for node_type in node_types:
-        graph.engine.apply_constraint(
-            node_type.__primarylabel__, node_type.__primaryproperty__
-        )
+        label = node_type.__primarylabel__
+        if not label:
+            raise ValueError(
+                "Node must have an explicit primary label to apply a constraint."
+            )
+        graph.engine.apply_constraint(label, node_type.__primaryproperty__)
 
 
-def auto_constrain() -> None:
+def auto_constrain_neo4j() -> None:
     """Automatically apply constraints
 
     Get information about all the defined nodes in the current environment.
@@ -124,19 +127,19 @@ def auto_constrain() -> None:
     Apply constraints based on the primary label and primary property for each node.
     """
 
-    node_types = get_node_types().values()
+    node_types = list(get_node_types().values())
 
-    apply_constraints(node_types)
+    apply_neo4j_constraints(node_types)
 
 
-def extract_type_mapping(annotation, show_optional: bool = True):
+def extract_type_mapping(annotation: Any, show_optional: bool = True) -> str:
     if isinstance(annotation, type):
         # we have a plain type, just return the name
         return annotation.__name__
     elif get_origin(annotation) == Union:
         # We can only support union's of a single type plus none (i.e. Optional)
         if len(get_args(annotation)) == 2 and type(None) in get_args(annotation):
-            # we need to extract
+            # we need to extract the optional type
             for entry in get_args(annotation):
                 if isinstance(entry, type(None)):
                     pass
@@ -146,6 +149,7 @@ def extract_type_mapping(annotation, show_optional: bool = True):
                         return f"Optional[{extract_type_mapping(entry)}]"
                     else:
                         return extract_type_mapping(entry)
+                raise TypeError(f"Unsupported type annotation: {annotation}")
         else:
             raise TypeError(f"Unsupported union type: {annotation}")
     elif get_origin(annotation) == list:
@@ -155,8 +159,8 @@ def extract_type_mapping(annotation, show_optional: bool = True):
             return str(annotation).split(".")[1]
         else:
             raise TypeError(f"Cannot have lists of multiple types: {annotation}")
-    else:
-        raise TypeError(f"Unsupported type annotation: {annotation}")
+
+    raise TypeError(f"Unsupported type annotation: {annotation}")
 
 
 class SchemaProperty(BaseModel):
@@ -183,14 +187,19 @@ class NodeSchema(BaseModel):
 
 
 def generate_node_schema(
-    node_type: type[BaseNode], outgoing_rels: bool = True
+    node_type: type[BaseNode], include_outgoing_rels: bool = True
 ) -> NodeSchema:
-    schema_dict = {}
+    if not node_type.__primarylabel__:
+        raise ValueError(
+            "Node does not have a primary label defined for generating schema."
+        )
+
+    schema_dict: dict = {}
     schema_dict["label"] = node_type.__primarylabel__
     schema_dict["title"] = node_type.__name__
     schema_dict["secondary_labels"] = node_type.__secondarylabels__
 
-    model_properties = []
+    model_properties: list = []
 
     for field_name, field_props in node_type.model_fields.items():
         field_type = extract_type_mapping(field_props.annotation, show_optional=True)
@@ -211,11 +220,14 @@ def generate_node_schema(
     schema_dict["properties"] = model_properties
     schema_dict["outgoing_relationships"] = []
 
-    outgoing_rels = get_rels_by_source().get(node_type.__primarylabel__, [])
+    if include_outgoing_rels is False:
+        return NodeSchema(**schema_dict)
+
+    outgoing_rels = get_rels_by_source().get(node_type.__primarylabel__, set())
     all_rel_types = get_rels_by_type()
 
     for rel in outgoing_rels:
-        rel_props = []
+        rel_props: list = []
 
         # first pull out any additional properties on the relationship
         for field_name, field_props in all_rel_types[rel][
@@ -249,7 +261,7 @@ def generate_node_schema(
         else:
             # return concrete subclasses of the abstract node class given
             retrieved_node_types = get_node_types(all_rel_types[rel]["target_class"])
-            target_labels = retrieved_node_types.keys()
+            target_labels = list(retrieved_node_types.keys())
 
         rel_schema = RelationshipSchema(
             relationship_type=rel,
@@ -264,7 +276,7 @@ def generate_node_schema(
     return NodeSchema(**schema_dict)
 
 
-def schema_to_markdown(node_schema) -> str:
+def schema_to_markdown(node_schema: NodeSchema) -> str:
     """Take a node schema and produce markdown ontology documentation"""
 
     schema_template_raw = """

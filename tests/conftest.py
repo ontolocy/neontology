@@ -1,12 +1,15 @@
 # type: ignore
 
 import os
+import logging
 
 import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graph_engines import Neo4jEngine, MemgraphEngine, KuzuEngine
+from neontology.graphengines import Neo4jEngine, MemgraphEngine, KuzuEngine
+
+logger = logging.getLogger(__name__)
 
 
 def reset_constraints():
@@ -63,15 +66,13 @@ def graph_db(request, tmp_path_factory):
             file_path = tmp_path_factory.mktemp("graph_db") / f"{key}.pytest"
             graph_config[key] = file_path
 
-            print(f"Graph DB at {file_path}")
+            logger.info(f"Graph DB at {file_path}")
 
         else:
             graph_config[key] = os.getenv(value)
             assert graph_config[key] is not None
 
     init_neontology(graph_config, graph_engine)
-
-    print("initialised neontology")
 
     gc = GraphConnection()
 

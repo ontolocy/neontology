@@ -1,8 +1,15 @@
-from typing import Optional
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from warnings import warn
 
+from .graphengines import Neo4jEngine
+from .graphengines.graphengine import GraphEngineBase
+from .result import NeontologyResult
 
-from .graph_engines import Neo4jEngine
-from .graphengine import GraphEngineBase
+if TYPE_CHECKING:
+    from .basenode import BaseNode
+
+logger = logging.getLogger(__name__)
 
 
 class GraphConnection(object):
@@ -12,8 +19,8 @@ class GraphConnection(object):
 
     def __new__(
         cls,
-        graph_config: Optional[dict] = None,
-        graph_engine_class: Optional[type[GraphEngineBase]] = None,
+        config: Optional[dict] = None,
+        engine: Optional[type[GraphEngineBase]] = None,
     ) -> "GraphConnection":
         """Make sure we only have a single connection to the GraphDatabase.
 
@@ -33,7 +40,7 @@ class GraphConnection(object):
 
             if GraphConnection._instance:
                 try:
-                    GraphConnection._instance.engine = graph_engine_class(graph_config)
+                    GraphConnection._instance.engine = engine(config)  # type: ignore[misc]
 
                 except Exception:
                     GraphConnection._instance = None
@@ -54,8 +61,8 @@ class GraphConnection(object):
 
     def __init__(
         self,
-        graph_config: dict = {},
-        graph_engine_class: Optional[type[GraphEngineBase]] = None,
+        config: dict = {},
+        engine: Optional[type[GraphEngineBase]] = None,
     ) -> None:
         if self._instance:
             self.engine: GraphEngineBase = self._instance.engine
@@ -66,21 +73,28 @@ class GraphConnection(object):
             )
 
     @classmethod
-    def change_engine(cls, graph_config, graph_engine_class):
-        cls._instance.engine.close_connection()
-        cls._instance.engine = graph_engine_class(graph_config)
+    def change_engine(
+        cls, config: Dict[str, Any], engine: type[GraphEngineBase]
+    ) -> None:
+        if not cls._instance:
+            raise RuntimeError(
+                "Error: Can't change the engine without initializing Neontology first."
+            )
 
-    def evaluate_query_single(self, cypher, params={}):
+        cls._instance.engine.close_connection()
+        cls._instance.engine = engine(config)
+
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         return self.engine.evaluate_query_single(cypher, params)
 
     def evaluate_query(
         self,
-        cypher,
-        params={},
-        node_classes={},
-        relationship_classes={},
+        cypher: str,
+        params: dict = {},
+        node_classes: dict = {},
+        relationship_classes: dict = {},
         refresh_classes: bool = True,
-    ):
+    ) -> NeontologyResult:
         if refresh_classes is True:
             from .utils import get_node_types, get_rels_by_type
 
@@ -99,36 +113,36 @@ class GraphConnection(object):
         )
 
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
-    ) -> list:
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
-    ) -> list:
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
 
     def match_nodes(
         self,
-        node_class,
+        node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> list:
+    ) -> List["BaseNode"]:
         return self.engine.match_nodes(node_class, limit, skip)
 
-    def delete_nodes(self, label, pp_key, pp_values):
+    def delete_nodes(self, label: str, pp_key: str, pp_values: list) -> None:
         self.engine.delete_nodes(label, pp_key, pp_values)
 
     def merge_relationships(
         self,
-        source_label,
-        target_label,
-        source_prop,
-        target_prop,
-        rel_type,
-        merge_on_props,
-        rel_props,
-    ):
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        merge_on_props: List[str],
+        rel_props: List[dict],
+    ) -> None:
         self.engine.merge_relationships(
             source_label,
             target_label,
@@ -139,13 +153,13 @@ class GraphConnection(object):
             rel_props,
         )
 
-    def close(self):
+    def close(self) -> None:
         self.engine.close_connection()
 
 
 def init_neontology(
-    graph_config: dict = {},
-    graph_engine_class: Optional[type[GraphEngineBase]] = None,
+    config: dict = {},
+    engine: Optional[type[GraphEngineBase]] = Neo4jEngine,
     neo4j_uri: Optional[str] = None,
     neo4j_username: Optional[str] = None,
     neo4j_password: Optional[str] = None,
@@ -153,12 +167,20 @@ def init_neontology(
     """Initialise neontology."""
 
     if neo4j_uri or neo4j_username or neo4j_password:
-        raise TypeError(
-            "Neo4j keyword arguments no longer supported by init_neontology - use graph_config instead. Read the docs for new syntax."
+        warn(
+            (
+                "Neo4j keyword arguments in init_neontology are being deprecated "
+                "- use config dictionary instead. Read the docs for new syntax."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
         )
 
-    if graph_engine_class is None:
-        graph_engine_class = Neo4jEngine
+        config = {
+            "neo4j_uri": neo4j_uri,
+            "neo4j_username": neo4j_username,
+            "neo4j_password": neo4j_password,
+        }
 
-    GraphConnection(graph_config, graph_engine_class)
-    print("Neontology initialised.")
+    GraphConnection(config, engine)
+    logger.info("Neontology initialized.")

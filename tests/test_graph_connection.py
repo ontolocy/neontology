@@ -81,8 +81,7 @@ def test_evaluate_query_single_multiple(use_graph):
     """
 
     with pytest.warns(UserWarning):
-        result = gc.evaluate_query_single(match_cypher)
-        print(result)
+        gc.evaluate_query_single(match_cypher)
 
 
 def test_evaluate_query_single_collected(use_graph):
@@ -205,8 +204,6 @@ def test_evaluate_query_nodes_records_simple(use_graph):
     gc = GraphConnection()
     result = gc.evaluate_query(cypher)
 
-    print(result.records)
-
     assert result.records[0]["nodes"]["n"].pp == "foo"
     assert result.records[1]["nodes"]["n"].pp == "bar"
 
@@ -247,8 +244,6 @@ def test_undefined_label(use_graph):
     with pytest.warns(UserWarning, match="Unexpected primary labels returned:"):
         result = gc.evaluate_query(match_cypher)
 
-    print(result.records)
-
     assert len(result.records) == 2
     assert len(result.nodes) == 0
 
@@ -282,7 +277,6 @@ def test_multiple_primary_labels(use_graph):
         match=r"Unexpected primary labels returned: {('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}",
     ):
         result = gc.evaluate_query(match_cypher)
-        print(result)
 
     assert len(result.records) == 1
     assert len(result.nodes) == 0

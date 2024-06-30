@@ -1,20 +1,27 @@
+import logging
 import os
-from typing import Optional
 import warnings
 from collections import defaultdict
+from typing import TYPE_CHECKING, Any, List, Optional
 
+import kuzu
 import pandas as pd
 from dotenv import load_dotenv
-import kuzu
+from kuzu import QueryResult
+
+from ..gql import gql_identifier_adapter, int_adapter
+from ..result import NeontologyResult
+from .graphengine import GraphEngineBase
+
+if TYPE_CHECKING:
+    from ..basenode import BaseNode
+
+logger = logging.getLogger(__name__)
 
 
-from ..graphengine import GraphEngineBase
-from ..result import (
-    NeontologyResult,
-)
-
-
-def kuzu_node_to_neontology_node(kuzu_node, node_classes):
+def kuzu_node_to_neontology_node(
+    kuzu_node: dict, node_classes: dict
+) -> Optional["BaseNode"]:
     node_label = kuzu_node["_label"]
 
     try:
@@ -33,7 +40,9 @@ def kuzu_node_to_neontology_node(kuzu_node, node_classes):
     return new_node
 
 
-def kuzu_results_to_neontology_records(results, node_classes: dict, rel_classes: dict):
+def kuzu_results_to_neontology_records(
+    results: QueryResult, node_classes: dict, rel_classes: dict
+) -> tuple:
     result_df = results.get_as_df()
 
     result_keys = list(result_df.columns)
@@ -47,7 +56,7 @@ def kuzu_results_to_neontology_records(results, node_classes: dict, rel_classes:
     for result_row in result_df.iterrows():
         record_nodes = {}
         record_rels = {}
-        node_table_mappings = defaultdict(dict)
+        node_table_mappings: dict = defaultdict(dict)
 
         # first do the nodes and populate the node table mappings
         for result_key in result_keys:
@@ -154,8 +163,8 @@ class KuzuEngine(GraphEngineBase):
 
         Graph Config:
         * kuzu_db
-        * Nodes (dict of node types indexed by label)
-        * Relationships
+        * nodes (dict of node types indexed by label)
+        * relationships
             (dict of rel types, indexed by rel_type and including source/target node classes)
 
         Args:
@@ -169,14 +178,16 @@ class KuzuEngine(GraphEngineBase):
 
         self._kuzu_db = kuzu.Database(kuzu_db_path)
 
-        self.connection = kuzu.Connection(self._kuzu_db)
+        self.driver = kuzu.Connection(self._kuzu_db)
 
         nodes = config.get("nodes")
         relationships = config.get("relationships")
 
         self.initialise_tables(nodes=nodes, relationships=relationships)
 
-    def initialise_tables(self, nodes, relationships):
+    def initialise_tables(
+        self, nodes: Optional[dict], relationships: Optional[dict]
+    ) -> None:
         from ..utils import extract_type_mapping
 
         if nodes is None:
@@ -210,11 +221,14 @@ class KuzuEngine(GraphEngineBase):
             creation_string = f"CREATE NODE TABLE {label}({', '.join(db_creation_field_info)}, PRIMARY KEY ({primary_key}))"
 
             try:
-                self.connection.execute(creation_string)
-                print("SUCCEEDED: " + creation_string)
+                self.driver.execute(creation_string)
+                logger.info("Created Kuzu node table: " + creation_string)
 
             except RuntimeError:
-                print("FAILED: " + creation_string)
+                logger.debug(
+                    "Creation of Kuzu node table failed, table likely already exists: "
+                    + creation_string
+                )
 
         for rel_type, rel in relationships.items():
             db_rel_creation_field_info = []
@@ -241,29 +255,39 @@ class KuzuEngine(GraphEngineBase):
 
                 db_rel_creation_field_info.append(f"{field_name} {kuzu_field_type}")
 
-            rel_creation_string = f"CREATE REL TABLE {rel_type}(FROM {source_label} TO {target_label}, {', '.join(db_rel_creation_field_info)})"
+            rel_creation_string = (
+                f"CREATE REL TABLE {rel_type}(FROM {source_label}"
+                f" TO {target_label}, {', '.join(db_rel_creation_field_info)})"
+            )
 
             try:
-                self.connection.execute(rel_creation_string)
-                print("SUCCEEDED: " + rel_creation_string)
+                self.driver.execute(rel_creation_string)
+                logger.info("Created Kuzu relationship table: " + rel_creation_string)
 
-            except RuntimeError:
-                print("FAILED: " + rel_creation_string)
+            except RuntimeError as e:
+                logger.debug(
+                    "Creation of Kuzu relationship table failed, table likely already exists: "
+                    + rel_creation_string
+                )
+                logger.debug(e)
 
     def verify_connection(self) -> bool:
-        if self.connection.is_closed is True:
+        if self.driver.is_closed is True:
             return False
         else:
             return True
 
     def close_connection(self) -> None:
-        self.connection.close()
+        self.driver.close()
 
     def evaluate_query(
-        self, cypher, params={}, node_classes={}, relationship_classes={}
-    ):
-        print(cypher)
-        result = self.connection.execute(cypher, params)
+        self,
+        cypher: str,
+        params: dict = {},
+        node_classes: dict = {},
+        relationship_classes: dict = {},
+    ) -> NeontologyResult:
+        result = self.driver.execute(cypher, params)
 
         result_df = result.get_as_df()
 
@@ -278,8 +302,8 @@ class KuzuEngine(GraphEngineBase):
             relationships=rels,
         )
 
-    def evaluate_query_single(self, cypher, params={}):
-        result = self.connection.execute(cypher, params)
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+        result = self.driver.execute(cypher, params)
 
         if result.has_next():
             first_result = result.get_next()
@@ -293,7 +317,7 @@ class KuzuEngine(GraphEngineBase):
             return None
 
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
     ) -> list:
         """
         Args:
@@ -315,10 +339,19 @@ class KuzuEngine(GraphEngineBase):
             all_props = entry["props"]
             all_props[pp_key] = entry["pp"]
 
-            prop_set_string = ", ".join([f"{x}: ${x}" for x in all_props])
+            prop_set_string = ", ".join(
+                [
+                    f"{gql_identifier_adapter.validate_strings(x)}: ${x}"
+                    for x in all_props
+                ]
+            )
+
+            label_identifiers = [
+                gql_identifier_adapter.validate_strings(x) for x in labels
+            ]
 
             cypher = f"""
-            CREATE (n:{":".join(labels)} {{{prop_set_string}}})
+            CREATE (n:{":".join(label_identifiers)} {{{prop_set_string}}})
             RETURN n
             """
 
@@ -329,7 +362,7 @@ class KuzuEngine(GraphEngineBase):
         return results
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
     ) -> list:
         """
         Args:
@@ -352,27 +385,40 @@ class KuzuEngine(GraphEngineBase):
 
             if entry["set_on_match"]:
                 set_on_match = "ON MATCH SET " + ", ".join(
-                    [f"n.{x}=${x}" for x in entry["set_on_match"]]
+                    [
+                        f"n.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["set_on_match"]
+                    ]
                 )
             else:
                 set_on_match = ""
 
             if entry["set_on_create"]:
                 set_on_create = "ON CREATE SET " + ", ".join(
-                    [f"n.{x}=${x}" for x in entry["set_on_create"]]
+                    [
+                        f"n.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["set_on_create"]
+                    ]
                 )
             else:
                 set_on_create = ""
 
             if entry["always_set"]:
                 always_set = "SET " + ", ".join(
-                    [f"n.{x}=${x}" for x in entry["always_set"]]
+                    [
+                        f"n.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["always_set"]
+                    ]
                 )
             else:
                 always_set = ""
 
+            label_identifiers = [
+                gql_identifier_adapter.validate_strings(x) for x in labels
+            ]
+
             cypher = f"""
-            MERGE (n:{":".join(labels)} {{{pp_key}: $pp}})
+            MERGE (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: $pp}})
             {set_on_match}
             {set_on_create}
             {always_set}
@@ -392,15 +438,20 @@ class KuzuEngine(GraphEngineBase):
 
     def merge_relationships(
         self,
-        source_label,
-        target_label,
-        source_prop,
-        target_prop,
-        rel_type,
-        merge_on_props,
-        rel_props,
-    ):
-        merge_props = ", ".join([f"{x}: ${x}" for x in merge_on_props])
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        merge_on_props: List[str],
+        rel_props: List[dict],
+    ) -> None:
+        merge_props = ", ".join(
+            [
+                f"{gql_identifier_adapter.validate_strings(x)}: ${x}"
+                for x in merge_on_props
+            ]
+        )
 
         for entry in rel_props:
             set_on_match = ""
@@ -411,25 +462,34 @@ class KuzuEngine(GraphEngineBase):
 
             if entry["set_on_match"]:
                 set_on_match = "ON MATCH SET " + ", ".join(
-                    [f"r.{x}=${x}" for x in entry["set_on_match"]]
+                    [
+                        f"r.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["set_on_match"]
+                    ]
                 )
 
             if entry["set_on_create"]:
                 set_on_create = "ON CREATE SET " + ", ".join(
-                    [f"r.{x}=${x}" for x in entry["set_on_create"]]
+                    [
+                        f"r.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["set_on_create"]
+                    ]
                 )
 
             if entry["always_set"]:
                 always_set = "SET " + ", ".join(
-                    [f"r.{x}=${x}" for x in entry["always_set"]]
+                    [
+                        f"r.{gql_identifier_adapter.validate_strings(x)}=${x}"
+                        for x in entry["always_set"]
+                    ]
                 )
 
             cypher = f"""
-            MATCH (source:{source_label})
-            WHERE source.{source_prop} = $source_prop
-            MATCH (target:{target_label})
-            WHERE target.{target_prop} = $target_prop
-            MERGE (source)-[r:{rel_type} {{ {merge_props} }}]->(target)
+            MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
+            WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = $source_prop
+            MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
+            WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = $target_prop
+            MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
             {set_on_match}
             {set_on_create}
             {always_set}
@@ -448,7 +508,7 @@ class KuzuEngine(GraphEngineBase):
 
     def match_nodes(
         self,
-        node_class,
+        node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
     ) -> list:
@@ -467,24 +527,17 @@ class KuzuEngine(GraphEngineBase):
         cypher = f"""
         MATCH(n:{node_class.__primarylabel__})
         RETURN n
-        ORDER BY n.created DESC
         """
 
-        params = {}
+        params: dict = {}
 
         if skip:
             # kuzu doesn't seem to like taking SKIP as a parameter
-            if isinstance(skip, int):
-                cypher += f" SKIP {skip} "
-            else:
-                raise TypeError("Skip value must be an integer")
+            cypher += f" SKIP {int_adapter.validate_python(skip)} "
 
         if limit:
             # kuzu doesn't seem to like taking LIMIT as a parameter
-            if isinstance(limit, int):
-                cypher += f" LIMIT {limit} "
-            else:
-                raise TypeError("Limit value must be an integer")
+            cypher += f" LIMIT {int_adapter.validate_python(limit)} "
 
         result = self.evaluate_query(
             cypher, params, node_classes={node_class.__primarylabel__: node_class}

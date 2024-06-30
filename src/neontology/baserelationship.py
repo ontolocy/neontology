@@ -1,31 +1,15 @@
-"""Defines the BaseRelationship class.
-
-The BaseRelationship class is used for creating and matching on relationships in the graph.
-
-    Typical usage example:
-
-    class MyRel(BaseRelationship):
-
-        __relationshiptype__: ClassVar[Optional[str]] = "MY_REL"
-
-        source: SourceNode
-        target: TargetNode
-
-    my_rel = MyRel(source=source_node, target=target_node)
-    my_rel.merge()
-
-"""
-
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar
+import warnings
+from typing import Any, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
 
 import numpy as np
 import pandas as pd
-from pydantic import PrivateAttr
+from pydantic import PrivateAttr, ValidationError, model_validator
 
 from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
+from .gql import gql_identifier_adapter
 
 R = TypeVar("R", bound="BaseRelationship")
 
@@ -53,8 +37,24 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                 "Relationships to be used in the graph must define a relationship type."
             )
 
+    @model_validator(mode="after")
+    def validate_identifiers(self) -> "BaseRelationship":
+        try:
+            gql_identifier_adapter.validate_strings(self.__relationshiptype__)
+        except AttributeError:
+            pass
+        except ValidationError:
+            warnings.warn(
+                (
+                    "Primary Label should contain only alphanumeric characters and underscores."
+                    " It should begin with an alphabetic character."
+                )
+            )
+
+        return self
+
     @classmethod
-    def get_relationship_type(cls) -> str:
+    def get_relationship_type(cls) -> Optional[str]:
         """Get the relationship type to use for creating and matching this relationship.
 
         If __relationship__ has been specified, use that.
@@ -81,8 +81,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         merge_props = self._get_prop_values(self._merge_on, exclude=exclusions)
 
         params = {
-            "source_prop": self.source.neo4j_dict()[source_prop],
-            "target_prop": self.target.neo4j_dict()[target_prop],
+            "source_prop": self.source.engine_dict()[source_prop],
+            "target_prop": self.target.engine_dict()[target_prop],
             "always_set": self._get_prop_values(self._always_set, exclude=exclusions),
             "set_on_match": self._get_prop_values(
                 self._set_on_match, exclude=exclusions
@@ -102,6 +102,11 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_label = self.source.__primarylabel__
         target_label = self.target.__primarylabel__
 
+        if not source_label or not target_label:
+            raise ValueError(
+                "Source and target Nodes must have a defined primary label for creating a relationship."
+            )
+
         source_prop = self.source.__primaryproperty__
         target_prop = self.target.__primaryproperty__
 
@@ -112,6 +117,11 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         merge_on_props = self._merge_on
 
         rel_type = self.get_relationship_type()
+
+        if not rel_type:
+            raise ValueError(
+                "Realtionship must have a defined relationship type for creating a relationship."
+            )
 
         gc = GraphConnection()
 
@@ -156,6 +166,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         if target_type is None:
             target_type = cls.model_fields["target"].annotation
 
+        if not source_type or not target_type:
+            raise ValueError("Source and target Nodes types not defined.")
+
         for rel in rels:
             if isinstance(rel, cls) is False:
                 raise TypeError("Relationship was incorrect type.")
@@ -173,7 +186,17 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_label = source_type.__primarylabel__
         target_label = target_type.__primarylabel__
 
+        if not source_label or not target_label:
+            raise ValueError(
+                "Source and target Nodes must have a defined primary label to create a relationship."
+            )
+
         rel_type = cls.get_relationship_type()
+
+        if not rel_type:
+            raise ValueError(
+                "Realtionship must have a defined relationship type for creating a relationship."
+            )
 
         merge_on_props = cls._get_prop_usage("merge_on")
 
@@ -196,7 +219,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     @classmethod
     def merge_records(
         cls: Type[R],
-        records: List[Dict[str, Any]],
+        records: List[Dict[Hashable, Any]],
         source_type: Optional[Type[BaseNode]] = None,
         target_type: Optional[Type[BaseNode]] = None,
         source_prop: Optional[str] = None,
@@ -224,6 +247,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         if target_type is None:
             target_type = cls.model_fields["target"].annotation
 
+        if not source_type or not target_type:
+            raise ValueError("Source and target Nodes types not defined.")
+
         if source_prop is None:
             source_prop = source_type.__primaryproperty__
 
@@ -240,12 +266,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                 **{target_prop: record["target"]}
             )
 
-            hydrated_list.append(hydrated)
-
-        rels = [cls(**x) for x in hydrated_list]
+            hydrated_list.append(cls.model_validate(hydrated))
 
         cls.merge_relationships(
-            rels,
+            hydrated_list,
             source_type=source_type,
             source_prop=source_prop,
             target_type=target_type,

@@ -1,20 +1,39 @@
-import os
 import itertools
+import os
 import warnings
-from typing import List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from neo4j import Record as Neo4jRecord
-from neo4j.graph import Node as Neo4jNode
-from neo4j.graph import Relationship as Neo4jRelationship
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+from neo4j import Record as Neo4jRecord
 from neo4j import Result as Neo4jResult
+from neo4j.graph import Node as Neo4jNode
+from neo4j.graph import Relationship as Neo4jRelationship
+from neo4j.time import Date as Neo4jDate
+from neo4j.time import DateTime as Neo4jDateTime
+from neo4j.time import Time as Neo4jTime
 
+from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
-from ..graphengine import GraphEngineBase
+from .graphengine import GraphEngineBase
+
+if TYPE_CHECKING:
+    from ..basenode import BaseNode
 
 
-def neo4j_node_to_neontology_node(neo4j_node, node_classes):
+def convert_neo4j_types(input_dict: dict) -> dict:
+    output_dict = dict(input_dict)
+
+    for key in output_dict:
+        if isinstance(output_dict[key], (Neo4jDateTime, Neo4jDate, Neo4jTime)):
+            output_dict[key] = output_dict[key].to_native()
+
+    return output_dict
+
+
+def neo4j_node_to_neontology_node(
+    neo4j_node: Neo4jNode, node_classes: dict
+) -> Optional["BaseNode"]:
     node_labels = list(neo4j_node.labels)
 
     primary_labels = set(node_labels).intersection(set(node_classes.keys()))
@@ -24,7 +43,9 @@ def neo4j_node_to_neontology_node(neo4j_node, node_classes):
     if len(primary_labels) == 1:
         primary_label = primary_labels.pop()
 
-        node = node_classes[primary_label](**dict(neo4j_node))
+        node_dict = convert_neo4j_types(dict(neo4j_node))
+
+        node = node_classes[primary_label](**node_dict)
 
         # warn if the secondary labels aren't what's expected
 
@@ -47,7 +68,8 @@ def neo4j_records_to_neontology_records(
     new_records = []
 
     for record in records:
-        new_record = {"nodes": {}, "relationships": {}}
+        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}}
+
         for key, entry in record.items():
             if isinstance(entry, Neo4jNode):
                 neontology_node = neo4j_node_to_neontology_node(entry, node_classes)
@@ -69,7 +91,12 @@ def neo4j_records_to_neontology_records(
                     )
                     continue
 
-                if not entry.nodes[0].labels or not entry.nodes[1].labels:
+                if (
+                    not entry.nodes[0]
+                    or not entry.nodes[1]
+                    or not entry.nodes[0].labels
+                    or not entry.nodes[1].labels
+                ):
                     warnings.warn(
                         (
                             f"{rel_type} relationship type query did not include nodes."
@@ -79,13 +106,16 @@ def neo4j_records_to_neontology_records(
                     )
                     continue
 
-                src_label = list(entry.nodes[0].labels)[0]
-                tgt_label = list(entry.nodes[1].labels)[0]
+                # src_label = list(entry.nodes[0].labels)[0]
+                # tgt_label = list(entry.nodes[1].labels)[0]
 
-                src_node = node_classes[src_label](**dict(entry.nodes[0]))
-                tgt_node = node_classes[tgt_label](**dict(entry.nodes[1]))
+                src_node = neo4j_node_to_neontology_node(entry.nodes[0], node_classes)
+                tgt_node = neo4j_node_to_neontology_node(entry.nodes[1], node_classes)
 
-                rel_props = dict(entry)
+                # src_node = node_classes[src_label](**dict(entry.nodes[0]))
+                # tgt_node = node_classes[tgt_label](**dict(entry.nodes[1]))
+
+                rel_props = convert_neo4j_types(dict(entry))
                 rel_props["source"] = src_node
                 rel_props["target"] = tgt_node
 
@@ -141,8 +171,12 @@ class Neo4jEngine(GraphEngineBase):
             pass
 
     def evaluate_query(
-        self, cypher, params={}, node_classes={}, relationship_classes={}
-    ):
+        self,
+        cypher: str,
+        params: dict = {},
+        node_classes: dict = {},
+        relationship_classes: dict = {},
+    ) -> NeontologyResult:
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
@@ -157,7 +191,7 @@ class Neo4jEngine(GraphEngineBase):
             relationships=rels,
         )
 
-    def evaluate_query_single(self, cypher, params={}):
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         result = self.driver.execute_query(
             cypher, parameters_=params, result_transformer_=Neo4jResult.single
         )
@@ -171,15 +205,15 @@ class Neo4jEngine(GraphEngineBase):
     def apply_constraint(self, label: str, property: str) -> None:
         cypher = f"""
         CREATE CONSTRAINT IF NOT EXISTS
-        FOR (n:{label})
-        REQUIRE n.{property} IS UNIQUE
+        FOR (n:{gql_identifier_adapter.validate_strings(label)})
+        REQUIRE n.{gql_identifier_adapter.validate_strings(property)} IS UNIQUE
         """
 
         self.evaluate_query_single(cypher)
 
     def drop_constraint(self, constraint_name: str) -> None:
         drop_cypher = f"""
-        DROP CONSTRAINT {constraint_name}
+        DROP CONSTRAINT {gql_identifier_adapter.validate_strings(constraint_name)}
         """
         self.evaluate_query_single(drop_cypher)
 

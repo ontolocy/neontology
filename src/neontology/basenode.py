@@ -1,21 +1,20 @@
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Union
 import functools
+import warnings
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
+from pydantic import ValidationError, model_validator
 
 from .commonmodel import CommonModel
+from .gql import GQLIdentifier, gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
 
-B = TypeVar("B", bound="BaseNode")
 
-
-def _prepare_related_query(node, wrapped_function, *args, **kwargs):
-    print(f"INCOMING KWARGS: {kwargs}")
-    print(f"INCOMING ARGS: {args}")
-
+def _prepare_related_query(
+    node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any
+) -> Tuple[str, dict]:
     try:
-        print(f"CALLING ORIGINAL FUNC WITH {node} // {args} // {kwargs}")
-
         query, params = wrapped_function(node, *args, **kwargs)
     except ValueError:
         query = wrapped_function(node, *args, **kwargs)
@@ -23,24 +22,19 @@ def _prepare_related_query(node, wrapped_function, *args, **kwargs):
         # if the function doesn't pass params, they may be taken from user provided parameters
         params = {**kwargs}
 
-    print("PREPARING REST OF QUERY")
-
     # make it easy to match on this specific node
     this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
     params["_neontology_pp"] = node.get_primary_property_value()
     new_query = query.replace("(#ThisNode)", this_node)
 
-    print(new_query)
-    print(params)
-
     return new_query, params
 
 
-def retrieve_property(f):
+def related_property(f: Callable) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a single result."""
 
     @functools.wraps(f)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> Optional[Any]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -51,11 +45,11 @@ def retrieve_property(f):
     return wrapper
 
 
-def retrieve_nodes(f):
+def related_nodes(f: Callable) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
 
     @functools.wraps(f)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> List["BaseNode"]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -67,9 +61,9 @@ def retrieve_nodes(f):
 
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
-    __primaryproperty__: ClassVar[str]
-    __primarylabel__: ClassVar[Optional[str]]
-    __secondarylabels__: ClassVar[Optional[list]] = []
+    __primaryproperty__: ClassVar[GQLIdentifier]
+    __primarylabel__: ClassVar[Optional[GQLIdentifier]]
+    __secondarylabels__: ClassVar[List[GQLIdentifier]] = []
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -90,7 +84,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
 
         params = {
-            "pp": self.neo4j_dict()[self.__primaryproperty__],
+            "pp": self.engine_dict()[self.__primaryproperty__],
             "always_set": self._get_prop_values(self._always_set),
             "set_on_match": self._get_prop_values(self._set_on_match),
             "set_on_create": self._get_prop_values(self._set_on_create),
@@ -98,13 +92,42 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return params
 
+    @model_validator(mode="after")
+    def validate_identifiers(self) -> "BaseNode":
+        try:
+            gql_identifier_adapter.validate_strings(self.__primarylabel__)
+
+        except AttributeError:
+            pass
+        except ValidationError:
+            warnings.warn(
+                (
+                    "Primary Label should contain only alphanumeric characters and underscores."
+                    " It should begin with an alphabetic character."
+                )
+            )
+
+        try:
+            gql_identifier_adapter.validate_strings(self.__primaryproperty__)
+        except AttributeError:
+            pass
+        except ValidationError:
+            warnings.warn(
+                (
+                    "Primary Property should contain only alphanumeric characters and underscores."
+                    " It should begin with an alphabetic character."
+                )
+            )
+
+        return self
+
     def get_primary_property_value(self) -> Union[str, int]:
         return self._get_merge_parameters()["pp"]
 
-    def create(self) -> None:
+    def create(self) -> "BaseNode":
         """Create this node in the graph."""
 
-        all_props = self.neo4j_dict()
+        all_props = self.engine_dict()
 
         pp_value = all_props.pop(self.__primaryproperty__)
 
@@ -120,7 +143,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return results[0]
 
-    def merge(self) -> None:
+    def merge(self) -> List["BaseNode"]:
         """Merge this node into the graph."""
 
         node_list = [self._get_merge_parameters()]
@@ -136,7 +159,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def create_nodes(cls: Type[B], nodes: List[B]) -> List[Union[str, int]]:
+    def create_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
         """Create the given nodes in the database.
 
         Args:
@@ -154,7 +177,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 raise TypeError("Node was incorrect type.")
 
         node_list = [
-            {"props": x.neo4j_dict(), "pp": x.neo4j_dict()[cls.__primaryproperty__]}
+            {"props": x.engine_dict(), "pp": x.engine_dict()[cls.__primaryproperty__]}
             for x in nodes
         ]
 
@@ -168,7 +191,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_nodes(cls: Type[B], nodes: List[B]) -> List[B]:
+    def merge_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
         """Merge multiple nodes into the database.
 
         Args:
@@ -198,7 +221,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_records(cls: Type[B], records: dict) -> List[B]:
+    def merge_records(cls, records: dict) -> List["BaseNode"]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
@@ -216,7 +239,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return cls.merge_nodes(nodes)
 
     @classmethod
-    def merge_df(cls: Type[B], df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
+    def merge_df(cls, df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
         """Merge in new nodes based on data in a dataframe.
 
         The dataframe columns must correspond to the Node properties.
@@ -266,7 +289,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return ordered_nodes
 
     @classmethod
-    def match(cls: Type[B], pp: str) -> Optional[B]:
+    def match(cls, pp: str) -> Optional["BaseNode"]:
         """MATCH a single node of this type with the given primary property.
 
         Args:
@@ -308,6 +331,10 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
 
         label = cls.__primarylabel__
+
+        if label is None:
+            raise ValueError("Cannot delete nodes without a primary label.")
+
         pp_key = cls.__primaryproperty__
         pp_value = pp
 
@@ -317,8 +344,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def match_nodes(
-        cls: Type[B], limit: Optional[int] = None, skip: Optional[int] = None
-    ) -> List[B]:
+        cls, limit: Optional[int] = None, skip: Optional[int] = None
+    ) -> List["BaseNode"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -336,8 +363,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return result
 
-    @retrieve_nodes
-    def related_nodes(
+    @related_nodes
+    def get_related_nodes(
         self,
         relationship_types: list = [],
         relationship_properties: Optional[dict] = None,
@@ -348,37 +375,37 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         limit: Optional[int] = None,
         skip: Optional[int] = None,
         distinct: bool = False,
-    ):
-        print(f"SELF: {self}")
-        print(f"INCOMING RELATIONSHIP TYPES: {relationship_types}")
-        print(f"INCOMING REL PROPS: {relationship_properties}")
-        print(f"INCOMING TGT LABEL: {target_label}")
-
+    ) -> tuple:
         if target_label:
-            target = f"o:{target_label}"
+            target = f"o:{gql_identifier_adapter.validate_strings(target_label)}"
         else:
             target = "o"
 
         if relationship_types:
-            rel_type_match = "r:" + "|".join(relationship_types)
+            rel_type_match = "r:" + "|".join(
+                [gql_identifier_adapter.validate_strings(x) for x in relationship_types]
+            )
 
         else:
             rel_type_match = ""
 
         if relationship_properties:
-            print(f"GOT REL PROPS: {relationship_properties}")
             rel_prop_match = (
-                "{" + ", ".join([f"{x}: ${x}" for x in relationship_properties]) + "}"
+                "{"
+                + ", ".join(
+                    [
+                        f"{gql_identifier_adapter.validate_strings(x)}: ${x}"
+                        for x in relationship_properties
+                    ]
+                )
+                + "}"
             )
 
             pass_on_params = dict(relationship_properties)
 
         else:
-            print("NO REL PROPS")
             rel_prop_match = ""
             pass_on_params = {}
-
-        print(rel_prop_match)
 
         if outgoing and incoming:
             out_dir = "-"
@@ -387,6 +414,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         elif outgoing:
             out_dir = "->"
             in_dir = "-"
+
+        elif not outgoing and not incoming:
+            raise ValueError("Must specify at least one of incoming or outgoing.")
 
         else:
             out_dir = "-"
@@ -406,23 +436,17 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         else:
             return_distinct = ""
 
-        print(rel_prop_match)
-
         query = f"""
         MATCH (#ThisNode){in_dir}[{rel_type_match}{rel_depth} {rel_prop_match}]{out_dir}({target})
         RETURN {return_distinct} o
         """
 
-        print(query)
-
         if skip:
-            if not isinstance(skip, int):
-                raise ValueError("Skip value not an integer")
-            query += f" SKIP {skip} "
+            query += f" SKIP {int_adapter.validate_python(skip)} "
 
         if limit:
             if not isinstance(limit, int):
                 raise ValueError("limit value not an integer")
-            query += f" LIMIT {limit} "
+            query += f" LIMIT {int_adapter.validate_python(limit)} "
 
         return query, pass_on_params

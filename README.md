@@ -7,7 +7,11 @@
 ![GitHub License](https://img.shields.io/github/license/ontolocy/neontology)
 [![Pydantic v2](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/pydantic/pydantic/main/docs/badge/v2.json)](https://docs.pydantic.dev/)
 
-Easily ingest data into a GQL (Graph Query Language) graph database (like Neo4j) with Python, Pydantic and pandas. Neontology is a simple object-graph mapper which lets you use [Pydantic](https://pydantic-docs.helpmanual.io/) models to define Nodes and Relationships. It imposes certain restrictions on how you model data, which aims to make life easier for most users but may provide too many limitations for others. Neontology is inspired by projects including py2neo (which is no longer maintained), Beanie and SQLModel.
+> *Easily ingest data into a GQL (Graph Query Language) graph database like Neo4j using Python, Pydantic and pandas.*
+
+Neontology is a simple object-graph mapper which lets you use [Pydantic](https://pydantic-docs.helpmanual.io/) models to define Nodes and Relationships. It imposes certain restrictions on how you model data, which aims to make life easier for most users in areas like the construction of knowledge graphs and development of graph database applications.
+
+Neontology is inspired by projects like py2neo (which is no longer maintained), Beanie and SQLModel.
 
 Read the documentation [here](https://neontology.readthedocs.io/en/latest/).
 
@@ -22,7 +26,7 @@ pip install neontology
 ```python
 from typing import ClassVar, Optional, List
 import pandas as pd
-from neontology import BaseNode, BaseRelationship, init_neontology, auto_constrain
+from neontology import BaseNode, BaseRelationship, init_neontology
 
 # We define nodes by inheriting from BaseNode
 class PersonNode(BaseNode):
@@ -42,7 +46,7 @@ class FollowsRel(BaseRelationship):
 
 # initialise the connection to the database (default is Neo4j)
 init_neontology(
-    graph_config = {
+    config = {
         "neo4j_uri": "neo4j+s://mydatabaseid.databases.neo4j.io",
         "neo4j_username": "neo4j",
         "neo4j_password": "password"
@@ -63,14 +67,14 @@ rel = FollowsRel(source=bob,target=alice)
 rel.merge()
 
 # We can also use pandas DataFrames to create multiple nodes
-node_records = [{"name": "Freddy", "age": 42}, {"name": "Philipa", "age":42}]
+node_records = [{"name": "Freddy", "age": 42}, {"name": "Philippa", "age":42}]
 node_df = pd.DataFrame.from_records(node_records)
 
 PersonNode.merge_df(node_df)
 
 # We can also merge relationships from a pandas DataFrame, using the primary property values of the nodes
 rel_records = [
-    {"source": "Freddy", "target": "Philipa"},
+    {"source": "Freddy", "target": "Philippa"},
     {"source": "Alice", "target": "Freddy"}
 ]
 rel_df = pd.DataFrame.from_records(rel_records)
@@ -82,7 +86,7 @@ FollowsRel.merge_df(rel_df)
 
 ### On initialisation
 
-You can explicitly provide access information as in the example above with a `graph_config` dictionary.
+You can explicitly provide access information as in the example above with a `config` dictionary.
 
 ### With a dotenv file
 
@@ -109,15 +113,16 @@ Neontology has experimental support for GQL graph databases other than Neo4j:
 [Memgraph](https://memgraph.com/) is a Neo4j compatible database.
 
 ```python
-from neontology.graph_engines import MemgraphEngine
+from neontology import init_neontology
+from neontology.graphengines import MemgraphEngine
 
 init_neontology(
-    graph_config={
+    config={
                 "memgraph_uri": "bolt://localhost:9687",
                 "memgraph_username": "memgraphuser",
-                "memgraph_password": "MEMGRAPH PASSWORD123",
+                "memgraph_password": "<MEMGRAPH PASSWORD>",
             },
-    graph_engine=MemgraphEngine
+    engine=MemgraphEngine
 )
 ```
 
@@ -132,13 +137,13 @@ You can also use the following environment variables and just `init_neontology(g
 [Kuzu](https://kuzudb.com/) is an embeddable graph database which aims to be like DuckDB for graphs. The database is stored as files on disk, without needing a separate service.
 
 ```python
-from neontology.graph_engines import KuzuEngine
+from neontology.graphengines import KuzuEngine
 
 init_neontology(
-    graph_config = {
+    config = {
                 "kuzu_db": "/path/to/db",
             },
-    graph_engine = KuzuEngine
+    engine = KuzuEngine
 )
 ```
 

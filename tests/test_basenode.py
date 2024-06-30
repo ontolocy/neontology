@@ -4,17 +4,54 @@ from datetime import datetime
 from uuid import UUID
 
 import pandas as pd
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ValidationInfo
 import pytest
 
-from neontology import BaseNode, BaseRelationship, retrieve_nodes, retrieve_property
+from neontology import (
+    BaseNode,
+    BaseRelationship,
+    related_property,
+    related_nodes,
+    GQLIdentifier,
+)
 
 
 class PracticeNode(BaseNode):
-    __primaryproperty__: ClassVar[str] = "pp"
-    __primarylabel__: ClassVar[Optional[str]] = "PracticeNode"
+    __primaryproperty__: ClassVar[GQLIdentifier] = "pp"
+    __primarylabel__: ClassVar[Optional[GQLIdentifier]] = "PracticeNode"
 
     pp: str
+
+
+class PracticeNodeDated(BaseNode):
+    __primaryproperty__: ClassVar[GQLIdentifier] = "pp"
+    __primarylabel__: ClassVar[Optional[GQLIdentifier]] = "PracticeNodeDated"
+
+    pp: str
+
+    test_merged: datetime = Field(
+        default_factory=datetime.now,
+    )
+
+    # created property will only be set 'on create' - when the node is first created
+    test_created: Optional[datetime] = Field(
+        default=None, validate_default=True, json_schema_extra={"set_on_create": True}
+    )
+
+    @field_validator("test_created")
+    def set_test_created_to_merged(
+        cls, value: Optional[datetime], values: ValidationInfo
+    ) -> datetime:
+        """When the node is first created, we want the created value
+        to be set equal to merged.
+        Otherwise they will be a tiny amount of time different.
+        """
+
+        # if the created value has been manually set, don't override it
+        if value is None:
+            return values.data["test_merged"]
+        else:
+            return value
 
 
 def test_set_pp_field_valid():
@@ -39,6 +76,24 @@ def test_create(use_graph):
     assert result.nodes[0].__primarylabel__ == "PracticeNode"
 
     assert result.nodes[0].pp == "Test Node"
+
+
+def test_create_dated(use_graph):
+    tn = PracticeNodeDated(pp="Test Node")
+
+    tn.create()
+
+    cypher = """
+    MATCH (n:PracticeNodeDated)
+    WHERE n.pp = 'Test Node'
+    RETURN n
+    """
+
+    result = use_graph.evaluate_query(cypher)
+
+    assert result.nodes[0].__primarylabel__ == "PracticeNodeDated"
+
+    assert result.nodes[0].created == result.nodes[0].merged
 
 
 def test_no_primary_label():
@@ -258,12 +313,12 @@ def test_creation_datetime(use_graph):
 
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
-    bn = PracticeNode(pp="Test Node", created=my_datetime)
+    bn = PracticeNodeDated(pp="Test Node", created=my_datetime)
 
     bn.create()
 
     cypher = """
-    MATCH (n:PracticeNode)
+    MATCH (n:PracticeNodeDated)
     WHERE n.pp = 'Test Node'
     RETURN n.created.year
     """
@@ -304,8 +359,7 @@ def test_match_nodes_limit(use_graph):
 
     assert len(results) == 1
 
-    # match nodes returns the most recently created node first
-    assert results[0].pp == "Special Test Node2"
+    assert results[0].pp in ["Special Test Node", "Special Test Node2"]
 
 
 def test_match_nodes_skip(use_graph):
@@ -316,12 +370,18 @@ def test_match_nodes_skip(use_graph):
 
     tn2.merge()
 
-    results = PracticeNode.match_nodes(limit=1, skip=1)
+    results1 = PracticeNode.match_nodes(limit=1)
 
-    assert len(results) == 1
+    assert len(results1) == 1
 
-    # match nodes returns the most recently created node first
-    assert results[0].pp == "Special Test Node"
+    assert results1[0].pp in ["Special Test Node", "Special Test Node2"]
+
+    results2 = PracticeNode.match_nodes(limit=1, skip=1)
+
+    assert len(results2) == 1
+
+    # make sure we have actually skipped through the results
+    assert results1[0].pp != results2[0].pp
 
 
 def test_match_node(use_graph):
@@ -673,18 +733,24 @@ def test_merge_empty_df():
 
 
 class AugmentedPerson(BaseNode):
-    __primaryproperty__: ClassVar[str] = "name"
-    __primarylabel__: ClassVar[str] = "AugmentedPerson"
+    __primaryproperty__: ClassVar[GQLIdentifier] = "name"
+    __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
 
     name: str
 
-    @retrieve_nodes
+    @related_nodes
     def followers(self):
         return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN o"
 
-    @retrieve_property
+    @property
+    @related_property
     def follower_count(self):
         return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
+
+    @property
+    @related_property
+    def follower_names(self):
+        return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COLLECT(DISTINCT o.name)"
 
 
 class AugmentedPersonRelationship(BaseRelationship):
@@ -713,12 +779,12 @@ def test_related_nodes(use_graph):
     )
     follows2.merge()
 
-    alice_rels = alice.related_nodes()
+    alice_rels = alice.get_related_nodes()
 
     assert len(alice_rels) == 1
     assert alice_rels[0].name == "Bob"
 
-    bobs_followers = bob.related_nodes(
+    bobs_followers = bob.get_related_nodes(
         relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
         incoming=True,
         outgoing=False,
@@ -728,10 +794,30 @@ def test_related_nodes(use_graph):
     assert len(bobs_followers) == 1
     assert bobs_followers[0].name == "Alice"
 
-    bobs_rels = bob.related_nodes(incoming=True, distinct=True)
+    bobs_rels = bob.get_related_nodes(incoming=True, distinct=True)
 
     assert len(bobs_rels) == 1
     assert bobs_rels[0].name == "Alice"
+
+
+def test_related_nodes_unmerged(use_graph):
+    alice = AugmentedPerson(name="Alice")
+
+    alice_rels = alice.get_related_nodes()
+
+    assert len(alice_rels) == 0
+
+
+def test_related_nodes_no_rels(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    alice.merge()
+
+    bob = AugmentedPerson(name="Bob")
+    bob.merge()
+
+    alice_rels = alice.get_related_nodes()
+
+    assert len(alice_rels) == 0
 
 
 def test_retrieve_property(use_graph):
@@ -746,22 +832,29 @@ def test_retrieve_property(use_graph):
     )
     follows.merge()
 
-    assert bob.follower_count() == 1
+    assert bob.follower_count == 1
+    assert bob.follower_names == ["Alice"]
 
 
-def test_retrieve_nodes(use_graph):
+def test_retrieve_property_none(use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    follows = AugmentedPersonRelationship(
-        source=alice, target=bob, follow_tag="test-tag"
-    )
-    follows.merge()
+    assert bob.follower_count == 0
+    assert not bob.follower_names
+
+
+def test_retrieve_nodes_none(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    alice.merge()
+
+    bob = AugmentedPerson(name="Bob")
+    bob.merge()
 
     followers = bob.followers()
 
-    assert len(followers) == 1
-    assert followers[0].name == "Alice"
+    assert len(followers) == 0
+    assert not followers

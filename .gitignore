@@ -3,7 +3,7 @@
 .pyre_configuration
 .watchmanconfig
 .tenv
-docker-compose.yml
+docker-compose*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

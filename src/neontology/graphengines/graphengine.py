@@ -1,9 +1,28 @@
-from typing import Any, Optional
+from datetime import date, datetime, time, timedelta
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
-from .result import NeontologyResult
+from ..gql import gql_identifier_adapter, int_adapter
+from ..result import NeontologyResult
+
+if TYPE_CHECKING:
+    from ..basenode import BaseNode
 
 
 class GraphEngineBase:
+    _supported_types: ClassVar[Any] = (
+        list,
+        bool,
+        int,
+        bytearray,
+        float,
+        str,
+        bytes,
+        date,
+        time,
+        datetime,
+        timedelta,
+    )
+
     def __init__(self, config: Optional[dict]) -> None:
         """Initialise connection to the engine
 
@@ -12,6 +31,52 @@ class GraphEngineBase:
         """
         pass
 
+    @classmethod
+    def _export_type_converter(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            raise TypeError("Neo4j doesn't support dict types for properties.")
+
+        elif isinstance(value, (tuple, set)):
+            new_value = list(value)
+            return cls._export_type_converter(new_value)
+
+        elif isinstance(value, list):
+            if len(value) == 0:
+                return []
+            # items in a list must all be the same type
+            item_type = type(value[0])
+            for item in value:
+                if isinstance(item, item_type) is False:
+                    raise TypeError(
+                        "For neo4j, all items in a list must be of the same type."
+                    )
+
+            return [cls._export_type_converter(x) for x in value]
+
+        elif isinstance(value, cls._supported_types) is False:
+            return str(value)
+
+        else:
+            return value
+
+    @classmethod
+    def export_dict_converter(cls, original_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """_summary_
+
+        Args:
+            export_dict (Dict[str, Any]): _description_
+
+        Returns:
+            Dict[str, Any]: _description_
+        """
+
+        export_dict = original_dict.copy()
+
+        for k, v in export_dict.items():
+            export_dict[k] = cls._export_type_converter(v)
+
+        return export_dict
+
     def verify_connection(self) -> bool:
         raise NotImplementedError
 
@@ -19,11 +84,15 @@ class GraphEngineBase:
         raise NotImplementedError
 
     def evaluate_query(
-        self, cypher, params={}, node_classes={}, relationship_classes={}
+        self,
+        cypher: str,
+        params: Dict[str, Any] = {},
+        node_classes: dict = {},
+        relationship_classes: dict = {},
     ) -> NeontologyResult:
         raise NotImplementedError
 
-    def evaluate_query_single(self, cypher, params) -> Any:
+    def evaluate_query_single(self, cypher: str, params: Dict[str, Any]) -> Any:
         raise NotImplementedError
 
     def apply_constraint(self, label: str, property: str) -> None:
@@ -36,8 +105,8 @@ class GraphEngineBase:
         raise NotImplementedError
 
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
-    ) -> list:
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
         """
         Args:
             labels (list): a list of labels to give created nodes
@@ -50,9 +119,11 @@ class GraphEngineBase:
             list: list of created Nodes
         """
 
+        label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{":".join(labels)} {{{pp_key}: node.pp}})
+        create (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
         SET n += node.props
         RETURN n
         """
@@ -66,8 +137,8 @@ class GraphEngineBase:
         return results.nodes
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class
-    ) -> list:
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
         """_summary_
 
         Args:
@@ -81,9 +152,11 @@ class GraphEngineBase:
             list: list of merged Nodes
         """
 
+        label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{":".join(labels)} {{{pp_key}: node.pp}})
+        MERGE (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
         ON MATCH SET n += node.set_on_match
         ON CREATE SET n += node.set_on_create
         SET n += node.always_set
@@ -98,11 +171,11 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def delete_nodes(self, label, pp_key, pp_values) -> None:
+    def delete_nodes(self, label: str, pp_key: str, pp_values: List[Any]) -> None:
         cypher = f"""
         UNWIND $pp_values AS pp
-        MATCH (n:{label})
-        WHERE n.{pp_key} = pp
+        MATCH (n:{gql_identifier_adapter.validate_strings(label)})
+        WHERE n.{gql_identifier_adapter.validate_strings(pp_key)} = pp
         DETACH DELETE n
         """
 
@@ -112,24 +185,29 @@ class GraphEngineBase:
 
     def merge_relationships(
         self,
-        source_label,
-        target_label,
-        source_prop,
-        target_prop,
-        rel_type,
-        merge_on_props,
-        rel_props,
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        merge_on_props: List[str],
+        rel_props: List[dict],
     ) -> None:
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{x}: rel.{x}" for x in merge_on_props])
+        merge_props = ", ".join(
+            [
+                f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}"
+                for x in merge_on_props
+            ]
+        )
 
         cypher = f"""
         UNWIND $rel_list AS rel
-        MATCH (source:{source_label})
-        WHERE source.{source_prop} = rel.source_prop
-        MATCH (target:{target_label})
-        WHERE target.{target_prop} = rel.target_prop
-        MERGE (source)-[r:{rel_type} {{ {merge_props} }}]->(target)
+        MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
+        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
+        MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
+        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
+        MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
         ON MATCH SET r += rel.set_on_match
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
@@ -141,7 +219,7 @@ class GraphEngineBase:
 
     def match_nodes(
         self,
-        node_class,
+        node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
     ) -> list:
@@ -160,18 +238,17 @@ class GraphEngineBase:
         cypher = f"""
         MATCH(n:{node_class.__primarylabel__})
         RETURN n
-        ORDER BY n.created DESC
         """
 
         params = {}
 
         if skip:
             cypher += " SKIP $skip "
-            params["skip"] = skip
+            params["skip"] = int_adapter.validate_python(skip)
 
         if limit:
             cypher += " LIMIT $limit "
-            params["limit"] = limit
+            params["limit"] = int_adapter.validate_python(limit)
 
         result = self.evaluate_query(
             cypher, params, node_classes={node_class.__primarylabel__: node_class}

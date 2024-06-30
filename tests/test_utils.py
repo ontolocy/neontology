@@ -3,8 +3,8 @@ from typing import ClassVar, Optional, List
 from neontology.utils import (
     get_rels_by_source,
     get_node_types,
-    apply_constraints,
-    auto_constrain,
+    apply_neo4j_constraints,
+    auto_constrain_neo4j,
     generate_node_schema,
     schema_to_markdown,
 )
@@ -49,7 +49,7 @@ class SpecialPracticeNodeAC(BaseNode):
     pp: str
 
 
-def test_autoconstrain(use_graph):
+def test_auto_constrain_neo4j(use_graph):
     gc = GraphConnection()
 
     # make sure we start with no constraints
@@ -64,7 +64,7 @@ def test_autoconstrain(use_graph):
 
         assert len(result) == 0
 
-        auto_constrain()
+        auto_constrain_neo4j()
 
         result2 = gc.engine.get_constraints()
 
@@ -75,7 +75,7 @@ def test_autoconstrain(use_graph):
         pass
 
 
-def test_apply_constraints(use_graph):
+def test_apply_neo4j_constraints(use_graph):
     class SpecialPracticeNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[str] = "SpecialPracticeNode"
@@ -95,7 +95,7 @@ def test_apply_constraints(use_graph):
 
         assert len(result) == 0
 
-        apply_constraints([SpecialPracticeNode])
+        apply_neo4j_constraints([SpecialPracticeNode])
 
         result2 = gc.engine.get_constraints()
 
@@ -165,8 +165,6 @@ Primary Label: PersonLabelToDocument
 Python Class Name: PersonToDocument"""
         in md
     )
-
-    print(person_schema.outgoing_relationships)
 
     assert (
         """## Outgoing Relationships
