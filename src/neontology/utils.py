@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from typing import Any, Dict, List, Set, Type, Union, get_args, get_origin
 
