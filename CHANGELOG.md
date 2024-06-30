@@ -9,7 +9,8 @@
 
 ### Changed
 
-- Changed the function signature for `init_neontology` to support different GraphEngines.
+- Dropped support for Python v3.7
+- Changed the function signature for `init_neontology`.
 - Changed behaviour of `GraphConnection` to more consistently raise an explicit error if the connection isn't established.
 - Renamed `auto_constrain` to `auto_constrain_neo4j`.
 - Renamed `apply_constraints` to `apply_neo4j_constraints`.
