@@ -24,6 +24,14 @@ jobs:
         # environment variables
         env:
           NEO4J_AUTH: ${{secrets.TEST_NEO4J_AUTH}}
+      testmemgraph:
+        image: memgraph/memgraph:latest
+        ports:
+          - 9687:7687
+          - 7444:7444
+        env:
+          MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
+          MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
 
     strategy:
       fail-fast: true
