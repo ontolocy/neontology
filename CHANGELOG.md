@@ -15,6 +15,10 @@
 - Renamed `auto_constrain` to `auto_constrain_neo4j`.
 - Renamed `apply_constraints` to `apply_neo4j_constraints`.
 
+### Dependencies
+
+- Bumped Pandas dependency to v2
+
 ## v1.0.0
 
 ### Features
