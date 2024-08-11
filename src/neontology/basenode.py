@@ -7,7 +7,7 @@ from .commonmodel import CommonModel
 from .graphconnection import GraphConnection
 
 B = TypeVar("B", bound="BaseNode")
-
+R = TypeVar("R", bound="BaseRelationship")
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
     __primaryproperty__: ClassVar[str]
@@ -258,6 +258,40 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         else:
             return None
+
+    @classmethod
+    def match_by_rel(clsl: Type[B], rel: Type[R], clsr: Type[B], ppl: str, ppr: str) -> Optional[B]:
+        """MATCH a single node of this type with the given primary property, relation and related node with the given primary property.
+
+        Args:
+            ppl (str): The value of the primary property of left-side node (pp) to match on.
+            rel (Relationionship): The value of the primary property of left-side node (pp) to match on.
+            ppr (str): The value of the primary property of right-side node (pp) to match on.
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+
+        Example:
+            Tmux.match_by_rel(TmuxHasTmuxSession, TmuxSession, "/var/tmux/mindwm", "Session Title")
+        """
+
+        cypher = f"""
+        MATCH (nl:{clsl.__primarylabel__})-[r:{rel.__relationshiptype__}]-(nr:{clsr.__primarylabel__})
+        WHERE nl.{clsl.__primaryproperty__} = $ppl AND nr.{clsr.__primaryproperty__} = $ppr
+        RETURN nr
+        """
+
+        params = {"ppl": ppl, "ppr": ppr}
+        graph = GraphConnection()
+
+        result = graph.cypher_read(cypher, params)
+
+        if result:
+            return clsr(**dict(result["nr"]))
+
+        else:
+            return None
+
 
     @classmethod
     def delete(cls, pp: str) -> None:
