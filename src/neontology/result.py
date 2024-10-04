@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from pydantic import BaseModel, computed_field
@@ -14,7 +15,7 @@ class NeontologyResult(BaseModel):
     def node_link_data(self) -> dict:
         nodes = [
             {
-                "id": x.get_primary_property_value(),
+                "id": x.get_pp(),
                 "label": x.__primarylabel__,
                 "name": str(x),
             }
@@ -23,8 +24,9 @@ class NeontologyResult(BaseModel):
 
         links = [
             {
-                "source": x.source.get_primary_property_value(),
-                "target": x.target.get_primary_property_value(),
+                "source": x.source.get_pp(),
+                "target": x.target.get_pp(),
+                "link_label": x.__relationshiptype__,
             }
             for x in self.relationships
         ]
@@ -37,3 +39,21 @@ class NeontologyResult(BaseModel):
         }
 
         return data
+
+    def neontology_dump(self):
+        nodes = [x.neontology_dump() for x in self.nodes]
+        relationships = [x.neontology_dump() for x in self.relationships]
+
+        data = {"nodes": nodes, "links": relationships}
+
+        return data
+
+    def neontology_dump_json(self):
+        nodes = [json.loads(x.neontology_dump_json()) for x in self.nodes]
+        relationships = [
+            json.loads(x.neontology_dump_json()) for x in self.relationships
+        ]
+
+        data = {"nodes": nodes, "links": relationships}
+
+        return json.dumps(data)

@@ -1,10 +1,11 @@
 # type: ignore
 from typing import ClassVar, Optional, List
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
+from random import randint
 
 import pandas as pd
-from pydantic import Field, field_validator, ValidationInfo
+from pydantic import Field, field_validator, ValidationInfo, field_serializer
 import pytest
 
 from neontology import (
@@ -60,6 +61,30 @@ def test_set_pp_field_valid():
     assert tn.pp == "Some Value"
 
 
+def test_engine_dict_internals():
+    # verify that an error is raised when we
+    # execute a function which depends on the db
+    with pytest.raises(RuntimeError):
+        PracticeNode.match_nodes()
+
+    tn = PracticeNode(pp="Some Value")
+
+    # should be able to call these functions without an engine connection
+    assert tn._engine_dict() == {"pp": "Some Value"}
+
+
+def test_get_merge_parameters():
+    tn = PracticeNode(pp="Some Value")
+
+    assert tn._get_merge_parameters() == {
+        "always_set": {"pp": "Some Value", "created": None, "merged": None},
+        "pp": "Some Value",
+        "set_on_create": {},
+        "set_on_match": {},
+    }
+    assert tn.get_pp() == "Some Value"
+
+
 def test_create(use_graph):
     tn = PracticeNode(pp="Test Node")
 
@@ -76,6 +101,73 @@ def test_create(use_graph):
     assert result.nodes[0].__primarylabel__ == "PracticeNode"
 
     assert result.nodes[0].pp == "Test Node"
+
+
+def test_create_if_exists(use_graph):
+    """
+    Neontology does not check if a node already exists, it is for the user to enforce this at the database level.
+    """
+
+    tn = PracticeNode(pp="Test Node")
+
+    tn.create()
+
+    cypher = """
+    MATCH (n:PracticeNode)
+    WHERE n.pp = 'Test Node'
+    RETURN n
+    """
+
+    result = use_graph.evaluate_query(cypher)
+
+    assert result.nodes[0].__primarylabel__ == "PracticeNode"
+
+    assert result.nodes[0].pp == "Test Node"
+
+    # kuzu has primary keys and raises an error if trying to create a duplicate
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        with pytest.raises(RuntimeError):
+            tn.create()
+
+    # other DB's only raise an error if a constraint is explicitly set
+    else:
+
+        tn.create()
+
+        nodes = tn.match_nodes()
+
+        assert len(nodes) == 2
+
+
+def test_create_multiple_if_exists(use_graph):
+    tn = PracticeNode(pp="Test Node")
+
+    tn.create()
+
+    cypher = """
+    MATCH (n:PracticeNode)
+    WHERE n.pp = 'Test Node'
+    RETURN n
+    """
+
+    result = use_graph.evaluate_query(cypher)
+
+    assert result.nodes[0].__primarylabel__ == "PracticeNode"
+
+    assert result.nodes[0].pp == "Test Node"
+
+    # kuzu has primary keys and raises an error if trying to create a duplicate
+    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
+        with pytest.raises(RuntimeError):
+            PracticeNode.create_nodes([tn])
+
+    # other DB's only raise an error if a constraint is explicitly set
+    else:
+        PracticeNode.create_nodes([tn])
+
+        nodes = tn.match_nodes()
+
+        assert len(nodes) == 2
 
 
 def test_create_dated(use_graph):
@@ -723,6 +815,25 @@ def test_merge_df_with_lists(use_graph):
     assert ben.favorite_colors is None
 
 
+def test_get_count(use_graph):
+    people_records = [
+        {"name": "arthur", "age": 70, "favorite_colors": ["red"]},
+        {"name": "betty", "age": 65, "favorite_colors": ["red", "blue"]},
+        {"name": "ted", "age": 50, "favorite_colors": []},
+        {"name": "ben", "age": 75},
+    ]
+
+    people_df = pd.DataFrame.from_records(people_records)
+
+    Person2.merge_df(people_df, deduplicate=False)
+
+    assert Person2.get_count() == 4
+
+
+def test_get_count_none(use_graph):
+    assert Person2.get_count() == 0
+
+
 def test_merge_empty_df():
     df = pd.DataFrame()
 
@@ -742,7 +853,6 @@ class AugmentedPerson(BaseNode):
     def followers(self):
         return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN o"
 
-    @property
     @related_property
     def follower_count(self):
         return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
@@ -762,6 +872,47 @@ class AugmentedPersonRelationship(BaseRelationship):
     follow_tag: Optional[str] = None
 
 
+def test_get_related_node_methods():
+    assert set(AugmentedPerson.get_related_node_methods().keys()) == {
+        "followers",
+        "get_related",
+    }
+
+
+def test_get_related_prop_methods():
+    # note that only decorated methods, not properties are returned
+    assert set(AugmentedPerson.get_related_property_methods().keys()) == {
+        "follower_count",
+        "get_count",
+    }
+
+
+def test_node_schema():
+    schema = AugmentedPerson.neontology_schema()
+
+    assert schema.properties[0].name == "name"
+    assert schema.properties[0].required is True
+    assert schema.outgoing_relationships[0].name == "AUGMENTED_PERSON_FOLLOWS"
+
+
+def test_node_schema_md():
+    schema = AugmentedPerson.neontology_schema()
+
+    schema_md = schema.md_node_table()
+
+    assert "| Property Name | Type | Required |" in schema_md
+    assert "| name | str | True |" in schema_md
+
+
+def test_rels_schema_md():
+    schema = AugmentedPerson.neontology_schema()
+
+    schema_md = schema.md_rel_tables(heading_level=4)
+
+    assert "#### AUGMENTED_PERSON_FOLLOWS" in schema_md
+    assert "| follow_tag | Optional[str] | False |" in schema_md
+
+
 def test_related_nodes(use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
@@ -779,33 +930,33 @@ def test_related_nodes(use_graph):
     )
     follows2.merge()
 
-    alice_rels = alice.get_related_nodes()
+    alice_rels = alice.get_related()
 
-    assert len(alice_rels) == 1
-    assert alice_rels[0].name == "Bob"
+    assert len(alice_rels.nodes) == 1
+    assert alice_rels.nodes[0].name == "Bob"
 
-    bobs_followers = bob.get_related_nodes(
+    bobs_followers = bob.get_related(
         relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
         incoming=True,
         outgoing=False,
         relationship_properties={"follow_tag": "test-tag"},
     )
 
-    assert len(bobs_followers) == 1
-    assert bobs_followers[0].name == "Alice"
+    assert len(bobs_followers.nodes) == 1
+    assert bobs_followers.nodes[0].name == "Alice"
 
-    bobs_rels = bob.get_related_nodes(incoming=True, distinct=True)
+    bobs_rels = bob.get_related(incoming=True, distinct=True)
 
-    assert len(bobs_rels) == 1
-    assert bobs_rels[0].name == "Alice"
+    assert len(bobs_rels.nodes) == 1
+    assert bobs_rels.nodes[0].name == "Alice"
 
 
 def test_related_nodes_unmerged(use_graph):
     alice = AugmentedPerson(name="Alice")
 
-    alice_rels = alice.get_related_nodes()
+    alice_rels = alice.get_related()
 
-    assert len(alice_rels) == 0
+    assert len(alice_rels.nodes) == 0
 
 
 def test_related_nodes_no_rels(use_graph):
@@ -815,9 +966,9 @@ def test_related_nodes_no_rels(use_graph):
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    alice_rels = alice.get_related_nodes()
+    alice_rels = alice.get_related()
 
-    assert len(alice_rels) == 0
+    assert len(alice_rels.nodes) == 0
 
 
 def test_retrieve_property(use_graph):
@@ -832,7 +983,7 @@ def test_retrieve_property(use_graph):
     )
     follows.merge()
 
-    assert bob.follower_count == 1
+    assert bob.follower_count() == 1
     assert bob.follower_names == ["Alice"]
 
 
@@ -843,7 +994,7 @@ def test_retrieve_property_none(use_graph):
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    assert bob.follower_count == 0
+    assert bob.follower_count() == 0
     assert not bob.follower_names
 
 
@@ -856,5 +1007,41 @@ def test_retrieve_nodes_none(use_graph):
 
     followers = bob.followers()
 
-    assert len(followers) == 0
-    assert not followers
+    assert len(followers.nodes) == 0
+
+
+class ComplexPerson(BaseNode):
+    __primaryproperty__: ClassVar[str] = "identifier"
+    __primarylabel__: ClassVar[str] = (
+        "PersonLabel1"  # optionally specify the label to use
+    )
+
+    name: str = Field(default_factory=uuid4)
+    age: int
+    favorite_colors: list = ["red", "green", "blue"]
+    favorite_numbers: list = [1, 2, 3]
+    extra_str1: UUID = Field(default_factory=uuid4)
+    extra_str2: UUID = Field(default_factory=uuid4)
+
+    identifier: Optional[str] = Field(default=None, validate_default=True)
+
+    @field_validator("identifier")
+    def set_identifier(cls, v, values):
+        if v is None:
+            v = f"{values.data['name']}_{values.data['age']}"
+
+        return v
+
+    @field_serializer("extra_str1", "extra_str2")
+    def serialize_to_str(self, v: UUID):
+        return str(v)
+
+
+def test_create_mass_nodes(use_graph, benchmark):
+    people_records = [{"age": x, "name": uuid4().hex} for x in range(1000)]
+
+    people_df = pd.DataFrame.from_records(people_records)
+
+    benchmark(ComplexPerson.merge_df, people_df)
+
+    assert Person.get_count() == 1000

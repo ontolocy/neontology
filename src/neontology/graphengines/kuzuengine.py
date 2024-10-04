@@ -4,19 +4,23 @@ import logging
 import os
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 import kuzu
 import pandas as pd
 from dotenv import load_dotenv
 from kuzu import QueryResult
+from pydantic import model_validator
 
 from ..gql import gql_identifier_adapter, int_adapter
 from ..result import NeontologyResult
-from .graphengine import GraphEngineBase
+from ..schema_utils import extract_type_mapping
+from .graphengine import GraphEngineBase, GraphEngineConfig
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
+    from ..baserelationship import RelationshipTypeData
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +47,9 @@ def kuzu_node_to_neontology_node(
 
 
 def kuzu_results_to_neontology_records(
-    results: QueryResult, node_classes: dict, rel_classes: dict
+    results: QueryResult,
+    node_classes: dict,
+    rel_classes: Dict[str, "RelationshipTypeData"],
 ) -> tuple:
     result_df = results.get_as_df()
 
@@ -82,7 +88,7 @@ def kuzu_results_to_neontology_records(
 
             node_table_mappings[table_id][table_offset] = record_node
             record_nodes[result_key] = record_node
-            all_nodes[record_node.get_primary_property_value()] = record_node
+            all_nodes[record_node.get_pp()] = record_node
 
         # now repeat but just do any relationships
         for result_key in result_keys:
@@ -127,7 +133,7 @@ def kuzu_results_to_neontology_records(
 
             rel_type_dict = rel_classes[rel_type]
 
-            rel = rel_type_dict["rel_class"](**rel_props)
+            rel = rel_type_dict.relationship_class(**rel_props)
 
             record_rels[result_key] = rel
             all_rels.append(rel)
@@ -151,6 +157,7 @@ class KuzuEngine(GraphEngineBase):
         "set": "STRING[]",
         "tuple": "STRING[]",
         "UUID": "STRING",
+        "Enum": "STRING",
         "List[bool]": "BOOL[]",
         "List[int]": "INT64[]",
         "List[float]": "FLOAT[]",
@@ -158,9 +165,10 @@ class KuzuEngine(GraphEngineBase):
         "List[date]": "DATE[]",
         "List[datetime]": "TIMESTAMP[]",
         "List[timedelta]": "INTERVAL[]",
+        "List[Enum]": "STRING[]",
     }
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: "KuzuConfig") -> None:
         """Initialise connection to the engine
 
         Graph Config:
@@ -173,25 +181,20 @@ class KuzuEngine(GraphEngineBase):
             config (Optional[dict]): _description_
         """
 
-        # try to load environment variables from .env file
-        load_dotenv()
-
-        kuzu_db_path = config.get("kuzu_db", os.getenv("KUZU_DB"))
-
-        self._kuzu_db = kuzu.Database(kuzu_db_path)
+        self._kuzu_db = kuzu.Database(config.path)
 
         self.driver = kuzu.Connection(self._kuzu_db)
 
-        nodes = config.get("nodes")
-        relationships = config.get("relationships")
+        nodes = config.nodes
+        relationships = config.relationships
 
         self.initialise_tables(nodes=nodes, relationships=relationships)
 
     def initialise_tables(
-        self, nodes: Optional[dict], relationships: Optional[dict]
+        self,
+        nodes: Optional[dict],
+        relationships: Optional[Dict[str, RelationshipTypeData]],
     ) -> None:
-        from ..utils import extract_type_mapping
-
         if nodes is None:
             from ..utils import get_node_types
 
@@ -209,14 +212,26 @@ class KuzuEngine(GraphEngineBase):
             primary_key = node_type.__primaryproperty__
 
             for field_name, model_field in node_type.model_fields.items():
-                field_types = set()
 
                 type_mapping = extract_type_mapping(
                     model_field.annotation, show_optional=False
                 )
-                field_types.add(type_mapping)
 
-                kuzu_field_type = self._kuzu_type_mappings[field_types.pop()]
+                field_representation = type_mapping.representation
+
+                try:
+                    kuzu_field_type = self._kuzu_type_mappings[field_representation]
+
+                except KeyError:
+                    logger.warn(
+                        f"No defined Kuzu type mapping for {field_representation}, using STRING"
+                    )
+
+                    if "List" in field_representation:
+                        kuzu_field_type = "STRING[]"
+
+                    else:
+                        kuzu_field_type = "STRING"
 
                 db_creation_field_info.append(f"{field_name} {kuzu_field_type}")
 
@@ -232,28 +247,41 @@ class KuzuEngine(GraphEngineBase):
                     + creation_string
                 )
 
-        for rel_type, rel in relationships.items():
+        for rel_type, rel_type_data in relationships.items():
             db_rel_creation_field_info = []
 
-            rel_class = rel["rel_class"]
+            rel_class = rel_type_data.relationship_class
+
+            # skip relationships which don't have concrete source / target nodes
             try:
-                source_label = rel["source_class"].__primarylabel__
-                target_label = rel["target_class"].__primarylabel__
+                source_label = rel_type_data.source_class.__primarylabel__
+                target_label = rel_type_data.target_class.__primarylabel__
+
             except AttributeError:
+                warnings.warn(
+                    f"Kuzu schema will not support {rel_type}. Relationship has a source or target with no primary label."
+                )
                 continue
 
             for field_name, model_field in rel_class.model_fields.items():
                 if field_name in ["source", "target"]:
                     continue
 
-                field_types = set()
+                field_representation = type_mapping.representation
 
-                type_mapping = extract_type_mapping(
-                    model_field.annotation, show_optional=False
-                )
-                field_types.add(type_mapping)
+                try:
+                    kuzu_field_type = self._kuzu_type_mappings[field_representation]
 
-                kuzu_field_type = self._kuzu_type_mappings[field_types.pop()]
+                except KeyError:
+                    logger.warn(
+                        f"No defined Kuzu type mapping for {field_representation}, using STRING"
+                    )
+
+                    if "List" in field_representation:
+                        kuzu_field_type = "STRING[]"
+
+                    else:
+                        kuzu_field_type = "STRING"
 
                 db_rel_creation_field_info.append(f"{field_name} {kuzu_field_type}")
 
@@ -546,3 +574,20 @@ class KuzuEngine(GraphEngineBase):
         )
 
         return result.nodes
+
+
+class KuzuConfig(GraphEngineConfig):
+    engine: ClassVar[type[KuzuEngine]] = KuzuEngine
+    path: Path
+    nodes: Optional[dict] = None
+    relationships: Optional[dict] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: Any):
+        load_dotenv()
+
+        if data.get("path") is None:
+            data["path"] = os.getenv("KUZU_DB")
+
+        return data

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import os
+from typing import TYPE_CHECKING, Any, List, Optional
 from warnings import warn
 
-from .graphengines import Neo4jEngine
-from .graphengines.graphengine import GraphEngineBase
+from .graphengines import KuzuConfig, MemgraphConfig, Neo4jConfig
+from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
 from .result import NeontologyResult
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
+    from .baserelationship import BaseRelationship
 
 logger = logging.getLogger(__name__)
 
@@ -21,17 +23,14 @@ class GraphConnection(object):
 
     def __new__(
         cls,
-        config: Optional[dict] = None,
-        engine: Optional[type[GraphEngineBase]] = None,
+        config: Optional[GraphEngineConfig] = None,
     ) -> "GraphConnection":
         """Make sure we only have a single connection to the GraphDatabase.
 
         This connection then gets used by all instances.
 
         Args:
-            neo4j_uri (Optional[str], optional): Neo4j URI to connect to. Defaults to None.
-            neo4j_username (Optional[str], optional): Neo4j username. Defaults to None.
-            neo4j_password (Optional[str], optional): Neo4j password. Defaults to None.
+            config: GraphEngineConfig to setup the desired GraphEngine
 
         Returns:
             GraphConnection: Instance of the connection
@@ -42,13 +41,14 @@ class GraphConnection(object):
 
             if GraphConnection._instance:
                 try:
-                    GraphConnection._instance.engine = engine(config)  # type: ignore[misc]
+                    GraphConnection._instance.engine = config.engine(config)  # type: ignore[misc]
 
-                except Exception:
+                except Exception as exc:
                     GraphConnection._instance = None
+
                     raise RuntimeError(
-                        "Error: connection not established. Have you run init_neontology?"
-                    )
+                        f"Error: connection not established. Have you run init_neontology? Underlying exception: {type(exc).__name__}"
+                    ) from exc
 
                 # capture all currently defined types of node and relationship
                 from .utils import get_node_types, get_rels_by_type
@@ -63,8 +63,7 @@ class GraphConnection(object):
 
     def __init__(
         self,
-        config: dict = {},
-        engine: Optional[type[GraphEngineBase]] = None,
+        config: Optional[GraphEngineConfig] = None,
     ) -> None:
         if self._instance:
             self.engine: GraphEngineBase = self._instance.engine
@@ -76,7 +75,8 @@ class GraphConnection(object):
 
     @classmethod
     def change_engine(
-        cls, config: Dict[str, Any], engine: type[GraphEngineBase]
+        cls,
+        config: GraphEngineConfig,
     ) -> None:
         if not cls._instance:
             raise RuntimeError(
@@ -84,7 +84,7 @@ class GraphConnection(object):
             )
 
         cls._instance.engine.close_connection()
-        cls._instance.engine = engine(config)
+        cls._instance.engine = config.engine(config)
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         return self.engine.evaluate_query_single(cypher, params)
@@ -97,6 +97,7 @@ class GraphConnection(object):
         relationship_classes: dict = {},
         refresh_classes: bool = True,
     ) -> NeontologyResult:
+
         if refresh_classes is True:
             from .utils import get_node_types, get_rels_by_type
 
@@ -132,6 +133,14 @@ class GraphConnection(object):
     ) -> List["BaseNode"]:
         return self.engine.match_nodes(node_class, limit, skip)
 
+    def match_relationships(
+        self,
+        relationship_class: type["BaseRelationship"],
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+    ) -> List["BaseRelationship"]:
+        return self.engine.match_relationships(relationship_class, limit, skip)
+
     def delete_nodes(self, label: str, pp_key: str, pp_values: list) -> None:
         self.engine.delete_nodes(label, pp_key, pp_values)
 
@@ -160,13 +169,18 @@ class GraphConnection(object):
 
 
 def init_neontology(
-    config: dict = {},
-    engine: Optional[type[GraphEngineBase]] = Neo4jEngine,
+    config: Optional[GraphEngineConfig] = None,
     neo4j_uri: Optional[str] = None,
     neo4j_username: Optional[str] = None,
     neo4j_password: Optional[str] = None,
 ) -> None:
     """Initialise neontology."""
+
+    graph_engines = {
+        "NEO4J": Neo4jConfig,
+        "MEMGRAPH": MemgraphConfig,
+        "KUZU": KuzuConfig,
+    }
 
     if neo4j_uri or neo4j_username or neo4j_password:
         warn(
@@ -178,11 +192,33 @@ def init_neontology(
             stacklevel=2,
         )
 
-        config = {
-            "neo4j_uri": neo4j_uri,
-            "neo4j_username": neo4j_username,
-            "neo4j_password": neo4j_password,
-        }
+        neo4j_config = {}
 
-    GraphConnection(config, engine)
+        if neo4j_uri:
+            neo4j_config["uri"] = neo4j_uri
+
+        if neo4j_username:
+            neo4j_config["username"] = neo4j_username
+
+        if neo4j_password:
+            neo4j_config["password"] = neo4j_password
+
+        config = Neo4jConfig(**neo4j_config)
+
+    if config is None:
+        graph_engine = os.getenv("NEONTOLOGY_ENGINE")
+
+        if graph_engine:
+            logger.info(
+                f"No GraphConfig provided, using default based on specified engine: {graph_engine}."
+            )
+            config = graph_engines[graph_engine]()
+
+        else:
+            logger.info(
+                "No GraphConfig provided and no Graph Engine specified, using Neo4j."
+            )
+            config = Neo4jConfig()
+
+    GraphConnection(config)
     logger.info("Neontology initialized.")

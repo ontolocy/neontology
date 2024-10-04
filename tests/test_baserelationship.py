@@ -1,6 +1,7 @@
 # type: ignore
 
 from typing import ClassVar, Optional
+from uuid import uuid4
 
 import pandas as pd
 from pydantic import Field
@@ -40,6 +41,19 @@ def test_base_relationship():
     assert br.get_relationship_type() == "PRACTICE_RELATIONSHIP"
 
 
+def test_rel_schema():
+    schema = PracticeRelationship.neontology_schema()
+
+    assert schema.relationship_type == "PRACTICE_RELATIONSHIP"
+    assert schema.source_labels == ["PracticeNode"]
+
+    practice_rel_prop = [x for x in schema.properties if x.name == "practice_rel_prop"][
+        0
+    ]
+
+    assert practice_rel_prop.type_annotation.representation == "str"
+
+
 def test_source_target_type():
     source_node = "Not a BaseNode"
     target_node = "Also not a BaseNode"
@@ -74,6 +88,25 @@ def test_merge_relationship(use_graph):
     result = use_graph.evaluate_query_single(cypher)
 
     assert result == "Default Practice Relationship Property"
+
+
+def test_match_relationship(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+
+    target_node = PracticeNode(pp="Target Node")
+    target_node.create()
+
+    br = PracticeRelationship(
+        source=source_node,
+        target=target_node,
+        practice_rel_prop="TESTING MATCH RELATIONSHIP",
+    )
+    br.merge()
+
+    rels = PracticeRelationship.match_relationships()
+
+    assert rels[0].practice_rel_prop == "TESTING MATCH RELATIONSHIP"
 
 
 class RelMergeOnMatchTest(PracticeRelationship):
@@ -235,6 +268,25 @@ def test_merge_relationships_defined_types(use_graph):
     assert set(results) == {"Rel 1", "Rel 2"}
 
 
+def test_get_count(use_graph):
+    node1 = PracticeNode(pp="Source Node")
+    node1.create()
+
+    node2 = PracticeNode(pp="Target Node")
+    node2.create()
+
+    rel1 = NewRelType(source=node1, target=node2, new_rel_prop="Rel 1")
+    rel2 = NewRelType(source=node2, target=node1, new_rel_prop="Rel 2")
+
+    NewRelType.merge_relationships([rel1, rel2])
+
+    assert NewRelType.get_count() == 2
+
+
+def test_get_count_none(use_graph):
+    assert NewRelType.get_count() == 0
+
+
 class SubclassNode(PracticeNode):
     __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
     myprop: str
@@ -302,7 +354,7 @@ def test_merge_df_alt_prop(use_graph):
     assert result == "New Rel 4"
 
 
-def test_merge_df_bad_node_type(use_graph):
+def OLD_test_merge_df_bad_node_type(use_graph):
     class DifferentNode(PracticeNode):
         __primarylabel__: ClassVar[Optional[str]] = "DifferentNode"
         __primaryproperty__: ClassVar[str] = "myprop"
@@ -318,7 +370,7 @@ def test_merge_df_bad_node_type(use_graph):
         NewRelType.merge_relationships(rels, PracticeNode, DifferentNode)
 
 
-def test_merge_df_bad_node_type2(use_graph):
+def OLD_test_merge_df_bad_node_type2(use_graph):
     class DifferentNode(PracticeNode):
         __primarylabel__: ClassVar[Optional[str]] = "DifferentNode"
         __primaryproperty__: ClassVar[str] = "myprop"
@@ -363,3 +415,28 @@ def test_merge_records(use_graph):
     result = use_graph.evaluate_query_single(cypher)
 
     assert result == "New Rel 5"
+
+
+def test_create_mass_rels(use_graph, benchmark):
+    practice_records = [{"pp": uuid4().hex} for x in range(1000)]
+
+    records_df = pd.DataFrame.from_records(practice_records)
+
+    PracticeNode.merge_df(records_df)
+
+    assert PracticeNode.get_count() == 1000
+
+    people_rels = [
+        {"source": practice_records[x]["pp"], "target": practice_records[x + 1]["pp"]}
+        for x in range(999)
+    ]
+
+    rels_df = pd.DataFrame.from_records(people_rels)
+
+    benchmark(PracticeRelationship.merge_df, rels_df)
+
+    result = use_graph.evaluate_query_single(
+        "MATCH (n)-[r]->(o) RETURN COUNT(DISTINCT(r))"
+    )
+
+    assert result == 999

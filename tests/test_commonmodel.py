@@ -99,7 +99,7 @@ def test_engine_dict(field_type, python_value, neo4j_values, use_graph):
 
     testmodel = TestModel(test_prop=python_value)
 
-    test_prop_result = testmodel.engine_dict()["test_prop"]
+    test_prop_result = testmodel._engine_dict()["test_prop"]
 
     assert test_prop_result in neo4j_values
 
@@ -114,4 +114,4 @@ def test_engine_dict_bad_types(field_type, python_value, use_graph):
     testmodel = TestModel(test_prop=python_value)
 
     with pytest.raises(TypeError):
-        testmodel.engine_dict()
+        testmodel._engine_dict()

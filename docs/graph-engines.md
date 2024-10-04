@@ -5,6 +5,64 @@ By default, Neontology is set up to work with a Neo4j backend. However, it can a
 !!! EXPERIMENTAL
     Support for Memgraph and Kuzu is still experimental so may change in the future.
 
+## Graph Configs
+
+The easiest way to start is to pass a GraphConfig object to init_neontology to set up the backend appropriately. You can set config variables explicitly, or using environment variables.
+
+If you don't explicitly provide a GraphConfig, neontology will default to Neo4j and look for environment variables for configuration.
+
+### Neo4j
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import Neo4jConfig
+
+config = Neo4jConfig(
+        uri="bolt://localhost:7687",    # OR use NEO4J_URI environment variable
+        username="neo4j",               # OR use NEO4J_USERNAME environment variable
+        password="<PASSWORD>"           # OR use NEO4J_PASSWORD environment variable
+    )
+
+init_neontology(config)
+
+gc = GraphConnection()
+gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
+```
+
+### Memgraph
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import MemgraphConfig
+
+config = MemgraphConfig(
+        uri="bolt://localhost:7687",    # OR use MEMGRAPH_URI environment variable
+        username="memgraphuser",        # OR use MEMGRAPH_USERNAME environment variable
+        password="<PASSWORD>"           # OR use MEMGRAPH_PASSWORD environment variable
+    )
+
+init_neontology(config)
+
+gc = GraphConnection()
+gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
+```
+
+### Kuzu
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import KuzuConfig
+
+config = Neo4jConfig(
+        path="/path/to/kuzu/db",    # OR use KUZU_DB environment variable
+    )
+
+init_neontology(config)
+
+gc = GraphConnection()
+gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
+```
+
 ## Graph Engines and Graph Connections
 
 The typical way of using Neontology is to use the `init_neontology` function to initialize the connection to a database and then use the `GraphConnection` class to interact with the graph database elsewhere in your code. Behind the scenes, `GraphConnection` uses a `GraphEngine` for that database connection and you can also use a `GraphEngine` directly.
