@@ -1,16 +1,11 @@
+import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Dict, Hashable, List, Optional, Type, TypeVar
-import itertools
+from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar
 
 import numpy as np
 import pandas as pd
-from pydantic import (
-    BaseModel,
-    PrivateAttr,
-    ValidationError,
-    model_validator,
-)
+from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
 
 from neontology.graphconnection import GraphConnection
 
@@ -187,7 +182,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         )
 
         for node_clases, common_rels in grouped_rels:
-
             src_class = node_clases[0]
             tgt_class = node_clases[1]
 

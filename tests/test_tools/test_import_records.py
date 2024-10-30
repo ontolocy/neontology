@@ -49,7 +49,7 @@ records_raw = {
             "import_id": UUID("78fcd953-1d0d-47ae-871c-670a0a7a7406"),
         },
     ],
-    "links": [
+    "edges": [
         {
             "source": "Bob",
             "target": "Alice",
@@ -71,7 +71,7 @@ def test_export_import(use_graph):
 
     import_data = {
         "nodes": [archy.neontology_dump(), betty.neontology_dump()],
-        "links": [bobalicerel.neontology_dump()],
+        "edges": [bobalicerel.neontology_dump()],
     }
 
     import_records([import_data])

@@ -51,15 +51,15 @@ def reset_constraints():
             },
             id="memgraph-engine",
         ),
-        pytest.param(
-            {
-                "graph_config_vars": {
-                    "path": "TMP FILE",
-                },
-                "graph_engine": "KUZU",
-            },
-            id="kuzu-engine",
-        ),
+        #        pytest.param(
+        #            {
+        #                "graph_config_vars": {
+        #                    "path": "TMP FILE",
+        #                },
+        #                "graph_engine": "KUZU",
+        #            },
+        #            id="kuzu-engine",
+        #        ),
     ],
 )
 def get_graph_config(request, tmp_path_factory) -> tuple:

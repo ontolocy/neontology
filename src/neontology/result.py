@@ -9,34 +9,27 @@ class NeontologyResult(BaseModel):
     records: list
     nodes: list
     relationships: list
+    paths: list
 
     @computed_field  # type: ignore[misc]
     @property
     def node_link_data(self) -> dict:
         nodes = [
             {
-                "id": x.get_pp(),
-                "label": x.__primarylabel__,
-                "name": str(x),
+                **x.neontology_dump(),
+                **{
+                    "__pp__": x.get_pp(),
+                    "__str__": str(x),
+                },
             }
             for x in self.nodes
         ]
 
-        links = [
-            {
-                "source": x.source.get_pp(),
-                "target": x.target.get_pp(),
-                "link_label": x.__relationshiptype__,
-            }
-            for x in self.relationships
-        ]
+        links = [x.neontology_dump() for x in self.relationships]
 
         unique_nodes = list({frozenset(item.items()): item for item in nodes}.values())
         unique_links = list({frozenset(item.items()): item for item in links}.values())
-        data = {
-            "nodes": unique_nodes,
-            "links": unique_links,
-        }
+        data = {"nodes": unique_nodes, "edges": unique_links, "directed": True}
 
         return data
 
@@ -44,7 +37,7 @@ class NeontologyResult(BaseModel):
         nodes = [x.neontology_dump() for x in self.nodes]
         relationships = [x.neontology_dump() for x in self.relationships]
 
-        data = {"nodes": nodes, "links": relationships}
+        data = {"nodes": nodes, "edges": relationships}
 
         return data
 
@@ -54,6 +47,6 @@ class NeontologyResult(BaseModel):
             json.loads(x.neontology_dump_json()) for x in self.relationships
         ]
 
-        data = {"nodes": nodes, "links": relationships}
+        data = {"nodes": nodes, "edges": relationships}
 
         return json.dumps(data)

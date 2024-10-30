@@ -117,7 +117,7 @@ def test_evaluate_query_empty(use_graph):
     assert result.records == []
     assert result.nodes == []
     assert result.relationships == []
-    assert result.node_link_data == {"links": [], "nodes": []}
+    assert result.node_link_data == {"edges": [], "nodes": [], "directed": True}
 
 
 def test_evaluate_query_records(use_graph):
@@ -190,6 +190,35 @@ def test_evaluate_query_relationships(use_graph):
     assert result.relationships[0].__relationshiptype__ == "PRACTICE_RELATIONSHIP_GC"
     assert result.relationships[0].source.pp == "foo"
     assert result.relationships[0].target.pp == "bar"
+
+
+def test_evaluate_query_paths(use_graph):
+    foo = PracticeNodeGC(pp="foo")
+    bar = PracticeNodeGC(pp="bar")
+    baz = PracticeNodeGC(pp="baz")
+    rel1 = PracticeRelationshipGC(source=foo, target=bar)
+    rel2 = PracticeRelationshipGC(source=bar, target=baz)
+
+    foo.merge()
+    bar.merge()
+    baz.merge()
+    rel1.merge()
+    rel2.merge()
+
+    cypher = "MATCH p = (n)-[r]->(o)-[r1]->(o2) RETURN *"
+
+    gc = GraphConnection()
+    result = gc.evaluate_query(cypher)
+
+    for entry in result.records_raw:
+        print(entry)
+
+    # print(result)
+
+    print(result.paths)
+
+    assert result.paths[0][0].source.get_pp() == "foo"
+    assert result.paths[0][1].target.get_pp() == "baz"
 
 
 def test_evaluate_query_nodes_records_simple(use_graph):

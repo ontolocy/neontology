@@ -1,9 +1,7 @@
-from abc import ABC
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
-from warnings import warn
+from typing import Any, Dict, List, Set
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
+from pydantic_core import PydanticCustomError
 
 from .graphconnection import GraphConnection
 
@@ -14,9 +12,6 @@ class CommonModel(BaseModel):
         extra="forbid",
         arbitrary_types_allowed=True,
     )
-
-    created: Optional[datetime] = None
-    merged: Optional[datetime] = None
 
     _set_on_match: List[str] = PrivateAttr()
     _set_on_create: List[str] = PrivateAttr()
@@ -89,18 +84,22 @@ class CommonModel(BaseModel):
     # validators
     #
 
-    @field_validator("merged", "created")
-    def deprecated_merged_created(cls, value: Optional[datetime]) -> Optional[datetime]:
+    @model_validator(mode="before")
+    @classmethod
+    def deprecated_merged_created(cls, data: Any) -> Any:
         """Neontology v0 and v1 included and auto-populated this property.
-        This feature has now been removed, but the properties will be
+        Flag a warning whe
             temporarily supported/deprecated before being removed.
         """
 
-        if value is None:
-            return None
-        else:
-            warn(
-                "Native neontology support for 'merged' and 'created' properties is deprecated.",
-                DeprecationWarning,
+        if ("created" in data and "created" not in cls.model_fields) or (
+            "merged" in data and "merged" not in cls.model_fields
+        ):
+            raise PydanticCustomError(
+                "created_or_merged_fields",
+                (
+                    "Native neontology support for 'merged' and 'created' properties has been removed."
+                    " Consider adding these fields to your model(s) and read the docs for further info"
+                ),
             )
-            return value
+        return data

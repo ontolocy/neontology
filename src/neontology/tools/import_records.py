@@ -152,7 +152,8 @@ def _import_relationships(
     for record in input_records:
         rel_type = record.relationship_type
 
-        # when we merge relationship records, we pass in target prop, source label and target label
+        # when we merge relationship records, we pass in target prop and source prop
+        # we also need to hydrate based on the given source and target labels
         # therefore we need to group together records which share those properties
         mapped_records[rel_type][record.target_prop][record.source_label][
             record.target_label
@@ -164,9 +165,7 @@ def _import_relationships(
                 source_label,
                 rel_records_by_target_label,
             ) in rel_records_by_source_label.items():
-
                 for target_label, rel_entries in rel_records_by_target_label.items():
-
                     if check_unmatched is True:
                         for rel_entry in rel_entries:
                             gc = GraphConnection()
@@ -279,14 +278,14 @@ def _prepare_records(input_records: Union[List[Dict[str, Any]], Dict[str, Any]])
 
     if isinstance(input_records, dict):
         # handle the situation where we've just been passed a single record
-        if "nodes" not in input_records and "links" not in input_records:
+        if "nodes" not in input_records and "edges" not in input_records:
             raw_records = [input_records]
 
         # handle the situation where we've got 'link data'
         # which consists of node records and link/relationship records
         else:
             raw_records = input_records.get("nodes", [])
-            raw_records += input_records.get("links", [])
+            raw_records += input_records.get("edges", [])
 
     else:
         raw_records = input_records.copy()

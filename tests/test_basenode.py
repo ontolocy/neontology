@@ -2,7 +2,6 @@
 from typing import ClassVar, Optional, List
 from datetime import datetime
 from uuid import UUID, uuid4
-from random import randint
 
 import pandas as pd
 from pydantic import Field, field_validator, ValidationInfo, field_serializer
@@ -77,7 +76,7 @@ def test_get_merge_parameters():
     tn = PracticeNode(pp="Some Value")
 
     assert tn._get_merge_parameters() == {
-        "always_set": {"pp": "Some Value", "created": None, "merged": None},
+        "always_set": {"pp": "Some Value"},
         "pp": "Some Value",
         "set_on_create": {},
         "set_on_match": {},
@@ -131,12 +130,13 @@ def test_create_if_exists(use_graph):
 
     # other DB's only raise an error if a constraint is explicitly set
     else:
-
         tn.create()
 
-        nodes = tn.match_nodes()
+        node_count = use_graph.evaluate_query_single(
+            "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
+        )
 
-        assert len(nodes) == 2
+        assert node_count == 2
 
 
 def test_create_multiple_if_exists(use_graph):
@@ -165,27 +165,11 @@ def test_create_multiple_if_exists(use_graph):
     else:
         PracticeNode.create_nodes([tn])
 
-        nodes = tn.match_nodes()
+        node_count = use_graph.evaluate_query_single(
+            "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
+        )
 
-        assert len(nodes) == 2
-
-
-def test_create_dated(use_graph):
-    tn = PracticeNodeDated(pp="Test Node")
-
-    tn.create()
-
-    cypher = """
-    MATCH (n:PracticeNodeDated)
-    WHERE n.pp = 'Test Node'
-    RETURN n
-    """
-
-    result = use_graph.evaluate_query(cypher)
-
-    assert result.nodes[0].__primarylabel__ == "PracticeNodeDated"
-
-    assert result.nodes[0].created == result.nodes[0].merged
+        assert node_count == 2
 
 
 def test_no_primary_label():
@@ -405,14 +389,14 @@ def test_creation_datetime(use_graph):
 
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
-    bn = PracticeNodeDated(pp="Test Node", created=my_datetime)
+    bn = PracticeNodeDated(pp="Test Node", test_created=my_datetime)
 
     bn.create()
 
     cypher = """
     MATCH (n:PracticeNodeDated)
     WHERE n.pp = 'Test Node'
-    RETURN n.created.year
+    RETURN n.test_created.year
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -932,8 +916,10 @@ def test_related_nodes(use_graph):
 
     alice_rels = alice.get_related()
 
-    assert len(alice_rels.nodes) == 1
-    assert alice_rels.nodes[0].name == "Bob"
+    related_nodes = [x for x in alice_rels.nodes if x.get_pp() != alice.get_pp()]
+
+    assert len(related_nodes) == 1
+    assert related_nodes[0].name == "Bob"
 
     bobs_followers = bob.get_related(
         relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
@@ -942,13 +928,15 @@ def test_related_nodes(use_graph):
         relationship_properties={"follow_tag": "test-tag"},
     )
 
-    assert len(bobs_followers.nodes) == 1
+    assert len(bobs_followers.nodes) == 2  # this will include bob himself
     assert bobs_followers.nodes[0].name == "Alice"
 
     bobs_rels = bob.get_related(incoming=True, distinct=True)
 
-    assert len(bobs_rels.nodes) == 1
+    assert len(bobs_rels.nodes) == 2
     assert bobs_rels.nodes[0].name == "Alice"
+
+    assert len(bobs_rels.relationships) == 2
 
 
 def test_related_nodes_unmerged(use_graph):

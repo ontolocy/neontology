@@ -3,7 +3,6 @@ import json
 import warnings
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
-
 import numpy as np
 import pandas as pd
 from pydantic import ValidationError, model_validator
@@ -89,6 +88,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             raise NotImplementedError(
                 "Nodes to be used in the graph must define a primary label."
             )
+
+    def __str__(self) -> str:
+        return str(self.get_pp())
 
     def _get_merge_parameters(self) -> Dict[str, Any]:
         """
@@ -434,7 +436,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             )
 
         else:
-            rel_type_match = ""
+            rel_type_match = "r"
 
         if relationship_properties:
             rel_prop_match = (
@@ -484,7 +486,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         query = f"""
         MATCH (#ThisNode){in_dir}[{rel_type_match}{rel_depth} {rel_prop_match}]{out_dir}({target})
-        RETURN {return_distinct} o
+        RETURN {return_distinct} o, r, ThisNode
         """
 
         if skip:

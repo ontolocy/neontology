@@ -38,7 +38,6 @@ class GraphEngineBase:
 
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:
-
         if isinstance(value, dict):
             raise TypeError("Neontology doesn't support dict types for properties.")
 

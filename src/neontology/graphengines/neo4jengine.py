@@ -8,8 +8,8 @@ from neo4j import GraphDatabase
 from neo4j import Record as Neo4jRecord
 from neo4j import Result as Neo4jResult
 from neo4j.graph import Node as Neo4jNode
-from neo4j.graph import Relationship as Neo4jRelationship
 from neo4j.graph import Path as Neo4jPath
+from neo4j.graph import Relationship as Neo4jRelationship
 from neo4j.time import Date as Neo4jDate
 from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Time as Neo4jTime
@@ -119,7 +119,7 @@ def neo4j_records_to_neontology_records(
     new_records = []
 
     for record in records:
-        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}}
+        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
 
         for key, entry in record.items():
             if isinstance(entry, Neo4jNode):
@@ -129,7 +129,6 @@ def neo4j_records_to_neontology_records(
                     new_record["nodes"][key] = neontology_node
 
             elif isinstance(entry, Neo4jRelationship):
-
                 neontology_rel = neo4j_relationship_to_neontology_rel(
                     entry, node_classes, rel_classes
                 )
@@ -137,16 +136,33 @@ def neo4j_records_to_neontology_records(
                 if neontology_rel:
                     new_record["relationships"][key] = neontology_rel
 
+            elif isinstance(entry, Neo4jPath):
+                entry_path = []
+                for step in entry:
+                    step_rel = neo4j_relationship_to_neontology_rel(
+                        step, node_classes, rel_classes
+                    )
+                    entry_path.append(step_rel)
+                if entry_path:
+                    new_record["paths"][key] = entry_path
+
         new_records.append(new_record)
 
     nodes_list_of_lists = [x["nodes"].values() for x in new_records]
 
     nodes = list(itertools.chain.from_iterable(nodes_list_of_lists))
 
-    nodes_list_of_lists = [x["relationships"].values() for x in new_records]
-    rels = list(itertools.chain.from_iterable(nodes_list_of_lists))
+    nodes_map = {f"{x.__primarylabel__}:{x.get_pp()}": x for x in nodes}
 
-    return new_records, nodes, rels
+    unique_nodes = list(nodes_map.values())
+
+    rels_list_of_lists = [x["relationships"].values() for x in new_records]
+    rels = list(itertools.chain.from_iterable(rels_list_of_lists))
+
+    paths_list_of_lists = [x["paths"].values() for x in new_records]
+    paths = list(itertools.chain.from_iterable(paths_list_of_lists))
+
+    return new_records, unique_nodes, rels, paths
 
 
 class Neo4jEngine(GraphEngineBase):
@@ -185,7 +201,7 @@ class Neo4jEngine(GraphEngineBase):
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
-        neontology_records, nodes, rels = neo4j_records_to_neontology_records(
+        neontology_records, nodes, rels, paths = neo4j_records_to_neontology_records(
             neo4j_records, node_classes, relationship_classes
         )
 
@@ -194,6 +210,7 @@ class Neo4jEngine(GraphEngineBase):
             records=neontology_records,
             nodes=nodes,
             relationships=rels,
+            paths=paths,
         )
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:

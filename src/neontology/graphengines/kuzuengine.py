@@ -141,7 +141,10 @@ def kuzu_results_to_neontology_records(
         record = {"nodes": record_nodes, "relationships": record_rels}
         result_records.append(record)
 
-    return result_records, list(all_nodes.values()), all_rels
+    # kuzu engine doesn't yet support paths
+    paths = []
+
+    return result_records, list(all_nodes.values()), all_rels, paths
 
 
 class KuzuEngine(GraphEngineBase):
@@ -212,7 +215,6 @@ class KuzuEngine(GraphEngineBase):
             primary_key = node_type.__primaryproperty__
 
             for field_name, model_field in node_type.model_fields.items():
-
                 type_mapping = extract_type_mapping(
                     model_field.annotation, show_optional=False
                 )
@@ -321,7 +323,7 @@ class KuzuEngine(GraphEngineBase):
 
         result_df = result.get_as_df()
 
-        neontology_records, nodes, rels = kuzu_results_to_neontology_records(
+        neontology_records, nodes, rels, paths = kuzu_results_to_neontology_records(
             result, node_classes, relationship_classes
         )
 
@@ -330,6 +332,7 @@ class KuzuEngine(GraphEngineBase):
             records=neontology_records,
             nodes=nodes,
             relationships=rels,
+            paths=paths,
         )
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:

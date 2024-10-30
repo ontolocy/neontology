@@ -47,7 +47,10 @@ class GraphConnection(object):
                     GraphConnection._instance = None
 
                     raise RuntimeError(
-                        f"Error: connection not established. Have you run init_neontology? Underlying exception: {type(exc).__name__}"
+                        (
+                            "Error: connection not established. Have you run init_neontology?"
+                            f" Underlying exception: {type(exc).__name__}"
+                        )
                     ) from exc
 
                 # capture all currently defined types of node and relationship
@@ -97,7 +100,6 @@ class GraphConnection(object):
         relationship_classes: dict = {},
         refresh_classes: bool = True,
     ) -> NeontologyResult:
-
         if refresh_classes is True:
             from .utils import get_node_types, get_rels_by_type
 
@@ -168,12 +170,7 @@ class GraphConnection(object):
         self.engine.close_connection()
 
 
-def init_neontology(
-    config: Optional[GraphEngineConfig] = None,
-    neo4j_uri: Optional[str] = None,
-    neo4j_username: Optional[str] = None,
-    neo4j_password: Optional[str] = None,
-) -> None:
+def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> None:
     """Initialise neontology."""
 
     graph_engines = {
@@ -182,7 +179,11 @@ def init_neontology(
         "KUZU": KuzuConfig,
     }
 
-    if neo4j_uri or neo4j_username or neo4j_password:
+    if (
+        "neo4j_uri" in kwargs
+        or "neo4j_username" in kwargs
+        or "neo4j_password" in kwargs
+    ):
         warn(
             (
                 "Neo4j keyword arguments in init_neontology are being deprecated "
@@ -194,14 +195,14 @@ def init_neontology(
 
         neo4j_config = {}
 
-        if neo4j_uri:
-            neo4j_config["uri"] = neo4j_uri
+        if kwargs.get("neo4j_uri"):
+            neo4j_config["uri"] = kwargs.get("neo4j_uri")
 
-        if neo4j_username:
-            neo4j_config["username"] = neo4j_username
+        if kwargs.get("neo4j_username"):
+            neo4j_config["username"] = kwargs.get("neo4j_username")
 
-        if neo4j_password:
-            neo4j_config["password"] = neo4j_password
+        if kwargs.get("neo4j_password"):
+            neo4j_config["password"] = kwargs.get("neo4j_password")
 
         config = Neo4jConfig(**neo4j_config)
 

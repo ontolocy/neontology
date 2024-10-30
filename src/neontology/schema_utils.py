@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, List, Union, get_args, get_origin, Optional
 import enum
 from logging import getLogger
+from typing import Any, List, Optional, Union, get_args, get_origin
+
 from jinja2 import Template
 from pydantic import BaseModel
 
@@ -127,7 +128,6 @@ def extract_type_mapping(
 
     elif get_origin(annotation) == list:
         if len(get_args(annotation)) == 1:
-
             try:
                 # field type is something like typing.List[str]
                 representation = str(annotation).split(".")[1]

@@ -54,7 +54,7 @@ class MemgraphEngine(GraphEngineBase):
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
-        neontology_records, nodes, rels = neo4j_records_to_neontology_records(
+        neontology_records, nodes, rels, paths = neo4j_records_to_neontology_records(
             neo4j_records, node_classes, relationship_classes
         )
 
@@ -63,6 +63,7 @@ class MemgraphEngine(GraphEngineBase):
             records=neontology_records,
             nodes=nodes,
             relationships=rels,
+            paths=paths,
         )
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
