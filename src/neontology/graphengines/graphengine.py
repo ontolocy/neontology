@@ -3,11 +3,14 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
+from pydantic import BaseModel
+
 from ..gql import gql_identifier_adapter, int_adapter
 from ..result import NeontologyResult
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
+    from ..baserelationship import BaseRelationship
 
 
 class GraphEngineBase:
@@ -36,7 +39,7 @@ class GraphEngineBase:
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:
         if isinstance(value, dict):
-            raise TypeError("Neo4j doesn't support dict types for properties.")
+            raise TypeError("Neontology doesn't support dict types for properties.")
 
         elif isinstance(value, (tuple, set)):
             new_value = list(value)
@@ -224,7 +227,7 @@ class GraphEngineBase:
         node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> list:
+    ) -> List["BaseNode"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -257,3 +260,54 @@ class GraphEngineBase:
         )
 
         return result.nodes
+
+    def match_relationships(
+        self,
+        relationship_class: type["BaseRelationship"],
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+    ) -> List["BaseRelationship"]:
+        """Get nodes of this type from the database.
+
+        Run a MATCH cypher query to retrieve any Nodes with the label of this class.
+
+        Args:
+            limit (int, optional): Maximum number of results to return. Defaults to None.
+            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
+
+        Returns:
+            Optional[List[B]]: A list of node instances.
+        """
+
+        from ..utils import get_node_types, get_rels_by_type
+
+        cypher = f"""
+        MATCH (n)-[r:{relationship_class.__relationshiptype__}]->(o)
+        RETURN DISTINCT n, r, o
+        """
+
+        params = {}
+
+        if skip:
+            cypher += " SKIP $skip "
+            params["skip"] = int_adapter.validate_python(skip)
+
+        if limit:
+            cypher += " LIMIT $limit "
+            params["limit"] = int_adapter.validate_python(limit)
+
+        rel_types = get_rels_by_type()
+        node_classes = get_node_types()
+
+        result = self.evaluate_query(
+            cypher,
+            params,
+            node_classes=node_classes,
+            relationship_classes=rel_types,
+        )
+
+        return result.relationships
+
+
+class GraphEngineConfig(BaseModel):
+    engine: ClassVar[type[GraphEngineBase]]

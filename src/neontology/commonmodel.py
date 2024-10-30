@@ -1,22 +1,17 @@
-from abc import ABC
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set
-from warnings import warn
+from typing import Any, Dict, List, Set
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
+from pydantic_core import PydanticCustomError
 
 from .graphconnection import GraphConnection
 
 
-class CommonModel(BaseModel, ABC):
+class CommonModel(BaseModel):
     model_config = ConfigDict(
         validate_assignment=True,
         extra="forbid",
         arbitrary_types_allowed=True,
     )
-
-    created: Optional[datetime] = None
-    merged: Optional[datetime] = None
 
     _set_on_match: List[str] = PrivateAttr()
     _set_on_create: List[str] = PrivateAttr()
@@ -24,13 +19,16 @@ class CommonModel(BaseModel, ABC):
 
     def __init__(self, **data: dict):
         super().__init__(**data)
+        self._set_prop_usage()
 
-        self._set_on_match = self._get_prop_usage("set_on_match")
-        self._set_on_create = self._get_prop_usage("set_on_create")
-        self._always_set = [
+    @classmethod
+    def _set_prop_usage(cls):
+        cls._set_on_match = cls._get_prop_usage("set_on_match")
+        cls._set_on_create = cls._get_prop_usage("set_on_create")
+        cls._always_set = [
             x
-            for x in self.model_dump().keys()
-            if x not in self._set_on_match + self._set_on_create + ["source", "target"]
+            for x in cls.model_fields.keys()
+            if x not in cls._set_on_match + cls._set_on_create + ["source", "target"]
         ]
 
     @classmethod
@@ -54,13 +52,13 @@ class CommonModel(BaseModel, ABC):
             Dict[str, Any]: a dictionary of key/value pairs.
         """
 
-        prop_values = {
-            k: v for k, v in self.engine_dict(exclude=exclude).items() if k in props
-        }
+        # prop_values = {
+        #    k: v for k, v in self._engine_dict(exclude=exclude).items() if k in props
+        # }
 
-        return prop_values
+        return self._engine_dict(exclude=exclude, include=set(props))
 
-    def engine_dict(self, exclude: Set[str] = set(), **kwargs: Any) -> Dict[str, Any]:
+    def _engine_dict(self, exclude: Set[str] = set(), **kwargs: Any) -> Dict[str, Any]:
         """Return a dict made up of only types compatible with the GraphEngine
 
         Returns:
@@ -71,9 +69,14 @@ class CommonModel(BaseModel, ABC):
             exclude_none=True, exclude=exclude, **kwargs
         )
 
-        gc = GraphConnection()
+        # return pydantic_export_dict
 
-        export_dict = gc.engine.export_dict_converter(pydantic_export_dict)
+        try:
+            gc = GraphConnection()
+            export_dict = gc.engine.export_dict_converter(pydantic_export_dict)
+
+        except RuntimeError:
+            export_dict = pydantic_export_dict
 
         return export_dict
 
@@ -81,18 +84,22 @@ class CommonModel(BaseModel, ABC):
     # validators
     #
 
-    @field_validator("merged", "created")
-    def deprecated_merged_created(cls, value: Optional[datetime]) -> Optional[datetime]:
+    @model_validator(mode="before")
+    @classmethod
+    def deprecated_merged_created(cls, data: Any) -> Any:
         """Neontology v0 and v1 included and auto-populated this property.
-        This feature has now been removed, but the properties will be
+        Flag a warning whe
             temporarily supported/deprecated before being removed.
         """
 
-        if value is None:
-            return None
-        else:
-            warn(
-                "Native neontology support for 'merged' and 'created' properties is deprecated.",
-                DeprecationWarning,
+        if ("created" in data and "created" not in cls.model_fields) or (
+            "merged" in data and "merged" not in cls.model_fields
+        ):
+            raise PydanticCustomError(
+                "created_or_merged_fields",
+                (
+                    "Native neontology support for 'merged' and 'created' properties has been removed."
+                    " Consider adding these fields to your model(s) and read the docs for further info"
+                ),
             )
-            return value
+        return data

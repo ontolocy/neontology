@@ -1,6 +1,5 @@
 neo4j>5,<6
-kuzu~=0.4
-pydantic~=2.5
+pydantic~=2.7
 pandas>2,<3
 numpy>1,<2
 python-dotenv>1,<2

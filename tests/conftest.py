@@ -7,7 +7,8 @@ import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graphengines import Neo4jEngine, MemgraphEngine, KuzuEngine
+from neontology.graphengines import Neo4jConfig, MemgraphConfig
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,39 +29,43 @@ def reset_constraints():
 @pytest.fixture(
     scope="session",
     params=[
-        {
-            "graph_config_vars": {
-                "neo4j_uri": "TEST_NEO4J_URI",
-                "neo4j_username": "TEST_NEO4J_USERNAME",
-                "neo4j_password": "TEST_NEO4J_PASSWORD",
+        pytest.param(
+            {
+                "graph_config_vars": {
+                    "uri": "TEST_NEO4J_URI",
+                    "username": "TEST_NEO4J_USERNAME",
+                    "password": "TEST_NEO4J_PASSWORD",
+                },
+                "graph_engine": "NEO4J",
             },
-            "graph_engine": Neo4jEngine,
-        },
-        {
-            "graph_config_vars": {
-                "memgraph_uri": "TEST_MEMGRAPH_URI",
-                "memgraph_username": "TEST_MEMGRAPH_USER",
-                "memgraph_password": "TEST_MEMGRAPH_PASSWORD",
+            id="neo4j-engine",
+        ),
+        pytest.param(
+            {
+                "graph_config_vars": {
+                    "uri": "TEST_MEMGRAPH_URI",
+                    "username": "TEST_MEMGRAPH_USER",
+                    "password": "TEST_MEMGRAPH_PASSWORD",
+                },
+                "graph_engine": "MEMGRAPH",
             },
-            "graph_engine": MemgraphEngine,
-        },
-        {
-            "graph_config_vars": {
-                "kuzu_db": "TMP FILE",
-            },
-            "graph_engine": KuzuEngine,
-        },
+            id="memgraph-engine",
+        ),
     ],
 )
-def graph_db(request, tmp_path_factory):
+def get_graph_config(request, tmp_path_factory) -> tuple:
     load_dotenv()
 
+    graph_engines = {
+        "NEO4J": Neo4jConfig,
+        "MEMGRAPH": MemgraphConfig,
+    }
+
     graph_config_vars = request.param["graph_config_vars"]
-    graph_engine = request.param["graph_engine"]
 
     graph_config = {}
 
-    # build config
+    # build config using environment variables
     for key, value in graph_config_vars.items():
         if value == "TMP FILE":
             file_path = tmp_path_factory.mktemp("graph_db") / f"{key}.pytest"
@@ -72,11 +77,24 @@ def graph_db(request, tmp_path_factory):
             graph_config[key] = os.getenv(value)
             assert graph_config[key] is not None
 
-    init_neontology(graph_config, graph_engine)
+    graph_engine = request.param["graph_engine"]
+
+    config = graph_engines[graph_engine](**graph_config)
+
+    return config
+
+
+@pytest.fixture(
+    scope="session",
+)
+def graph_db(request, tmp_path_factory, get_graph_config):
+    load_dotenv()
+
+    init_neontology(get_graph_config)
 
     gc = GraphConnection()
 
-    gc.change_engine(graph_config, graph_engine)
+    gc.change_engine(get_graph_config)
 
     # confirm we're starting with an empty database
     cypher = """

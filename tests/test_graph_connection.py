@@ -28,12 +28,6 @@ create_test_node_table_cypher = (
 def test_evaluate_query_single(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     create_cypher = """
     CREATE (tn:TestNode {name: "Foo Bar"})
     RETURN tn.name
@@ -47,12 +41,6 @@ def test_evaluate_query_single(use_graph):
 def test_evaluate_query_single_node(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     create_cypher = """
     CREATE (tn:TestNode {name: "Foo Bar"})
     RETURN tn
@@ -65,12 +53,6 @@ def test_evaluate_query_single_node(use_graph):
 
 def test_evaluate_query_single_multiple(use_graph):
     gc = GraphConnection()
-
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
@@ -86,12 +68,6 @@ def test_evaluate_query_single_multiple(use_graph):
 
 def test_evaluate_query_single_collected(use_graph):
     gc = GraphConnection()
-
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
@@ -117,7 +93,7 @@ def test_evaluate_query_empty(use_graph):
     assert result.records == []
     assert result.nodes == []
     assert result.relationships == []
-    assert result.node_link_data == {"links": [], "nodes": []}
+    assert result.node_link_data == {"edges": [], "nodes": [], "directed": True}
 
 
 def test_evaluate_query_records(use_graph):
@@ -192,6 +168,35 @@ def test_evaluate_query_relationships(use_graph):
     assert result.relationships[0].target.pp == "bar"
 
 
+def test_evaluate_query_paths(use_graph):
+    foo = PracticeNodeGC(pp="foo")
+    bar = PracticeNodeGC(pp="bar")
+    baz = PracticeNodeGC(pp="baz")
+    rel1 = PracticeRelationshipGC(source=foo, target=bar)
+    rel2 = PracticeRelationshipGC(source=bar, target=baz)
+
+    foo.merge()
+    bar.merge()
+    baz.merge()
+    rel1.merge()
+    rel2.merge()
+
+    cypher = "MATCH p = (n)-[r]->(o)-[r1]->(o2) RETURN *"
+
+    gc = GraphConnection()
+    result = gc.evaluate_query(cypher)
+
+    for entry in result.records_raw:
+        print(entry)
+
+    # print(result)
+
+    print(result.paths)
+
+    assert result.paths[0][0].source.get_pp() == "foo"
+    assert result.paths[0][1].target.get_pp() == "baz"
+
+
 def test_evaluate_query_nodes_records_simple(use_graph):
     foo = PracticeNodeGC(pp="foo")
     bar = PracticeNodeGC(pp="bar")
@@ -227,12 +232,6 @@ def test_evaluate_query_params(use_graph):
 def test_undefined_label(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
 
@@ -255,10 +254,6 @@ class SpecialTestNodeGC(BaseNode):
 
 
 def test_multiple_primary_labels(use_graph):
-    # kuzu doesn't support multiple labels
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        return
-
     gc = GraphConnection()
 
     create_cypher = """
@@ -283,10 +278,6 @@ def test_multiple_primary_labels(use_graph):
 
 
 def test_warn_on_unexpected_secondary_labels(use_graph):
-    # kuzu doesn't support multiple labels
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        return
-
     gc = GraphConnection()
 
     # create a node which looks like a practice node but has additional labels

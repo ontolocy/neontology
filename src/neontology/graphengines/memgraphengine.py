@@ -1,12 +1,13 @@
 import os
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j import Result as Neo4jResult
+from pydantic import model_validator
 
 from ..result import NeontologyResult
-from .graphengine import GraphEngineBase
+from .graphengine import GraphEngineBase, GraphEngineConfig
 from .neo4jengine import neo4j_records_to_neontology_records
 
 
@@ -18,27 +19,16 @@ class MemgraphEngine(GraphEngineBase):
         Neo4jEngine (_type_): _description_
     """
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: "MemgraphConfig") -> None:
         """Initialise connection to the engine
 
         Args:
-            config (Optional[dict]): _description_
+            config - Takes a MemgraphConfig object.
         """
 
-        # try to load environment variables from .env file
-        load_dotenv()
-
-        memgraph_uri = config.get("memgraph_uri", os.getenv("MEMGRAPH_URI"))
-
-        memgraph_username = config.get("memgraph_username", os.getenv("MEMGRAPH_USER"))
-
-        memgraph_password = config.get(
-            "memgraph_password", os.getenv("MEMGRAPH_PASSWORD")
-        )
-
         self.driver = GraphDatabase.driver(  # type: ignore
-            memgraph_uri,
-            auth=(memgraph_username, memgraph_password),
+            config.uri,
+            auth=(config.username, config.password),
         )
 
     def verify_connection(self) -> bool:
@@ -64,7 +54,7 @@ class MemgraphEngine(GraphEngineBase):
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
-        neontology_records, nodes, rels = neo4j_records_to_neontology_records(
+        neontology_records, nodes, rels, paths = neo4j_records_to_neontology_records(
             neo4j_records, node_classes, relationship_classes
         )
 
@@ -73,6 +63,7 @@ class MemgraphEngine(GraphEngineBase):
             records=neontology_records,
             nodes=nodes,
             relationships=rels,
+            paths=paths,
         )
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
@@ -85,3 +76,26 @@ class MemgraphEngine(GraphEngineBase):
 
         else:
             return None
+
+
+class MemgraphConfig(GraphEngineConfig):
+    engine: ClassVar[type[MemgraphEngine]] = MemgraphEngine
+    uri: str
+    username: str
+    password: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: Any):
+        load_dotenv()
+
+        if data.get("uri") is None:
+            data["uri"] = os.getenv("MEMGRAPH_URI")
+
+        if data.get("username") is None:
+            data["username"] = os.getenv("MEMGRAPH_USERNAME")
+
+        if data.get("password") is None:
+            data["password"] = os.getenv("MEMGRAPH_PASSWORD")
+
+        return data

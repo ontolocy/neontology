@@ -106,7 +106,6 @@ With the above environment variables defined, you can just use `init_neontology(
 Neontology has experimental support for GQL graph databases other than Neo4j:
 
 * Memgraph
-* Kuzu
 
 #### Memgraph Engine
 
@@ -131,25 +130,6 @@ You can also use the following environment variables and just `init_neontology(g
 * `MEMGRAPH_URI`
 * `MEMGRAPH_USER`
 * `MEMGRAPH_PASSWORD`
-
-#### Kuzu Engine
-
-[Kuzu](https://kuzudb.com/) is an embeddable graph database which aims to be like DuckDB for graphs. The database is stored as files on disk, without needing a separate service.
-
-```python
-from neontology.graphengines import KuzuEngine
-
-init_neontology(
-    config = {
-                "kuzu_db": "/path/to/db",
-            },
-    engine = KuzuEngine
-)
-```
-
-You can also use the following environment variables and just `init_neontology(graph_engine=KuzuEngine)`:
-
-* `KUZU_DB`
 
 ## Executing Queries
 

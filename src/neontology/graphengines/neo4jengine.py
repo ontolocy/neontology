@@ -1,32 +1,41 @@
 import itertools
 import os
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j import Record as Neo4jRecord
 from neo4j import Result as Neo4jResult
 from neo4j.graph import Node as Neo4jNode
+from neo4j.graph import Path as Neo4jPath
 from neo4j.graph import Relationship as Neo4jRelationship
 from neo4j.time import Date as Neo4jDate
 from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Time as Neo4jTime
+from pydantic import model_validator
 
 from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
-from .graphengine import GraphEngineBase
+from .graphengine import GraphEngineBase, GraphEngineConfig
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
+    from ..baserelationship import RelationshipTypeData
 
 
 def convert_neo4j_types(input_dict: dict) -> dict:
     output_dict = dict(input_dict)
 
     for key in output_dict:
-        if isinstance(output_dict[key], (Neo4jDateTime, Neo4jDate, Neo4jTime)):
-            output_dict[key] = output_dict[key].to_native()
+        try:
+            new_date = output_dict[key].to_native()
+
+            if isinstance(output_dict[key], (Neo4jDateTime, Neo4jDate, Neo4jTime)):
+                output_dict[key] = new_date
+
+        except AttributeError:
+            pass
 
     return output_dict
 
@@ -62,13 +71,55 @@ def neo4j_node_to_neontology_node(
         return None
 
 
+def neo4j_relationship_to_neontology_rel(
+    neo4j_rel: Neo4jRelationship, node_classes: dict, rel_classes: dict
+):
+    rel_type = neo4j_rel.type
+    rel_type_data = rel_classes[rel_type]
+
+    if not rel_type_data:
+        warnings.warn(
+            (
+                f"Could not find a class for {rel_type} relationship type."
+                " Did you define the class before initializing Neontology?"
+            )
+        )
+        return None
+
+    if (
+        not neo4j_rel.start_node
+        or not neo4j_rel.start_node.labels
+        or not neo4j_rel.end_node
+        or not neo4j_rel.end_node.labels
+    ):
+        warnings.warn(
+            (
+                f"{rel_type} relationship type query did not include nodes."
+                " To get neontology relationships, return source and target "
+                "nodes as part of result."
+            )
+        )
+        return None
+
+    src_node = neo4j_node_to_neontology_node(neo4j_rel.start_node, node_classes)
+    tgt_node = neo4j_node_to_neontology_node(neo4j_rel.end_node, node_classes)
+
+    rel_props = convert_neo4j_types(dict(neo4j_rel))
+    rel_props["source"] = src_node
+    rel_props["target"] = tgt_node
+
+    return rel_type_data.relationship_class(**rel_props)
+
+
 def neo4j_records_to_neontology_records(
-    records: List[Neo4jRecord], node_classes: dict, rel_classes: dict
+    records: List[Neo4jRecord],
+    node_classes: dict,
+    rel_classes: Dict[str, "RelationshipTypeData"],
 ) -> tuple:
     new_records = []
 
     for record in records:
-        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}}
+        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
 
         for key, entry in record.items():
             if isinstance(entry, Neo4jNode):
@@ -78,50 +129,22 @@ def neo4j_records_to_neontology_records(
                     new_record["nodes"][key] = neontology_node
 
             elif isinstance(entry, Neo4jRelationship):
-                rel_type = entry.type
+                neontology_rel = neo4j_relationship_to_neontology_rel(
+                    entry, node_classes, rel_classes
+                )
 
-                rel_dict = rel_classes[rel_type]
+                if neontology_rel:
+                    new_record["relationships"][key] = neontology_rel
 
-                if not rel_dict:
-                    warnings.warn(
-                        (
-                            f"Could not find a class for {rel_type} relationship type."
-                            " Did you define the class before initializing Neontology?"
-                        )
+            elif isinstance(entry, Neo4jPath):
+                entry_path = []
+                for step in entry:
+                    step_rel = neo4j_relationship_to_neontology_rel(
+                        step, node_classes, rel_classes
                     )
-                    continue
-
-                if (
-                    not entry.nodes[0]
-                    or not entry.nodes[1]
-                    or not entry.nodes[0].labels
-                    or not entry.nodes[1].labels
-                ):
-                    warnings.warn(
-                        (
-                            f"{rel_type} relationship type query did not include nodes."
-                            " To get neontology relationships, return source and target "
-                            "nodes as part of result."
-                        )
-                    )
-                    continue
-
-                # src_label = list(entry.nodes[0].labels)[0]
-                # tgt_label = list(entry.nodes[1].labels)[0]
-
-                src_node = neo4j_node_to_neontology_node(entry.nodes[0], node_classes)
-                tgt_node = neo4j_node_to_neontology_node(entry.nodes[1], node_classes)
-
-                # src_node = node_classes[src_label](**dict(entry.nodes[0]))
-                # tgt_node = node_classes[tgt_label](**dict(entry.nodes[1]))
-
-                rel_props = convert_neo4j_types(dict(entry))
-                rel_props["source"] = src_node
-                rel_props["target"] = tgt_node
-
-                rel = rel_dict["rel_class"](**rel_props)
-
-                new_record["relationships"][key] = rel
+                    entry_path.append(step_rel)
+                if entry_path:
+                    new_record["paths"][key] = entry_path
 
         new_records.append(new_record)
 
@@ -129,32 +152,30 @@ def neo4j_records_to_neontology_records(
 
     nodes = list(itertools.chain.from_iterable(nodes_list_of_lists))
 
-    nodes_list_of_lists = [x["relationships"].values() for x in new_records]
-    rels = list(itertools.chain.from_iterable(nodes_list_of_lists))
+    nodes_map = {f"{x.__primarylabel__}:{x.get_pp()}": x for x in nodes}
 
-    return new_records, nodes, rels
+    unique_nodes = list(nodes_map.values())
+
+    rels_list_of_lists = [x["relationships"].values() for x in new_records]
+    rels = list(itertools.chain.from_iterable(rels_list_of_lists))
+
+    paths_list_of_lists = [x["paths"].values() for x in new_records]
+    paths = list(itertools.chain.from_iterable(paths_list_of_lists))
+
+    return new_records, unique_nodes, rels, paths
 
 
 class Neo4jEngine(GraphEngineBase):
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: "Neo4jConfig") -> None:
         """Initialise connection to the engine
 
         Args:
-            config (Optional[dict]): _description_
+            config - Takes a Neo4jConfig object.
         """
 
-        # try to load environment variables from .env file
-        load_dotenv()
-
-        neo4j_uri = config.get("neo4j_uri", os.getenv("NEO4J_URI"))
-
-        neo4j_username = config.get("neo4j_username", os.getenv("NEO4J_USERNAME"))
-
-        neo4j_password = config.get("neo4j_password", os.getenv("NEO4J_PASSWORD"))
-
         self.driver = GraphDatabase.driver(  # type: ignore
-            neo4j_uri,
-            auth=(neo4j_username, neo4j_password),
+            config.uri,
+            auth=(config.username, config.password),
         )
 
     def verify_connection(self) -> bool:
@@ -180,7 +201,7 @@ class Neo4jEngine(GraphEngineBase):
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
-        neontology_records, nodes, rels = neo4j_records_to_neontology_records(
+        neontology_records, nodes, rels, paths = neo4j_records_to_neontology_records(
             neo4j_records, node_classes, relationship_classes
         )
 
@@ -189,6 +210,7 @@ class Neo4jEngine(GraphEngineBase):
             records=neontology_records,
             nodes=nodes,
             relationships=rels,
+            paths=paths,
         )
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
@@ -230,3 +252,26 @@ class Neo4jEngine(GraphEngineBase):
 
         else:
             return []
+
+
+class Neo4jConfig(GraphEngineConfig):
+    engine: ClassVar[type[Neo4jEngine]] = Neo4jEngine
+    uri: str
+    username: str
+    password: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults(cls, data: Any):
+        load_dotenv()
+
+        if data.get("uri") is None:
+            data["uri"] = os.getenv("NEO4J_URI")
+
+        if data.get("username") is None:
+            data["username"] = os.getenv("NEO4J_USERNAME")
+
+        if data.get("password") is None:
+            data["password"] = os.getenv("NEO4J_PASSWORD")
+
+        return data
