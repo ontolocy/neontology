@@ -123,20 +123,13 @@ def test_create_if_exists(use_graph):
 
     assert result.nodes[0].pp == "Test Node"
 
-    # kuzu has primary keys and raises an error if trying to create a duplicate
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        with pytest.raises(RuntimeError):
-            tn.create()
+    tn.create()
 
-    # other DB's only raise an error if a constraint is explicitly set
-    else:
-        tn.create()
+    node_count = use_graph.evaluate_query_single(
+        "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
+    )
 
-        node_count = use_graph.evaluate_query_single(
-            "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
-        )
-
-        assert node_count == 2
+    assert node_count == 2
 
 
 def test_create_multiple_if_exists(use_graph):
@@ -156,20 +149,13 @@ def test_create_multiple_if_exists(use_graph):
 
     assert result.nodes[0].pp == "Test Node"
 
-    # kuzu has primary keys and raises an error if trying to create a duplicate
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        with pytest.raises(RuntimeError):
-            PracticeNode.create_nodes([tn])
+    PracticeNode.create_nodes([tn])
 
-    # other DB's only raise an error if a constraint is explicitly set
-    else:
-        PracticeNode.create_nodes([tn])
+    node_count = use_graph.evaluate_query_single(
+        "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
+    )
 
-        node_count = use_graph.evaluate_query_single(
-            "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
-        )
-
-        assert node_count == 2
+    assert node_count == 2
 
 
 def test_no_primary_label():
@@ -192,10 +178,6 @@ def test_none_primary_label():
 
 
 def test_create_multilabel(use_graph):
-    # Not all engines support multiple labels
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        return
-
     class MultipleLabelNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "PrimaryLabel"
@@ -224,10 +206,6 @@ def test_create_multilabel(use_graph):
 
 
 def test_create_multilabel_inheritance(use_graph):
-    # Not all engines support multiple labels
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        return
-
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -257,10 +235,6 @@ def test_create_multilabel_inheritance(use_graph):
 
 
 def test_create_multilabel_inheritance_multiple(use_graph):
-    # Not all engines support multiple labels
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        return
-
     class Animal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
@@ -302,10 +276,6 @@ def test_create_multilabel_inheritance_multiple(use_graph):
 
 
 def test_merge_defined_label_inherited(use_graph):
-    # Not all engines support multiple labels
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        return
-
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -382,10 +352,6 @@ def test_creation_datetime(use_graph):
     Check we can manually define the created datetime, and then check we can
     query for it using neo4j DateTime type.
     """
-
-    # Not all engines support the same datetime/timestamp operations
-    if use_graph.engine.__class__.__name__ in ["KuzuEngine"]:
-        return
 
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 

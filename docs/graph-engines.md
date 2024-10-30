@@ -1,9 +1,9 @@
 # Graph Engines
 
-By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases, starting with experimental support for Memgraph and Kuzu.
+By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases, starting with experimental support for Memgraph.
 
 !!! EXPERIMENTAL
-    Support for Memgraph and Kuzu is still experimental so may change in the future.
+    Support for Memgraph is still experimental so may change in the future.
 
 ## Graph Configs
 
@@ -47,22 +47,6 @@ gc = GraphConnection()
 gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
 ```
 
-### Kuzu
-
-```python
-from neontology import GraphConnection, init_neontology
-from neontology.graphengines import KuzuConfig
-
-config = Neo4jConfig(
-        path="/path/to/kuzu/db",    # OR use KUZU_DB environment variable
-    )
-
-init_neontology(config)
-
-gc = GraphConnection()
-gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
-```
-
 ## Graph Engines and Graph Connections
 
 The typical way of using Neontology is to use the `init_neontology` function to initialize the connection to a database and then use the `GraphConnection` class to interact with the graph database elsewhere in your code. Behind the scenes, `GraphConnection` uses a `GraphEngine` for that database connection and you can also use a `GraphEngine` directly.
@@ -72,7 +56,7 @@ There are a couple of reasons to use `GraphConnection`:
 1. It maintains a single connection to the database, rather than creating a new connection every time you need to talk to the database.
 2. It provides a uniform interface regardless of the underlying GraphEngine. This means you can easily swap out the backend in the future if you want to use a different graph database.
 
-You can access the underlying `GraphEngine` at `.engine` and you can access the native Python driver for the graph database at `.engine.driver` if you want to use functionality of the official Neo4j (or Kuzu) driver.
+You can access the underlying `GraphEngine` at `.engine` and you can access the native Python driver for the graph database at `.engine.driver` if you want to use functionality of the official Neo4j driver.
 
 ## Neo4j
 
@@ -166,40 +150,3 @@ init_neontology(
 ### Memgraph Driver
 
 Memgraph is compatible with the Neo4j python driver, so works just like the Neo4j driver in this respect.
-
-## Kuzu
-
-[Kuzu](https://kuzudb.com/) is an embeddable graph database which aims to be like DuckDB for graphs. The database is stored as files on disk, without needing a separate service.
-
-```python
-from neontology import init_neontology
-from neontology.graph_engines import KuzuEngine
-
-init_neontology(
-    config={
-                "kuzu_db": "/path/to/db",
-            },
-    engine=KuzuEngine
-)
-```
-
-You can also use the following environment variables and just `init_neontology(graph_engine=KuzuEngine)`:
-
-* `KUZU_DB`
-
-```python
-from neontology import init_neontology
-from neontology.graph_engines import KuzuEngine
-
-init_neontology(
-    engine=KuzuEngine
-)
-```
-
-### Limitations
-
-Neontology support for Kuzu currently has a few limitations compared to working with the Neo4j engine.
-
-* May not support full GQL syntax, or cypher syntax supported by Neo4j
-* Doesn't support multiple labels (`__secondarylabels__`)
-* Relationships must explicitly support only one specific label for source and target nodes

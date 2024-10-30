@@ -5,7 +5,7 @@ import os
 from typing import TYPE_CHECKING, Any, List, Optional
 from warnings import warn
 
-from .graphengines import KuzuConfig, MemgraphConfig, Neo4jConfig
+from .graphengines import MemgraphConfig, Neo4jConfig
 from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
 from .result import NeontologyResult
 
@@ -176,7 +176,6 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
-        "KUZU": KuzuConfig,
     }
 
     if (
@@ -211,7 +210,7 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
 
         if graph_engine:
             logger.info(
-                f"No GraphConfig provided, using default based on specified engine: {graph_engine}."
+                f"No GraphConfig provided, using defaults based on specified engine: {graph_engine}."
             )
             config = graph_engines[graph_engine]()
 

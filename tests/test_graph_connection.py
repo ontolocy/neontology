@@ -28,12 +28,6 @@ create_test_node_table_cypher = (
 def test_evaluate_query_single(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     create_cypher = """
     CREATE (tn:TestNode {name: "Foo Bar"})
     RETURN tn.name
@@ -47,12 +41,6 @@ def test_evaluate_query_single(use_graph):
 def test_evaluate_query_single_node(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     create_cypher = """
     CREATE (tn:TestNode {name: "Foo Bar"})
     RETURN tn
@@ -65,12 +53,6 @@ def test_evaluate_query_single_node(use_graph):
 
 def test_evaluate_query_single_multiple(use_graph):
     gc = GraphConnection()
-
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
@@ -86,12 +68,6 @@ def test_evaluate_query_single_multiple(use_graph):
 
 def test_evaluate_query_single_collected(use_graph):
     gc = GraphConnection()
-
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
@@ -256,12 +232,6 @@ def test_evaluate_query_params(use_graph):
 def test_undefined_label(use_graph):
     gc = GraphConnection()
 
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        try:
-            gc.evaluate_query_single(create_test_node_table_cypher)
-        except RuntimeError:
-            pass
-
     result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
     result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
 
@@ -284,10 +254,6 @@ class SpecialTestNodeGC(BaseNode):
 
 
 def test_multiple_primary_labels(use_graph):
-    # kuzu doesn't support multiple labels
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        return
-
     gc = GraphConnection()
 
     create_cypher = """
@@ -312,10 +278,6 @@ def test_multiple_primary_labels(use_graph):
 
 
 def test_warn_on_unexpected_secondary_labels(use_graph):
-    # kuzu doesn't support multiple labels
-    if use_graph.engine.__class__.__name__ == "KuzuEngine":
-        return
-
     gc = GraphConnection()
 
     # create a node which looks like a practice node but has additional labels

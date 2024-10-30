@@ -4,7 +4,7 @@
 
 ### Features
 
-- Added support for swappable `GraphEngine` backends, starting with Memgraph and Kuzu alongside Neo4j.
+- Added support for swappable `GraphEngine` backends, starting with Memgraph alongside Neo4j.
 - Added support for exploring relationships from Nodes with `@related_nodes`, `@related_property` and `get_related_nodes()`.
 - Added import and export functionality.
 - Added neontology schema methods to nodes and relationships

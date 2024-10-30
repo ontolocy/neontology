@@ -4,7 +4,6 @@ from .basenode import BaseNode, related_nodes, related_property
 from .baserelationship import BaseRelationship
 from .gql import GQLIdentifier, gql_identifier_adapter
 from .graphconnection import GraphConnection, init_neontology
-from .graphengines.kuzuengine import KuzuConfig
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
 from .utils import auto_constrain_neo4j
@@ -27,5 +26,4 @@ __all__ = [
     # Engines
     "Neo4jConfig",
     "MemgraphConfig",
-    "KuzuConfig",
 ]

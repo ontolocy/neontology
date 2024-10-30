@@ -7,7 +7,7 @@ import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graphengines import Neo4jConfig, KuzuConfig, MemgraphConfig
+from neontology.graphengines import Neo4jConfig, MemgraphConfig
 
 
 logger = logging.getLogger(__name__)
@@ -51,15 +51,6 @@ def reset_constraints():
             },
             id="memgraph-engine",
         ),
-        #        pytest.param(
-        #            {
-        #                "graph_config_vars": {
-        #                    "path": "TMP FILE",
-        #                },
-        #                "graph_engine": "KUZU",
-        #            },
-        #            id="kuzu-engine",
-        #        ),
     ],
 )
 def get_graph_config(request, tmp_path_factory) -> tuple:
@@ -68,7 +59,6 @@ def get_graph_config(request, tmp_path_factory) -> tuple:
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
-        "KUZU": KuzuConfig,
     }
 
     graph_config_vars = request.param["graph_config_vars"]
