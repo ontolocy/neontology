@@ -1,7 +1,7 @@
 import json
 from logging import getLogger
 from pathlib import Path
-from typing import List, Optional
+from typing import Generator, List, Optional, Sequence
 
 import yaml
 
@@ -19,7 +19,7 @@ def _identify_filepaths(input_path: str, path_pattern: str) -> List[Path]:
     return list(path.glob(path_pattern))
 
 
-def _batch(iterable, batch_size=1):
+def _batch(iterable: Sequence, batch_size: int = 1) -> Generator:
     full_length = len(iterable)
     for ndx in range(0, full_length, batch_size):
         yield iterable[ndx : min(ndx + batch_size, full_length)]  # noqa: E203
@@ -32,7 +32,7 @@ def import_json(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
-):
+) -> None:
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:
@@ -67,7 +67,7 @@ def import_yaml(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
-):
+) -> None:
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:
@@ -102,7 +102,7 @@ def import_md(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
-):
+) -> None:
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:

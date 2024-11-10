@@ -86,7 +86,7 @@ class MemgraphConfig(GraphEngineConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def populate_defaults(cls, data: Any):
+    def populate_defaults(cls, data: Any) -> Any:
         load_dotenv()
 
         if data.get("uri") is None:

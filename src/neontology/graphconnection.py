@@ -41,7 +41,7 @@ class GraphConnection(object):
 
             if GraphConnection._instance:
                 try:
-                    GraphConnection._instance.engine = config.engine(config)  # type: ignore[misc]
+                    GraphConnection._instance.engine = config.engine(config)  # type: ignore[union-attr,arg-type]
 
                 except Exception as exc:
                     GraphConnection._instance = None

@@ -825,7 +825,6 @@ class AugmentedPersonRelationship(BaseRelationship):
 def test_get_related_node_methods():
     assert set(AugmentedPerson.get_related_node_methods().keys()) == {
         "followers",
-        "get_related",
     }
 
 
@@ -881,6 +880,8 @@ def test_related_nodes(use_graph):
     follows2.merge()
 
     alice_rels = alice.get_related()
+
+    print(alice_rels)
 
     related_nodes = [x for x in alice_rels.nodes if x.get_pp() != alice.get_pp()]
 
@@ -961,7 +962,7 @@ def test_retrieve_nodes_none(use_graph):
 
     followers = bob.followers()
 
-    assert len(followers.nodes) == 0
+    assert len(followers) == 0
 
 
 class ComplexPerson(BaseNode):

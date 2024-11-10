@@ -33,7 +33,7 @@ class NeontologyResult(BaseModel):
 
         return data
 
-    def neontology_dump(self):
+    def neontology_dump(self) -> dict:
         nodes = [x.neontology_dump() for x in self.nodes]
         relationships = [x.neontology_dump() for x in self.relationships]
 
@@ -41,7 +41,7 @@ class NeontologyResult(BaseModel):
 
         return data
 
-    def neontology_dump_json(self):
+    def neontology_dump_json(self) -> str:
         nodes = [json.loads(x.neontology_dump_json()) for x in self.nodes]
         relationships = [
             json.loads(x.neontology_dump_json()) for x in self.relationships

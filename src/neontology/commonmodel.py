@@ -22,7 +22,7 @@ class CommonModel(BaseModel):
         self._set_prop_usage()
 
     @classmethod
-    def _set_prop_usage(cls):
+    def _set_prop_usage(cls) -> None:
         cls._set_on_match = cls._get_prop_usage("set_on_match")
         cls._set_on_create = cls._get_prop_usage("set_on_create")
         cls._always_set = [

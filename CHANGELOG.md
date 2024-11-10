@@ -4,23 +4,24 @@
 
 ### Features
 
-- Added support for swappable `GraphEngine` backends, starting with Memgraph alongside Neo4j.
+- Added support for swappable `GraphEngine` backends, starting with Memgraph alongside Neo4j. [link](/docs/graph-engines.md)
 - Added support for exploring relationships from Nodes with `@related_nodes`, `@related_property` and `get_related_nodes()`.
 - Added import and export functionality.
-- Added neontology schema methods to nodes and relationships
+- Added neontology schema methods to nodes and relationships.
 
 ### Changed
 
-- Dropped support for Python v3.7
-- Changed the function signature for `init_neontology`.
+- Removed default 'merged' and 'created' properties. Users will need to reimplement on custom base nodes / relationships if required. [link](/docs/recipes.md)
+- Changed the function signature for `init_neontology`. [link](/docs/usage.md)
+- Removed some automatic type conversion which may require users to add Pydantic serializers for types not supported natively by their database. [link](/docs/advanced-usage.md)
 - Changed behaviour of `GraphConnection` to more consistently raise an explicit error if the connection isn't established.
 - Renamed `auto_constrain` to `auto_constrain_neo4j`.
 - Renamed `apply_constraints` to `apply_neo4j_constraints`.
-- Trying to create a node with a primary that already exists will raise an exception
-- merge multiple relationships with heterogenous source labels and target labels
+- Support to merge multiple relationships with heterogenous source labels and target labels (removing need to separately specify labels)
 
-### Dependencies
+### Dependencies and Support
 
+- Dropped support for Python v3.7, v3.8 which are both now end of life
 - Bumped Pandas dependency to v2
 
 ## v1.0.0

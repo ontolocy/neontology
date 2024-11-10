@@ -59,13 +59,13 @@ NEO4J_URI="neo4j+s://<database id>.databases.neo4j.io"  # neo4j Aura example
 NEO4J_USERNAME="neo4j"
 NEO4J_PASSWORD="<your password>"
 
-init_neontology(
-    config = {
-        "neo4j_uri": NEO4J_URI,
-        "neo4j_username": NEO4J_USERNAME,
-        "neo4j_password": NEO4J_PASSWORD
-    }
-)   # initialise the connection to the database
+# initialise the connection to the database
+config = Neo4jConfig(
+    uri=NEO4J_URI, 
+    username=NEO4J_USERNAME,
+    password=NEO4J_PASSWORD
+)
+init_neontology(config) 
 ```
 
 ### With a dotenv file
@@ -77,6 +77,12 @@ You can use a `.env` file as below, which should automatically get picked up by 
 NEO4J_URI=neo4j+s://myneo4j.example.com
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=<PASSWORD>
+```
+
+Then you don't need to define a config (if using Neo4j):
+
+```python
+init_neontology()
 ```
 
 ## Creating a node
@@ -134,7 +140,7 @@ Running the above code (full example below) should create the following nodes an
 (Bob:Person)-[:FOLLOWS]->(Alice:Person)-[:FOLLOWS]->(Freddy:Person)-[:FOLLOWS]->(Philipa:Person)
 ```
 
-### Neo4j and Python Sample Code
+### Full Neo4j and Python Sample Code
 
 ```python
 # demo.py
@@ -157,9 +163,17 @@ class FollowsRel(BaseRelationship):
     source: PersonNode
     target: PersonNode
 
-# initialise the connection to the database
-# looks for connection details as environment variables or in a .env file
-init_neontology()   
+NEO4J_URI="neo4j+s://<database id>.databases.neo4j.io"  # neo4j Aura example
+NEO4J_USERNAME="neo4j"
+NEO4J_PASSWORD="<your password>"
+
+# Alternatively, you could use environment variables or a .env file
+config = Neo4jConfig(
+    uri=NEO4J_URI, 
+    username=NEO4J_USERNAME,
+    password=NEO4J_PASSWORD
+)
+init_neontology(config)  
 
 alice = PersonNode(name="Alice", age=40)
 alice.create()

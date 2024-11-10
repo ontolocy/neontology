@@ -17,7 +17,7 @@ pip install neontology
 ```python
 from typing import ClassVar, Optional, List
 import pandas as pd
-from neontology import BaseNode, BaseRelationship, init_neontology
+from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 
 # We define nodes by inheriting from BaseNode
 class PersonNode(BaseNode):
@@ -34,14 +34,13 @@ class FollowsRel(BaseRelationship):
     source: PersonNode
     target: PersonNode
 
-# initialise the connection to the database (default is Neo4j)
-init_neontology(
-    config = {
-        "neo4j_uri": "neo4j+s://mydatabaseid.databases.neo4j.io",
-        "neo4j_username": "neo4j",
-        "neo4j_password": "password"
-    }
-)   
+# initialise the connection to the database
+config = Neo4jConfig(
+    uri="neo4j+s://mydatabaseid.databases.neo4j.io", 
+    username="neo4j",
+    password="<PASSWORD>"
+)
+init_neontology(config) 
 
 # Define a couple of people
 alice = PersonNode(name="Alice", age=40)
