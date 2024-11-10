@@ -26,7 +26,7 @@ First we need to define models for the different types of node we want to store.
 from typing import ClassVar, Optional, List
 
 from fastapi import FastAPI, HTTPException
-from neontology import BaseNode, BaseRelationship, init_neontology
+from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 
 class TeamNode(BaseNode):
     __primaryproperty__: ClassVar[str] = "teamname"
@@ -62,13 +62,20 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
-    init_neontology(
-        init_neontology(
-        neo4j_uri="NEO4J URI HERE",
-        neo4j_username="NEO4J USERNAME HERE",
-        neo4j_password="NEO4J PASSWORD HERE"
-        )
+
+    # here we declare the neo4j connection details explicitly (this can be bad for security)
+    # you could instead define them as environment variables or in a .env file
+    NEO4J_URI="neo4j+s://<database id>.databases.neo4j.io"  # neo4j Aura example
+    NEO4J_USERNAME="neo4j"
+    NEO4J_PASSWORD="<your password>"
+
+    config = Neo4jConfig(
+        uri=NEO4J_URI, 
+        username=NEO4J_USERNAME,
+        password=NEO4J_PASSWORD
     )
+    init_neontology(config)  
+
 
 @app.get("/")
 def read_root():
@@ -171,6 +178,8 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
+    # make sure you've set NEO4J_URI, NEO4J_USERNAME and NEO4J_PASSWORD environment variables
+    # they could be defined in a .env file
     init_neontology()
 
 

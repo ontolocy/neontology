@@ -1,30 +1,5 @@
 # Advanced Usage
 
-## Managing configuration with a .env file
-
-It is generally good practice to avoid storing connection details (and especially passwords) in your source code (and version control). Therefore, Neontology supports the use of .env files (or just normal environment variables) for:
-
-* NEO4J_URI
-* NEO4J_USERNAME
-* NEO4J_PASSWORD
-
-For example:
-
-```txt
-# .env
-NEO4J_URI=neo4j+s://myneo4j.example.com
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=<PASSWORD>
-```
-
-## Automatically apply constraints
-
-With neo4j, we can constrain label/property pairs to be unique and indexed.
-
-Neontology can automatically apply neo4j constraints for all defined nodes using the `auto_constrain` method.
-
-Simply use `auto_constrain()` after defining your models and initialising your connection.
-
 ## Use multiple labels
 
 Sometimes you may want to apply additional labels to nodes, beyond just the primary label. Where this is the case, you can add those labels as a list using the class variable `__secondarylabels__`.
@@ -39,9 +14,141 @@ class ElephantNode(BaseNode):
 ellie = ElephantNode(name="Ellie")
 ```
 
-Note that methods such as `.match` and `auto_constrain` use only the primary label.
+Note that methods such as `.match` use only the primary label.
 
-## Set neo4j properties on match or on create
+## Type Conversion / Serialization
+
+Not all graph databases natively support the same range of types as Python/Pydantic. Therefore, model fields annotated with complex types may need to go through some level of conversion before being written to the database. This can be achieved with Pydantic's [custom serializers](https://docs.pydantic.dev/2.9/concepts/serialization/#custom-serializers).
+
+```
+from pydantic import field_serializer
+from uuid import UUID
+
+class ElephantNode(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Elephant"
+    __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
+    name: str
+    id: UUID
+
+    @field_serializer("id")
+    def serialize_ref_url(self, id: UUID, _info):
+        return str(id)
+```
+
+## Retrieving related nodes and properties with BaseNode methods
+
+The power of GQL comes from the ability to quickly traverse relationships to understand what how a node relates to the rest of the graph. Neontology aims to make this easier by helping you run GQL directly from BaseNode models to find related nodes and properties - even if that involves traversing multiple hops to find what you're looking for.
+
+!!! EXPERIMENTAL
+    Support for these features is still experimental so may change in the future.
+
+### get_related()
+
+BaseNode subclasses have a `get_related` method which can be used to find nodes and relationships which are related to a BaseNode instance.
+
+If no arguments are given, this function will return all nodes with a direct outgoing relationship from the Node. However you can also specify keyword arguments to be more specific about which relationships you care about. For example:
+
+* `relationship_types` - list of one or more relationship types to look for (such as 'FOLLOWS').
+* `target_label` - the label of the target node you want to match on.
+* `incoming` - whether to include incoming relationships.
+* `outgoing` - whether to include outgoing relationships.
+* `limit` - the maximum number of nodes to return.
+
+The return type is a [NeontologyResult object](/queries/#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
+
+### @related_nodes Decorator
+
+If you write a method on a Node, that returns a cyber/GQL string then adding the `@related_nodes` decorator will evaluate the GQL and return any Nodes returned by the query as Neontology Node objects.
+
+If you use `(#ThisNode)`, it will get replaced with the specific node that the method is called from (based on primary label and primary property).
+
+```python
+@related_nodes
+def followers(self):
+    return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN o"
+```
+
+### @related_properties Decorator
+
+This decorator works like above, but instead of returning nodes, it expects the cypher/GQL to return a single object (such as a string, a list or a dict/mapping). Under the hood, it uses `evaluate_query_single`. Again, use `(#ThisNode)` to match on the given Node.
+
+```python
+@property
+@related_property
+def follower_count(self):
+    return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
+```
+
+### Example
+
+We can put this all together to add some handy extra functionality to nodes - for example, making it easy to access followers in a social graph.
+
+```python
+from neontology import BaseNode
+
+class AugmentedPerson(BaseNode):
+    __primaryproperty__: ClassVar[GQLIdentifier] = "name"
+    __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
+
+    name: str
+
+    @related_nodes
+    def followers(self):
+        return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN o"
+
+    @property
+    @related_property
+    def follower_count(self):
+        return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
+
+    @property
+    @related_property
+    def follower_names(self):
+        return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN COLLECT(DISTINCT o.name)"
+
+
+class FollowsRelationship(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "FOLLOWS"
+
+    source: AugmentedPerson
+    target: AugmentedPerson
+
+```
+
+We could then use this like:
+
+```python
+alice = AugmentedPerson(name="Alice")
+alice.merge()
+
+bob = AugmentedPerson(name="Bob")
+bob.merge()
+
+follows = AugmentedPersonRelationship(
+    source=alice, target=bob
+)
+follows.merge()
+
+follows2 = AugmentedPersonRelationship(
+    source=bob, target=alice
+)
+follows2.merge()
+
+# get people Alice follows (this will return Bob)
+alice_rels = alice.get_related_nodes(relationship_types=["FOLLOWS"])
+
+print(bob.follower_count)
+
+# 1
+
+print(alice.follower_names)
+
+# ["Bob"]
+
+```
+
+## Set properties on match or on create
 
 When we run MERGE operations with neo4j, sometimes we want to only alter properties under certain circumstances.
 
@@ -92,36 +199,3 @@ class MyRel(BaseRelationship):
 ```
 
 In this example, where a relationship with a given source and target exists with the same value for 'prop_to_merge_on', the relationship will be overwritten. If a new 'prop_to_merge_on' value is given then a new relationship will be created with that value.
-
-## Type Conversion/Coersion
-
-Neo4j doesn't support the same range of types as Python/Pydantic. Therefore, we do our best to coerce data types to fit into neo4j. However, you may see some data loss when converting between complex data types.
-
-## Executing Advanced Cypher Queries with Python
-
-The focus of Neontology is currently ingesting data rather than providing additional ways to query data. Cypher is an incredibly powerful language for doing that already.
-
-If you want to run plain cypher queries, you can do this using the [Neo4j driver](https://neo4j.com/docs/api/python-driver/current/index.html) which can be accessed on Neontology's GraphConnection object.
-
-The Neo4j driver has many features and different ways of executing queries, but the below recipe shows how we can write and [execute arbitrary queries](https://neo4j.com/docs/api/python-driver/current/api.html#neo4j.Driver.execute_query) with the driver to return data as Python lists / dictionaries. We will use Neo4j's built in support for [map projection](https://neo4j.com/docs/cypher-manual/current/values-and-types/maps/).
-
-```python
-import neo4j
-from neontology import init_neontology, GraphConnection
-
-init_neontology()
-
-gc = GraphConnection()
-
-cypher_query = """
-MATCH (p:Person)
-RETURN COLLECT({name: p.name})
-"""
-
-result = gc.driver.execute_query(cypher_query, result_transformer_=neo4j.Result.single)
-
-print(result)
-
-# [{'name': 'Alice'}, {'name': 'Bob'}]
-
-```

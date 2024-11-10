@@ -1,13 +1,19 @@
+from __future__ import annotations
+
+import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
+from warnings import warn
 
-from dotenv import load_dotenv
-from neo4j import GraphDatabase, Neo4jDriver
-from neo4j import Record as Neo4jRecord
-from neo4j import Result as Neo4jResult
-from neo4j import Transaction as Neo4jTransaction
+from .graphengines import MemgraphConfig, Neo4jConfig
+from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
+from .result import NeontologyResult
 
-from .result import NeontologyResult, neo4j_records_to_neontology_records
+if TYPE_CHECKING:
+    from .basenode import BaseNode
+    from .baserelationship import BaseRelationship
+
+logger = logging.getLogger(__name__)
 
 
 class GraphConnection(object):
@@ -17,18 +23,14 @@ class GraphConnection(object):
 
     def __new__(
         cls,
-        neo4j_uri: Optional[str] = None,
-        neo4j_username: Optional[str] = None,
-        neo4j_password: Optional[str] = None,
+        config: Optional[GraphEngineConfig] = None,
     ) -> "GraphConnection":
         """Make sure we only have a single connection to the GraphDatabase.
 
         This connection then gets used by all instances.
 
         Args:
-            neo4j_uri (Optional[str], optional): Neo4j URI to connect to. Defaults to None.
-            neo4j_username (Optional[str], optional): Neo4j username. Defaults to None.
-            neo4j_password (Optional[str], optional): Neo4j password. Defaults to None.
+            config: GraphEngineConfig to setup the desired GraphEngine
 
         Returns:
             GraphConnection: Instance of the connection
@@ -39,200 +41,184 @@ class GraphConnection(object):
 
             if GraphConnection._instance:
                 try:
-                    driver = GraphConnection._instance.driver = GraphDatabase.driver(  # type: ignore
-                        neo4j_uri, auth=(neo4j_username, neo4j_password)
-                    )
-                    driver.verify_connectivity()
+                    GraphConnection._instance.engine = config.engine(config)  # type: ignore[union-attr,arg-type]
 
-                    from .utils import get_node_types, get_rels_by_type
-
-                    # capture all possible types of node and relationship
-                    cls.global_nodes = get_node_types()
-                    cls.global_rels = get_rels_by_type()
-
-                except Exception as error:
-                    print(
-                        "Error: connection not established. Have you run init_neontology? {}".format(
-                            error
-                        )
-                    )
+                except Exception as exc:
                     GraphConnection._instance = None
+
+                    raise RuntimeError(
+                        (
+                            "Error: connection not established. Have you run init_neontology?"
+                            f" Underlying exception: {type(exc).__name__}"
+                        )
+                    ) from exc
+
+                # capture all currently defined types of node and relationship
+                from .utils import get_node_types, get_rels_by_type
+
+                cls.global_nodes = get_node_types()
+                cls.global_rels = get_rels_by_type()
 
             else:
                 GraphConnection._instance = None
 
         return cls._instance
 
-    def __del__(self) -> None:
-        """Close the driver gracefully when the class gets deleted."""
-
-        self.driver.close()
-
     def __init__(
         self,
-        neo4j_uri: Optional[str] = None,
-        neo4j_username: Optional[str] = None,
-        neo4j_password: Optional[str] = None,
+        config: Optional[GraphEngineConfig] = None,
     ) -> None:
         if self._instance:
-            self.driver: Neo4jDriver = self._instance.driver
+            self.engine: GraphEngineBase = self._instance.engine
 
-    def run_transaction_single(
-        self, tx: Neo4jTransaction, query: str, params: Dict[str, Any]
-    ) -> Optional[Neo4jRecord]:
-        """Run a transaction which is expected to return a single result.
+        if self.engine.verify_connection() is False:
+            raise RuntimeError(
+                "Error: connection not established. Have you run init_neontology?"
+            )
 
-        Args:
-            tx (Neo4jTransaction): Neo4j Transaction object
-            query (str): cypher query to run
-            params (Dict[str, Any]): Parameters to pass to the query
+    @classmethod
+    def change_engine(
+        cls,
+        config: GraphEngineConfig,
+    ) -> None:
+        if not cls._instance:
+            raise RuntimeError(
+                "Error: Can't change the engine without initializing Neontology first."
+            )
 
-        Returns:
-            Optional[Neo4jRecord]: The result
-        """
+        cls._instance.engine.close_connection()
+        cls._instance.engine = config.engine(config)
 
-        return tx.run(query, **params).single()
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+        return self.engine.evaluate_query_single(cypher, params)
 
-    def run_transaction_many(
-        self, tx: Neo4jTransaction, query: str, params: Dict[str, Any]
-    ) -> List[Neo4jRecord]:
-        """Run a transation which is expected to return multiple nodes.
+    def evaluate_query(
+        self,
+        cypher: str,
+        params: dict = {},
+        node_classes: dict = {},
+        relationship_classes: dict = {},
+        refresh_classes: bool = True,
+    ) -> NeontologyResult:
+        if refresh_classes is True:
+            from .utils import get_node_types, get_rels_by_type
 
-        Args:
-            tx (Neo4jTransaction): Neo4j Transaction object
-            query (str): cypher query to run
-            params (Dict[str, Any]): parameters to pass the query
+            # capture all currently defined types of node and relationship
+            self.global_nodes = get_node_types()
+            self.global_rels = get_rels_by_type()
 
-        Returns:
-            List[Neo4jRecord]: a list of the results
-        """
+        if not node_classes:
+            node_classes = self.global_nodes
 
-        return [record for record in tx.run(query, **params)]
+        if not relationship_classes:
+            relationship_classes = self.global_rels
 
-    def cypher_write(self, cypher: str, params: Dict[str, Any] = {}) -> None:
-        """Execute a write transaction.
-
-        Args:
-            cypher (str): cypher query
-            params (Dict[str, Any]): parameters to pass to the query
-        """
-
-        with self.driver.session() as session:
-            session.execute_write(self.run_transaction_single, cypher, params)
-
-    def cypher_write_single(self, cypher: str, params: Dict[str, Any] = {}) -> None:
-        """Execute a write transaction.
-
-        Args:
-            cypher (str): cypher query
-            params (Dict[str, Any]): parameters to pass to the query
-        """
-
-        with self.driver.session() as session:
-            return session.execute_write(self.run_transaction_single, cypher, params)
-
-    def cypher_write_many(self, cypher: str, params: Dict[str, Any] = {}) -> None:
-        """Execute a write transaction.
-
-        Args:
-            cypher (str): cypher query
-            params (Dict[str, Any]): parameters to pass to the query
-        """
-
-        with self.driver.session() as session:
-            return session.execute_write(self.run_transaction_many, cypher, params)
-
-    def cypher_read(
-        self, cypher: str, params: Dict[str, Any] = {}
-    ) -> Optional[Neo4jRecord]:
-        """Run a cypher read only query which is expected to return a single result.
-
-        Args:
-            cypher (str): cypher query string
-            params (Dict[str, Any]): parameters to pass to the query
-
-        Returns:
-            Neo4jRecord: the resulting Neo4j 'Record', or None
-        """
-
-        with self.driver.session() as session:
-            return session.execute_read(self.run_transaction_single, cypher, params)
-
-    def cypher_read_many(
-        self, cypher: str, params: Dict[str, Any] = {}
-    ) -> List[Neo4jRecord]:
-        """Run a cypher read query which will return multiple records.
-
-        Args:
-            cypher (str): cypher string to run
-            params (Dict[str, Any]): parameters to pass to the query
-
-        Returns:
-            List[Neo4jRecord]: A list of Neo4j 'Records' returned by the query.
-        """
-
-        with self.driver.session() as session:
-            return session.execute_read(self.run_transaction_many, cypher, params)
-
-    def apply_constraint(self, label: str, property: str) -> None:
-        cypher = f"""
-        CREATE CONSTRAINT IF NOT EXISTS
-        FOR (n:{label})
-        REQUIRE n.{property} IS UNIQUE
-        """
-
-        self.cypher_write(cypher)
-
-    def evaluate_query_single(self, cypher, params={}):
-        result = self.driver.execute_query(
-            cypher, parameters_=params, result_transformer_=Neo4jResult.single
+        return self.engine.evaluate_query(
+            cypher, params, node_classes, relationship_classes
         )
 
-        if result:
-            return result.value()
+    def create_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
+        return self.engine.create_nodes(labels, pp_key, properties, node_class)
+
+    def merge_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+    ) -> List["BaseNode"]:
+        return self.engine.merge_nodes(labels, pp_key, properties, node_class)
+
+    def match_nodes(
+        self,
+        node_class: type["BaseNode"],
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+    ) -> List["BaseNode"]:
+        return self.engine.match_nodes(node_class, limit, skip)
+
+    def match_relationships(
+        self,
+        relationship_class: type["BaseRelationship"],
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+    ) -> List["BaseRelationship"]:
+        return self.engine.match_relationships(relationship_class, limit, skip)
+
+    def delete_nodes(self, label: str, pp_key: str, pp_values: list) -> None:
+        self.engine.delete_nodes(label, pp_key, pp_values)
+
+    def merge_relationships(
+        self,
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        merge_on_props: List[str],
+        rel_props: List[dict],
+    ) -> None:
+        self.engine.merge_relationships(
+            source_label,
+            target_label,
+            source_prop,
+            target_prop,
+            rel_type,
+            merge_on_props,
+            rel_props,
+        )
+
+    def close(self) -> None:
+        self.engine.close_connection()
+
+
+def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> None:
+    """Initialise neontology."""
+
+    graph_engines = {
+        "NEO4J": Neo4jConfig,
+        "MEMGRAPH": MemgraphConfig,
+    }
+
+    if (
+        "neo4j_uri" in kwargs
+        or "neo4j_username" in kwargs
+        or "neo4j_password" in kwargs
+    ):
+        warn(
+            (
+                "Neo4j keyword arguments in init_neontology are being deprecated "
+                "- use config dictionary instead. Read the docs for new syntax."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        neo4j_config = {}
+
+        if kwargs.get("neo4j_uri"):
+            neo4j_config["uri"] = kwargs.get("neo4j_uri")
+
+        if kwargs.get("neo4j_username"):
+            neo4j_config["username"] = kwargs.get("neo4j_username")
+
+        if kwargs.get("neo4j_password"):
+            neo4j_config["password"] = kwargs.get("neo4j_password")
+
+        config = Neo4jConfig(**neo4j_config)
+
+    if config is None:
+        graph_engine = os.getenv("NEONTOLOGY_ENGINE")
+
+        if graph_engine:
+            logger.info(
+                f"No GraphConfig provided, using defaults based on specified engine: {graph_engine}."
+            )
+            config = graph_engines[graph_engine]()
 
         else:
-            return None
+            logger.info(
+                "No GraphConfig provided and no Graph Engine specified, using Neo4j."
+            )
+            config = Neo4jConfig()
 
-    def evaluate_query(self, cypher, params={}):
-        result = self.driver.execute_query(cypher, parameters_=params)
-
-        neo4j_records = result.records
-        neontology_records = neo4j_records_to_neontology_records(
-            neo4j_records, self.global_nodes, self.global_rels
-        )
-
-        return NeontologyResult(
-            records=neo4j_records, neontology_records=neontology_records
-        )
-
-
-def init_neontology(
-    neo4j_uri: Optional[str] = None,
-    neo4j_username: Optional[str] = None,
-    neo4j_password: Optional[str] = None,
-) -> None:
-    """Initialise neontology.
-
-    If connection properties are explicitly passed in, use these.
-    If not, attempt to load from enviornment variables (optionally in a .env file.)
-
-    Args:
-        neo4j_uri (Optional[str], optional): Neo4j URI to connect to. Defaults to None.
-        neo4j_username (Optional[str], optional): Neo4j username. Defaults to None.
-        neo4j_password (Optional[str], optional): Neo4j password. Defaults to None.
-    """
-
-    # try to load environment variables from .env file
-    load_dotenv()
-
-    if neo4j_uri is None:
-        neo4j_uri = os.getenv("NEO4J_URI")
-
-    if neo4j_password is None:
-        neo4j_password = os.getenv("NEO4J_PASSWORD")
-
-    if neo4j_username is None:
-        neo4j_username = os.getenv("NEO4J_USERNAME")
-
-    GraphConnection(neo4j_uri, neo4j_username, neo4j_password)
+    GraphConnection(config)
+    logger.info("Neontology initialized.")
