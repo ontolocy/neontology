@@ -10,8 +10,15 @@ from pydantic import ValidationError, model_validator
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
-from .result import NeontologyResult
 from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
+
+
+def _find_this_node(query, params, node):
+    this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
+    params["_neontology_pp"] = node.get_pp()
+    new_query = query.replace("(#ThisNode)", this_node)
+
+    return new_query, params
 
 
 def _prepare_related_query(
@@ -27,9 +34,7 @@ def _prepare_related_query(
 
     # make it easy to match on this specific node
     if "(#ThisNode)" in query:
-        this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
-        params["_neontology_pp"] = node.get_pp()
-        new_query = query.replace("(#ThisNode)", this_node)
+        new_query, params = _find_this_node(query, params, node)
 
     else:
         new_query = query
@@ -58,15 +63,13 @@ def related_nodes(f: Callable) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
 
     @functools.wraps(f)
-    def wrapper(
-        self: "BaseNode", *args: Any, **kwargs: Any
-    ) -> List["NeontologyResult"]:
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> List["BaseNode"]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
         result = gc.evaluate_query(new_query, params)
 
-        return result
+        return result.nodes
 
     wrapper.neontology_related_nodes = True
 
@@ -115,7 +118,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return params
 
     @classmethod
-    def get_related_node_methods(cls):
+    def get_related_node_methods(cls) -> dict:
         related_node_attributes = {
             name: getattr(cls, name)
             # get all attributes, including methods, properties, and builtins
@@ -128,7 +131,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return related_node_attributes
 
     @classmethod
-    def get_related_property_methods(cls):
+    def get_related_property_methods(cls) -> dict:
         related_prop_attributes = {
             name: getattr(cls, name)
             # get all attributes, including methods, properties, and builtins
@@ -412,7 +415,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return result
 
-    @related_nodes
     def get_related(
         self,
         relationship_types: list = [],
@@ -495,7 +497,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         if limit:
             query += f" LIMIT {int_adapter.validate_python(limit)} "
 
-        return query, pass_on_params
+        new_query, params = _find_this_node(query, pass_on_params, self)
+
+        gc = GraphConnection()
+        result = gc.evaluate_query(new_query, params)
+
+        return result
 
     @classmethod
     @related_property

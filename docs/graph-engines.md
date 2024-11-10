@@ -3,13 +3,17 @@
 By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases, starting with experimental support for Memgraph.
 
 !!! EXPERIMENTAL
-    Support for Memgraph is still experimental so may change in the future.
+    Some of these features are still experimental so may change in the future.
+
+For large or complex queries, data science or visualization/exploration, consider using a native driver or built-in interface (like Neo4j Browser/Bloom or Memgraph Lab).
 
 ## Graph Configs
 
 The easiest way to start is to pass a GraphConfig object to init_neontology to set up the backend appropriately. You can set config variables explicitly, or using environment variables.
 
 If you don't explicitly provide a GraphConfig, neontology will default to Neo4j and look for environment variables for configuration.
+
+You can also use the NEONTOLOGY_ENGINE environment variable to set the graph engine (`NEO4J` or `MEMGRAPH`) to use, which will then look for the respective configuration environment variables.
 
 ### Neo4j
 
@@ -60,22 +64,7 @@ You can access the underlying `GraphEngine` at `.engine` and you can access the 
 
 ## Neo4j
 
-If you just use `init_neontology`, Neontology will assume that you have a Neo4j backend. You can also declare this explicitly:
-
-```python
-from neontology import init_neontology
-from neontology.graphengines import Neo4jEngine
-
-init_neontology(
-    config={
-                "neo4j_uri": "bolt://localhost:9687",
-                "neo4j_username": "neo4j",
-                "neo4j_password": "<NEO4J PASSWORD>",
-            },
-    engine=Neo4jEngine
-)
-
-```
+If you just use `init_neontology`, Neontology will assume that you have a Neo4j backend. You can also declare this explicitly as above.
 
 ### Using the Neo4j driver from Neontology
 
@@ -112,27 +101,13 @@ Neontology can automatically apply neo4j constraints for all defined nodes using
 
 Simply use `auto_constrain_neo4j()` after defining your models and initialising your connection.
 
-Note that `auto_constrain` only uses a model's primary label (not secondary labels if they're defined).
+Note that auto constrain features only use a model's primary label (not secondary labels if they're defined).
 
 ## Memgraph
 
 [Memgraph](https://memgraph.com/) is a Neo4j compatible database.
 
-```python
-from neontology import init_neontology
-from neontology.graph_engines import MemgraphEngine
-
-init_neontology(
-    config={
-                "memgraph_uri": "bolt://localhost:9687",
-                "memgraph_username": "memgraphuser",
-                "memgraph_password": "MEMGRAPH PASSWORD123",
-            },
-    engine=MemgraphEngine
-)
-```
-
-You can also use the following environment variables and just `init_neontology(graph_engine=MemgraphEngine)`:
+In addition to configuring explicitly as above, you can also use the following environment variables and just `init_neontology(graph_engine=MemgraphEngine)`:
 
 * `MEMGRAPH_URI`
 * `MEMGRAPH_USER`
@@ -143,10 +118,10 @@ from neontology import init_neontology
 from neontology.graph_engines import MemgraphEngine
 
 init_neontology(
-    engine=MemgraphEngine
+    engine=MemgraphConfig()
 )
 ```
 
 ### Memgraph Driver
 
-Memgraph is compatible with the Neo4j python driver, so works just like the Neo4j driver in this respect.
+Memgraph also uses the Neo4j python driver, so works just like the Neo4j driver in this respect.

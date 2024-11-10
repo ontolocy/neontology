@@ -21,7 +21,7 @@ from .graphengine import GraphEngineBase, GraphEngineConfig
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
-    from ..baserelationship import RelationshipTypeData
+    from ..baserelationship import BaseRelationship, RelationshipTypeData
 
 
 def convert_neo4j_types(input_dict: dict) -> dict:
@@ -73,7 +73,7 @@ def neo4j_node_to_neontology_node(
 
 def neo4j_relationship_to_neontology_rel(
     neo4j_rel: Neo4jRelationship, node_classes: dict, rel_classes: dict
-):
+) -> Optional["BaseRelationship"]:
     rel_type = neo4j_rel.type
     rel_type_data = rel_classes[rel_type]
 
@@ -262,7 +262,7 @@ class Neo4jConfig(GraphEngineConfig):
 
     @model_validator(mode="before")
     @classmethod
-    def populate_defaults(cls, data: Any):
+    def populate_defaults(cls, data: Any) -> Any:
         load_dotenv()
 
         if data.get("uri") is None:

@@ -273,7 +273,9 @@ def _process_sub_records(
     return output_nodes, output_rels
 
 
-def _prepare_records(input_records: Union[List[Dict[str, Any]], Dict[str, Any]]):
+def _prepare_records(
+    input_records: Union[List[Dict[str, Any]], Dict[str, Any]],
+) -> tuple:
     input_records = input_records.copy()
 
     if isinstance(input_records, dict):
@@ -334,11 +336,11 @@ def _prepare_records(input_records: Union[List[Dict[str, Any]], Dict[str, Any]])
 
 
 def import_records(
-    records: List[Union[List[Dict[str, Any]], Dict[str, Any]]],
+    records: list,
     validate_only: bool = False,
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
-):
+) -> None:
     input_nodes = []
     input_rels = []
 

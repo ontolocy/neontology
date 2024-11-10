@@ -39,7 +39,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             )
 
     @classmethod
-    def _set_prop_usage(cls):
+    def _set_prop_usage(cls) -> None:
         super()._set_prop_usage()
         cls._merge_on = cls._get_prop_usage("merge_on")
 
@@ -379,7 +379,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         cls,
         source_labels: Optional[List[str]] = None,
         target_labels: Optional[List[str]] = None,
-    ):
+    ) -> RelationshipSchema:
         schema_properties = []
         rel_type = cls.__relationshiptype__
 

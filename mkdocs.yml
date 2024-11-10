@@ -5,6 +5,7 @@ nav:
     - Usage: usage.md
     - FastAPI Neo4j Example: fastapi.md
     - Advanced Usage: advanced-usage.md
+    - Running Queries: queries.md
     - Cookbook: recipes.md
     - Graph Engines: graph-engines.md
     - Setting Up Neo4j: setting-up-neo4j.md

@@ -16,97 +16,25 @@ ellie = ElephantNode(name="Ellie")
 
 Note that methods such as `.match` use only the primary label.
 
-## Running Simple Single Queries
+## Type Conversion / Serialization
 
-If you want to quickly execute a query which returns a single result, you can use the `execute_query_single` method on a `GraphConnection`. This will return whatever Python type the underlying Neo4j driver returns. For example, if you return a number, or a list of strings, you will get that straight back. If you return a node or relationship, you will get these in the underlying Neo4j driver's [types](https://neo4j.com/docs/python-manual/current/data-types/).
-
-You can also pass in parameters (for example to use as part of a WHERE clause).
-
-```python
-from neontology import init_neontology, GraphConnection
-
-init_neontology()
-
-gc = GraphConnection()
-
-cypher_query = """
-MATCH (p:Person)
-RETURN COLLECT({name: p.name})
-"""
-
-result = gc.evaluate_query_single(cypher_query)
-
-print(result)
-
-# [{'name': 'Alice'}, {'name': 'Bob'}]
-
-cypher_query_count = """
-MATCH (p:Person)
-RETURN COUNT(DISTINCT p)
-"""
-
-result_count = gc.evaluate_query_single(cypher_query_count)
-
-print(result_count)
-
-# 2
-
-cypher_query_params = """
-MATCH (p:Person)
-WHERE p.name = $name
-RETURN p.name
-"""
-
-params = {"name": "Bob"}
-
-result_params = gc.evaluate_query_single(cypher_query_params, params)
-
-print(result)
-
-# 'Bob'
+Not all graph databases natively support the same range of types as Python/Pydantic. Therefore, model fields annotated with complex types may need to go through some level of conversion before being written to the database. This can be achieved with Pydantic's [custom serializers](https://docs.pydantic.dev/2.9/concepts/serialization/#custom-serializers).
 
 ```
+from pydantic import field_serializer
+from uuid import UUID
 
-## Querying for Neontology Nodes and Relationships
-
-If you want to run a cypher query and get back the Neo4j nodes and relationships directly as Neontology's Pydantic models, you can use the `evaluate_query` method on a `GraphConnection`.
-
-This will search the Python environment for Neontology for defined nodes and relationships and use them to 'rehydrate' your query results.
-
-```python
-from neontology import init_neontology, GraphConnection, BaseNode
-
-init_neontology()
-
-gc = GraphConnection()
-
-class PersonNode(BaseNode):
-    __primarylabel__: ClassVar[str] = "Person"
+class ElephantNode(BaseNode):
     __primaryproperty__: ClassVar[str] = "name"
-    
+    __primarylabel__: ClassVar[Optional[str]] = "Elephant"
+    __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
     name: str
-    age: Optional[int] = None
+    id: UUID
 
-bob = PersonNode(name="Bob", age=40)
-bob.merge()
-
-cypher = "MATCH p RETURN p"
-
-results = gc.evaluate_query(cypher)
-
-print(results.nodes[0].name)
-
-# Bob
-
+    @field_serializer("id")
+    def serialize_ref_url(self, id: UUID, _info):
+        return str(id)
 ```
-
-The returned `NeontologyResult` object has the following properties:
-
-* `records_raw` - the raw records returned by the Neo4j driver
-* `records` - the records converted into equivalent Neontology objects
-* `nodes` - a list of all the Neontology/Pydantic nodes returned
-* `relationships` - a list of all the Neontology/Pydantic relationships returned
-* `node_link_data` - a dictionary with 'nodes' and 'links' keys and corresponding values which can be used with other tools such as NetworkX and D3.
 
 ## Retrieving related nodes and properties with BaseNode methods
 
@@ -115,9 +43,9 @@ The power of GQL comes from the ability to quickly traverse relationships to und
 !!! EXPERIMENTAL
     Support for these features is still experimental so may change in the future.
 
-### get_related_nodes()
+### get_related()
 
-BaseNode subclasses have a `get_related_nodes` method which can be used to find nodes which are related to a BaseNode instance.
+BaseNode subclasses have a `get_related` method which can be used to find nodes and relationships which are related to a BaseNode instance.
 
 If no arguments are given, this function will return all nodes with a direct outgoing relationship from the Node. However you can also specify keyword arguments to be more specific about which relationships you care about. For example:
 
@@ -126,6 +54,8 @@ If no arguments are given, this function will return all nodes with a direct out
 * `incoming` - whether to include incoming relationships.
 * `outgoing` - whether to include outgoing relationships.
 * `limit` - the maximum number of nodes to return.
+
+The return type is a [NeontologyResult object](/queries/#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
 
 ### @related_nodes Decorator
 
@@ -269,7 +199,3 @@ class MyRel(BaseRelationship):
 ```
 
 In this example, where a relationship with a given source and target exists with the same value for 'prop_to_merge_on', the relationship will be overwritten. If a new 'prop_to_merge_on' value is given then a new relationship will be created with that value.
-
-## Type Conversion/Coersion
-
-Not all graph databases natively support the same range of types as Python/Pydantic. Therefore, we do our best to coerce data types to fit into the database appropriately. However, you may see some data loss when converting between complex data types.

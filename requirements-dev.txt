@@ -10,5 +10,7 @@ flake8>=4.0
 isort>=5.10
 pydocstyle[toml]>=6.1
 ruff
+# type stubs
+types-PyYAML
 # doing the docs
 mkdocs==1.*
