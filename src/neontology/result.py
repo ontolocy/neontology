@@ -27,8 +27,12 @@ class NeontologyResult(BaseModel):
 
         links = [x.neontology_dump() for x in self.relationships]
 
-        unique_nodes = list({frozenset(item.items()): item for item in nodes}.values())
-        unique_links = list({frozenset(item.items()): item for item in links}.values())
+        unique_nodes = list(
+            {frozenset(tuple(item.items())): item for item in nodes}.values()
+        )
+        unique_links = list(
+            {frozenset(tuple(item.items())): item for item in links}.values()
+        )
         data = {"nodes": unique_nodes, "edges": unique_links, "directed": True}
 
         return data
