@@ -419,7 +419,7 @@ def test_evaluate_query_node_links(use_graph):
 
     gc = GraphConnection()
 
-    cypher = "MATCH (n)-[r]->(o) RETURN n,r,o"
+    cypher = "MATCH (n)-[r]->(o) MATCH (n1)-[r1]-(o1) RETURN *"
 
     results = gc.evaluate_query(cypher)
 
