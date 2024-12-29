@@ -2,6 +2,7 @@ from typing import ClassVar, Optional
 
 import pytest
 
+from pydantic import Field
 
 from neontology.graphconnection import GraphConnection
 from neontology.basenode import BaseNode
@@ -378,3 +379,77 @@ def test_evaluate_rel_only_query(use_graph):
     assert len(result4.records) == 1
     assert len(result4.nodes) == 2
     assert len(result4.relationships) == 1
+
+
+class ComplexPracticeNodeGC(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "ComplexPracticeNodeGC"
+    pp: str
+
+    a_list: Optional[list] = None
+
+
+class ComplexPracticeRelationshipGC(BaseRelationship):
+    source: ComplexPracticeNodeGC
+    target: ComplexPracticeNodeGC
+    __relationshiptype__: ClassVar[Optional[str]] = "COMPLEX_PRACTICE_RELATIONSHIP_GC"
+
+    b_list: Optional[list] = None
+    number: int = Field(default=42, json_schema_extra={"merge_on": True})
+
+
+def test_evaluate_query_node_links(use_graph):
+    foo = ComplexPracticeNodeGC(pp="foo", a_list=[1, 2, 3])
+    bar = ComplexPracticeNodeGC(pp="bar")
+    baz = ComplexPracticeNodeGC(pp="baz", a_list=[])
+    rel1 = ComplexPracticeRelationshipGC(source=foo, target=bar, b_list=[4, 5, 6])
+    rel2 = ComplexPracticeRelationshipGC(source=bar, target=baz)
+    rel3 = ComplexPracticeRelationshipGC(
+        source=baz, target=foo, b_list=["hello", "world"], number=9
+    )
+    rel4 = ComplexPracticeRelationshipGC(source=baz, target=foo)
+
+    foo.merge()
+    bar.merge()
+    baz.merge()
+    rel1.merge()
+    rel2.merge()
+    rel3.merge()
+    rel4.merge()
+
+    gc = GraphConnection()
+
+    cypher = "MATCH (n)-[r]->(o) RETURN n,r,o"
+
+    results = gc.evaluate_query(cypher)
+
+    node_link_data = results.node_link_data
+
+    assert len(node_link_data["nodes"]) == 3
+    assert len(node_link_data["edges"]) == 4
+
+
+def test_evaluate_query_node_links_simple(use_graph):
+    foo = PracticeNodeGC(pp="foo")
+    bar = PracticeNodeGC(pp="bar")
+    rel1 = PracticeRelationshipGC(source=foo, target=bar)
+
+    foo.merge()
+    bar.merge()
+
+    rel1.merge()
+
+    gc = GraphConnection()
+
+    cypher = "MATCH (n)-[r]->(o) RETURN n,r,o"
+
+    results = gc.evaluate_query(cypher)
+
+    node_link_data = results.node_link_data
+
+    assert node_link_data["nodes"][0]["__pp__"] == "foo"
+    assert node_link_data["nodes"][0]["__str__"] == "foo"
+    assert node_link_data["nodes"][0]["LABEL"] == "PracticeNodeGC"
+
+    assert len(node_link_data["nodes"]) == 2
+    assert len(node_link_data["edges"]) == 1
