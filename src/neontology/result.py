@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from hashlib import sha1
 
 from pydantic import BaseModel, computed_field
 
@@ -14,8 +15,8 @@ class NeontologyResult(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def node_link_data(self) -> dict:
-        nodes = [
-            {
+        nodes = {
+            f"{x.__primarylabel__}:{str(x.get_pp())}": {
                 **x.neontology_dump(),
                 **{
                     "__pp__": x.get_pp(),
@@ -23,16 +24,19 @@ class NeontologyResult(BaseModel):
                 },
             }
             for x in self.nodes
-        ]
+        }
 
-        links = [x.neontology_dump() for x in self.relationships]
+        links = {
+            sha1(
+                x.neontology_dump_json().encode("utf-8")
+            ).hexdigest(): x.neontology_dump()
+            for x in self.relationships
+        }
 
-        unique_nodes = list(
-            {frozenset(tuple(item.items())): item for item in nodes}.values()
-        )
-        unique_links = list(
-            {frozenset(tuple(item.items())): item for item in links}.values()
-        )
+        # deduplicate nodes and links
+        unique_nodes = list(nodes.values())
+        unique_links = list(links.values())
+
         data = {"nodes": unique_nodes, "edges": unique_links, "directed": True}
 
         return data
