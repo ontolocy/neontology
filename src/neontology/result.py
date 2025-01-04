@@ -1,6 +1,6 @@
 import json
-from typing import Any
 from hashlib import sha1
+from typing import Any
 
 from pydantic import BaseModel, computed_field
 

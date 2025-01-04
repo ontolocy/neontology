@@ -1,9 +1,8 @@
-from uuid import uuid4, UUID
 from typing import ClassVar
 import logging
 
 import pytest
-from pydantic import Field, ValidationError, field_serializer
+from pydantic import ValidationError
 
 from neontology import BaseNode, BaseRelationship
 from neontology.tools.import_records import import_records
