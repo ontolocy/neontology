@@ -63,7 +63,15 @@ class NeontologyRelationshipRecord(BaseModel):
     output_record: dict
 
     @model_validator(mode="before")
-    def populate_rel_fields(cls, data):
+    def populate_rel_fields(cls, data: dict) -> dict:
+        """Use the raw input data (from input_record) to populate the fields of the model.
+
+        Args:
+            data: dict of raw model fields before parsing.
+
+        Returns:
+            dict: processed dict of model fields ready for Pydantic validation.
+        """
         if not data.get("RELATIONSHIP_TYPE"):
             data["relationship_type"] = data.get("input_record", {}).get(
                 "RELATIONSHIP_TYPE"
@@ -121,7 +129,10 @@ class NeontologyRelationshipRecord(BaseModel):
     @model_validator(mode="after")
     def populate_fields(self):
         node_types = get_node_types()
-        self.target_prop = node_types[self.target_label].__primaryproperty__
+
+        # if an explicit TARGET_PROPERTY wasn't passed in, use the primary property
+        if self.target_prop is None:
+            self.target_prop = node_types[self.target_label].__primaryproperty__
 
         return self
 

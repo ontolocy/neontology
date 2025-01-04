@@ -881,8 +881,6 @@ def test_related_nodes(use_graph):
 
     alice_rels = alice.get_related()
 
-    print(alice_rels)
-
     related_nodes = [x for x in alice_rels.nodes if x.get_pp() != alice.get_pp()]
 
     assert len(related_nodes) == 1

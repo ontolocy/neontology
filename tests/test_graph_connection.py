@@ -187,13 +187,6 @@ def test_evaluate_query_paths(use_graph):
     gc = GraphConnection()
     result = gc.evaluate_query(cypher)
 
-    for entry in result.records_raw:
-        print(entry)
-
-    # print(result)
-
-    print(result.paths)
-
     assert result.paths[0][0].source.get_pp() == "foo"
     assert result.paths[0][1].target.get_pp() == "baz"
 

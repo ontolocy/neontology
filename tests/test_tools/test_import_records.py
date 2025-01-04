@@ -18,11 +18,7 @@ class PersonImportNode(BaseNode):
     name: str
     age: int
 
-    import_id: UUID = Field(default_factory=uuid4)
-
-    @field_serializer("import_id")
-    def serialize_to_str(self, v: UUID):
-        return str(v)
+    import_id: str
 
 
 class FollowsImportRel(BaseRelationship):
@@ -40,13 +36,13 @@ records_raw = {
             "LABEL": "PersonImportLabel",
             "name": "Bob",
             "age": 84,
-            "import_id": UUID("154b0bb7-33ce-4c5b-ba6a-44b5b09b0067"),
+            "import_id": "bob-1",
         },
         {
             "LABEL": "PersonImportLabel",
             "name": "Alice",
             "age": 76,
-            "import_id": UUID("78fcd953-1d0d-47ae-871c-670a0a7a7406"),
+            "import_id": "alice-1",
         },
     ],
     "edges": [
@@ -63,8 +59,8 @@ records_raw = {
 
 
 def test_export_import(use_graph):
-    archy = PersonImportNode(name="archy", age=55)
-    betty = PersonImportNode(name="betty", age=66)
+    archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
+    betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
     bobalicerel = FollowsImportRel(
         source=archy, target=betty, import_follows_prop_1="testing"
     )
@@ -81,9 +77,9 @@ def test_export_import(use_graph):
 
 
 def test_dump_and_import(use_graph):
-    archy = PersonImportNode(name="archy", age=55)
+    archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
     archy.merge()
-    betty = PersonImportNode(name="betty", age=66)
+    betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
     betty.merge()
     bobalicerel = FollowsImportRel(
         source=archy, target=betty, import_follows_prop_1="testing"
@@ -120,7 +116,7 @@ def test_import_records_sub_record_target_nodes(use_graph):
         "LABEL": "PersonImportLabel",
         "name": "Bob",
         "age": 84,
-        "import_id": UUID("154b0bb7-33ce-4c5b-ba6a-44b5b09b0067"),
+        "import_id": "bob-1",
         "RELATIONSHIPS_OUT": [
             {
                 "TARGET_NODES": [
@@ -128,7 +124,7 @@ def test_import_records_sub_record_target_nodes(use_graph):
                         "LABEL": "PersonImportLabel",
                         "name": "Alice",
                         "age": 76,
-                        "import_id": UUID("78fcd953-1d0d-47ae-871c-670a0a7a7406"),
+                        "import_id": "alice-1",
                     },
                 ],
                 "RELATIONSHIP_TYPE": "IMPORT_FOLLOWS",
@@ -150,7 +146,7 @@ def test_import_records_sub_record_targets(use_graph):
             "LABEL": "PersonImportLabel",
             "name": "Bob",
             "age": 84,
-            "import_id": UUID("154b0bb7-33ce-4c5b-ba6a-44b5b09b0067"),
+            "import_id": "bob-1",
             "RELATIONSHIPS_OUT": [
                 {
                     "TARGETS": ["Alice"],
@@ -164,11 +160,42 @@ def test_import_records_sub_record_targets(use_graph):
             "LABEL": "PersonImportLabel",
             "name": "Alice",
             "age": 76,
-            "import_id": UUID("78fcd953-1d0d-47ae-871c-670a0a7a7406"),
+            "import_id": "alice-1",
         },
     ]
 
     import_records([with_sub_records], error_on_unmatched=True)
+
+    assert len(PersonImportNode.match_nodes()) == 2
+    assert len(FollowsImportRel.match_relationships()) == 1
+
+
+def test_import_records_target_props(use_graph):
+    with_tgt_props = [
+        {
+            "LABEL": "PersonImportLabel",
+            "name": "Beth",
+            "age": 84,
+            "import_id": "beth-id-1",
+            "RELATIONSHIPS_OUT": [
+                {
+                    "TARGETS": ["alex-id-1"],
+                    "RELATIONSHIP_TYPE": "IMPORT_FOLLOWS",
+                    "TARGET_LABEL": "PersonImportLabel",
+                    "TARGET_PROPERTY": "import_id",
+                    "import_follows_prop_1": "TEST IMPORT WITH TARGET PROPS",
+                }
+            ],
+        },
+        {
+            "LABEL": "PersonImportLabel",
+            "name": "Alex",
+            "age": 76,
+            "import_id": "alex-id-1",
+        },
+    ]
+
+    import_records([with_tgt_props], error_on_unmatched=True)
 
     assert len(PersonImportNode.match_nodes()) == 2
     assert len(FollowsImportRel.match_relationships()) == 1
@@ -180,7 +207,7 @@ def test_import_records_bad_node(use_graph):
             "LABELED": "PersonImportLabel",
             "name": "Alice",
             "age": 76,
-            "import_id": UUID("78fcd953-1d0d-47ae-871c-670a0a7a7406"),
+            "import_id": "alice-1",
         },
     ]
 
