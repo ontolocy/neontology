@@ -126,7 +126,7 @@ def extract_type_mapping(
         else:
             raise TypeError(f"Unsupported union type: {annotation}")
 
-    elif get_origin(annotation) == list:
+    elif get_origin(annotation) is list:
         if len(get_args(annotation)) == 1:
             try:
                 # field type is something like typing.list[str]

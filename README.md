@@ -32,7 +32,7 @@ See the [changelog](CHANGELOG.md) or [read the docs](https://neontology.readthed
 ## Example
 
 ```python
-from typing import ClassVar, Optional, list
+from typing import ClassVar, Optional
 import pandas as pd
 from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 
