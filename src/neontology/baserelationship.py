@@ -3,7 +3,6 @@ import json
 import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar
 
-import numpy as np
 import pandas as pd
 from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
 
@@ -301,7 +300,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
 
         if df.empty is False:
-            records = df.replace([np.nan], None).to_dict(orient="records")
+            records = df.replace(pd.NA, None).to_dict(orient="records")
             cls.merge_records(
                 records,
                 source_type=source_type,

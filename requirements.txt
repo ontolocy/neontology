@@ -1,6 +1,5 @@
 neo4j>5,<6
 pydantic~=2.7
 pandas>2,<3
-numpy>1,<2
 python-dotenv>1,<2
 Jinja2>3,<4
