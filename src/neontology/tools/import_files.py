@@ -1,8 +1,8 @@
 import json
+from collections.abc import Generator, Sequence
 from logging import getLogger
 from pathlib import Path
 from typing import Optional
-from collections.abc import Generator, Sequence
 
 import yaml
 

@@ -1,12 +1,11 @@
 from typing import ClassVar, Optional
 
 import pytest
-
 from pydantic import Field
 
-from neontology.graphconnection import GraphConnection
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
+from neontology.graphconnection import GraphConnection
 
 
 class PracticeNodeGC(BaseNode):

@@ -1,9 +1,9 @@
 from datetime import datetime
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
-from pydantic import Field, ValidationError
 import pytest
+from pydantic import Field, ValidationError
 
 from neontology.commonmodel import CommonModel
 

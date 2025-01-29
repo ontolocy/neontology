@@ -1,5 +1,5 @@
-from typing import ClassVar
 import logging
+from typing import ClassVar
 
 import pytest
 from pydantic import ValidationError
