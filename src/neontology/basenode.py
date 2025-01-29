@@ -1,7 +1,7 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,7 @@ def _find_this_node(query, params, node):
 
 def _prepare_related_query(
     node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any
-) -> Tuple[str, dict]:
+) -> tuple[str, dict]:
     try:
         query, params = wrapped_function(node, *args, **kwargs)
     except ValueError:
@@ -63,7 +63,7 @@ def related_nodes(f: Callable) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
 
     @functools.wraps(f)
-    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> List["BaseNode"]:
+    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> list["BaseNode"]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -79,7 +79,7 @@ def related_nodes(f: Callable) -> Callable:
 class BaseNode(CommonModel):  # pyre-ignore[13]
     __primaryproperty__: ClassVar[str]
     __primarylabel__: ClassVar[Optional[str]]
-    __secondarylabels__: ClassVar[List[str]] = []
+    __secondarylabels__: ClassVar[list[str]] = []
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -95,11 +95,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     def __str__(self) -> str:
         return str(self.get_pp())
 
-    def _get_merge_parameters(self) -> Dict[str, Any]:
+    def _get_merge_parameters(self) -> dict[str, Any]:
         """
 
         Returns:
-            Dict[str, Any]: a dictionary of key/value pairs.
+            dict[str, Any]: a dictionary of key/value pairs.
         """
 
         all_props = self.model_dump()
@@ -203,7 +203,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return results[0]
 
-    def merge(self) -> List["BaseNode"]:
+    def merge(self) -> list["BaseNode"]:
         """Merge this node into the graph."""
 
         node_list = [self._get_merge_parameters()]
@@ -219,11 +219,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def create_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
+    def create_nodes(cls, nodes: list["BaseNode"]) -> list["BaseNode"]:
         """Create the given nodes in the database.
 
         Args:
-            nodes (List[B]): A list of nodes to create.
+            nodes (list[B]): A list of nodes to create.
 
         Returns:
             list: A list of the primary property values
@@ -247,11 +247,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
+    def merge_nodes(cls, nodes: list["BaseNode"]) -> list["BaseNode"]:
         """Merge multiple nodes into the database.
 
         Args:
-            nodes (List[B]): A list of nodes to merge.
+            nodes (list[B]): A list of nodes to merge.
 
         Returns:
             list: A list of the primary property values
@@ -273,7 +273,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_records(cls, records: List[dict]) -> List["BaseNode"]:
+    def merge_records(cls, records: list[dict]) -> list["BaseNode"]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
@@ -283,7 +283,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             list: A list of the primary property values
 
         Args:
-            records (List[Dict[str, Any]]): a list of dictionaries of node properties
+            records (list[dict[str, Any]]): a list of dictionaries of node properties
         """
 
         nodes = [cls(**x) for x in records]
@@ -397,7 +397,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     @classmethod
     def match_nodes(
         cls, limit: Optional[int] = None, skip: Optional[int] = None
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -407,7 +407,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
-            Optional[List[B]]: A list of node instances.
+            Optional[list[B]]: A list of node instances.
         """
 
         gc = GraphConnection()

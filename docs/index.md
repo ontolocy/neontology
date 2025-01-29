@@ -15,7 +15,7 @@ pip install neontology
 ## A Simple Example
 
 ```python
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional
 import pandas as pd
 from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 

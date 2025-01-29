@@ -1,7 +1,7 @@
 import itertools
 import os
 import warnings
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
@@ -112,14 +112,14 @@ def neo4j_relationship_to_neontology_rel(
 
 
 def neo4j_records_to_neontology_records(
-    records: List[Neo4jRecord],
+    records: list[Neo4jRecord],
     node_classes: dict,
-    rel_classes: Dict[str, "RelationshipTypeData"],
+    rel_classes: dict[str, "RelationshipTypeData"],
 ) -> tuple:
     new_records = []
 
     for record in records:
-        new_record: Dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
+        new_record: dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
 
         for key, entry in record.items():
             if isinstance(entry, Neo4jNode):

@@ -1,5 +1,5 @@
 # type: ignore
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -531,7 +531,7 @@ class ModelTestIntListExplicit(BaseNode):
     __primaryproperty__: ClassVar[str] = "pp"
     __primarylabel__: ClassVar[Optional[str]] = "TestModelIntListExplicit"
     pp: str
-    test_prop_int_list_exp: List[int]
+    test_prop_int_list_exp: list[int]
 
 
 @pytest.mark.parametrize(
