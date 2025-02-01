@@ -1,15 +1,15 @@
 from typing import ClassVar, Optional
 
-from neontology.utils import (
-    get_rels_by_source,
-    get_node_types,
-    apply_neo4j_constraints,
-    auto_constrain_neo4j,
-    get_rels_by_type,
-)
 from neontology import GraphConnection
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
+from neontology.utils import (
+    apply_neo4j_constraints,
+    auto_constrain_neo4j,
+    get_node_types,
+    get_rels_by_source,
+    get_rels_by_type,
+)
 
 
 def test_get_rels_by_source():

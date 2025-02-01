@@ -1,18 +1,18 @@
 # type: ignore
-from typing import ClassVar, Optional, List
 from datetime import datetime
+from typing import ClassVar, List, Optional
 from uuid import UUID, uuid4
 
 import pandas as pd
-from pydantic import Field, field_validator, ValidationInfo, field_serializer
 import pytest
+from pydantic import Field, ValidationInfo, field_serializer, field_validator
 
 from neontology import (
     BaseNode,
     BaseRelationship,
-    related_property,
-    related_nodes,
     GQLIdentifier,
+    related_nodes,
+    related_property,
 )
 
 

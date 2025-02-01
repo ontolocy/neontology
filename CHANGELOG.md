@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.5
+
+### Dependencies and Support
+
+- Removed explicit dependency on numpy
+
 ## v2.0.0
 
 ### Features

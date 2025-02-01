@@ -4,10 +4,8 @@ from typing import ClassVar, Optional
 from uuid import uuid4
 
 import pandas as pd
-from pydantic import Field
 import pytest
-
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
