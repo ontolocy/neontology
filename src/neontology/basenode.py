@@ -3,7 +3,6 @@ import json
 import warnings
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import pandas as pd
 from pydantic import ValidationError, model_validator
 
@@ -307,7 +306,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         if df.empty is True:
             return pd.Series(dtype=object)
 
-        input_df = df.replace([np.nan], None).copy()
+        input_df = df.mask(pd.isna(df), None).copy()
 
         # create a unique identifier field based on all rows
         # we'll use this later to match up deduplicated rows to the original ordering

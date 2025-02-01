@@ -1,14 +1,13 @@
 # type: ignore
 
-import os
 import logging
+import os
 
 import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graphengines import Neo4jConfig, MemgraphConfig
-
+from neontology.graphengines import MemgraphConfig, Neo4jConfig
 
 logger = logging.getLogger(__name__)
 
