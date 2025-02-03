@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, model_validator
 
@@ -26,8 +26,8 @@ class NeontologyNodeRaw(BaseModel):
 class NeontologyRelationshipRaw(BaseModel):
     RELATIONSHIP_TYPE: str
     TARGET_LABEL: str
-    TARGET_NODES: Optional[List[NeontologyNodeRaw]] = None
-    TARGETS: Optional[List[str]] = None
+    TARGET_NODES: Optional[list[NeontologyNodeRaw]] = None
+    TARGETS: Optional[list[str]] = None
     TARGET_PROPERTY: Optional[str] = None
 
 
@@ -137,7 +137,7 @@ class NeontologyRelationshipRecord(BaseModel):
         return self
 
 
-def _import_nodes(input_records: List[NeontologyNodeRecord]):
+def _import_nodes(input_records: list[NeontologyNodeRecord]):
     mapped_records = defaultdict(list)
     node_types = get_node_types()
 
@@ -150,7 +150,7 @@ def _import_nodes(input_records: List[NeontologyNodeRecord]):
 
 
 def _import_relationships(
-    input_records: List[NeontologyRelationshipRecord],
+    input_records: list[NeontologyRelationshipRecord],
     check_unmatched: bool,
     error_on_unmatched: bool,
 ):
@@ -230,7 +230,7 @@ def _import_relationships(
 
 def _process_sub_records(
     source_node_record: NeontologyNodeRecord, subrecords
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     node_types = get_node_types()
 
     output_nodes = []
@@ -285,7 +285,7 @@ def _process_sub_records(
 
 
 def _prepare_records(
-    input_records: Union[List[Dict[str, Any]], Dict[str, Any]],
+    input_records: Union[list[dict[str, Any]], dict[str, Any]],
 ) -> tuple:
     input_records = input_records.copy()
 
