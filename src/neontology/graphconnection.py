@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from warnings import warn
 
 from .graphengines import MemgraphConfig, Neo4jConfig
@@ -119,12 +119,12 @@ class GraphConnection(object):
 
     def create_nodes(
         self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
     def merge_nodes(
         self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
 
     def match_nodes(
@@ -132,7 +132,7 @@ class GraphConnection(object):
         node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         return self.engine.match_nodes(node_class, limit, skip)
 
     def match_relationships(
@@ -140,7 +140,7 @@ class GraphConnection(object):
         relationship_class: type["BaseRelationship"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> List["BaseRelationship"]:
+    ) -> list["BaseRelationship"]:
         return self.engine.match_relationships(relationship_class, limit, skip)
 
     def delete_nodes(self, label: str, pp_key: str, pp_values: list) -> None:
@@ -153,8 +153,8 @@ class GraphConnection(object):
         source_prop: str,
         target_prop: str,
         rel_type: str,
-        merge_on_props: List[str],
-        rel_props: List[dict],
+        merge_on_props: list[str],
+        rel_props: list[dict],
     ) -> None:
         self.engine.merge_relationships(
             source_label,

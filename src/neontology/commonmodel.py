@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
 from pydantic_core import PydanticCustomError
@@ -13,9 +13,9 @@ class CommonModel(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    _set_on_match: List[str] = PrivateAttr()
-    _set_on_create: List[str] = PrivateAttr()
-    _always_set: List[str] = PrivateAttr()
+    _set_on_match: list[str] = PrivateAttr()
+    _set_on_create: list[str] = PrivateAttr()
+    _always_set: list[str] = PrivateAttr()
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -32,7 +32,7 @@ class CommonModel(BaseModel):
         ]
 
     @classmethod
-    def _get_prop_usage(cls, usage_type: str) -> List[str]:
+    def _get_prop_usage(cls, usage_type: str) -> list[str]:
         all_props = cls.model_json_schema()["properties"]
 
         selected_props = []
@@ -44,12 +44,12 @@ class CommonModel(BaseModel):
         return selected_props
 
     def _get_prop_values(
-        self, props: List[str], exclude: Set[str] = set()
-    ) -> Dict[str, Any]:
+        self, props: list[str], exclude: set[str] = set()
+    ) -> dict[str, Any]:
         """
 
         Returns:
-            Dict[str, Any]: a dictionary of key/value pairs.
+            dict[str, Any]: a dictionary of key/value pairs.
         """
 
         # prop_values = {
@@ -58,7 +58,7 @@ class CommonModel(BaseModel):
 
         return self._engine_dict(exclude=exclude, include=set(props))
 
-    def _engine_dict(self, exclude: Set[str] = set(), **kwargs: Any) -> Dict[str, Any]:
+    def _engine_dict(self, exclude: set[str] = set(), **kwargs: Any) -> dict[str, Any]:
         """Return a dict made up of only types compatible with the GraphEngine
 
         Returns:

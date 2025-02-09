@@ -1,7 +1,8 @@
 import json
+from collections.abc import Generator, Sequence
 from logging import getLogger
 from pathlib import Path
-from typing import Generator, List, Optional, Sequence
+from typing import Optional
 
 import yaml
 
@@ -10,7 +11,7 @@ from .import_records import import_records
 logger = getLogger(__name__)
 
 
-def _identify_filepaths(input_path: str, path_pattern: str) -> List[Path]:
+def _identify_filepaths(input_path: str, path_pattern: str) -> list[Path]:
     path = Path(input_path)
 
     if path.is_file():

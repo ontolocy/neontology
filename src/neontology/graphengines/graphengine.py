@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional
 
 from pydantic import BaseModel
 
@@ -65,14 +65,14 @@ class GraphEngineBase:
             return value
 
     @classmethod
-    def export_dict_converter(cls, original_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def export_dict_converter(cls, original_dict: dict[str, Any]) -> dict[str, Any]:
         """_summary_
 
         Args:
-            export_dict (Dict[str, Any]): _description_
+            export_dict (dict[str, Any]): _description_
 
         Returns:
-            Dict[str, Any]: _description_
+            dict[str, Any]: _description_
         """
 
         export_dict = original_dict.copy()
@@ -91,13 +91,13 @@ class GraphEngineBase:
     def evaluate_query(
         self,
         cypher: str,
-        params: Dict[str, Any] = {},
+        params: dict[str, Any] = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
     ) -> NeontologyResult:
         raise NotImplementedError
 
-    def evaluate_query_single(self, cypher: str, params: Dict[str, Any]) -> Any:
+    def evaluate_query_single(self, cypher: str, params: dict[str, Any]) -> Any:
         raise NotImplementedError
 
     def apply_constraint(self, label: str, property: str) -> None:
@@ -111,7 +111,7 @@ class GraphEngineBase:
 
     def create_nodes(
         self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         """
         Args:
             labels (list): a list of labels to give created nodes
@@ -143,7 +143,7 @@ class GraphEngineBase:
 
     def merge_nodes(
         self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         """_summary_
 
         Args:
@@ -176,7 +176,7 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def delete_nodes(self, label: str, pp_key: str, pp_values: List[Any]) -> None:
+    def delete_nodes(self, label: str, pp_key: str, pp_values: list[Any]) -> None:
         cypher = f"""
         UNWIND $pp_values AS pp
         MATCH (n:{gql_identifier_adapter.validate_strings(label)})
@@ -195,8 +195,8 @@ class GraphEngineBase:
         source_prop: str,
         target_prop: str,
         rel_type: str,
-        merge_on_props: List[str],
-        rel_props: List[dict],
+        merge_on_props: list[str],
+        rel_props: list[dict],
     ) -> None:
         # build a string of properties to merge on "prop_name: $prop_name"
         merge_props = ", ".join(
@@ -227,7 +227,7 @@ class GraphEngineBase:
         node_class: type["BaseNode"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> List["BaseNode"]:
+    ) -> list["BaseNode"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -237,7 +237,7 @@ class GraphEngineBase:
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
-            Optional[List[B]]: A list of node instances.
+            Optional[list[B]]: A list of node instances.
         """
 
         cypher = f"""
@@ -266,7 +266,7 @@ class GraphEngineBase:
         relationship_class: type["BaseRelationship"],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> List["BaseRelationship"]:
+    ) -> list["BaseRelationship"]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -276,7 +276,7 @@ class GraphEngineBase:
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
-            Optional[List[B]]: A list of node instances.
+            Optional[list[B]]: A list of node instances.
         """
 
         from ..utils import get_node_types, get_rels_by_type

@@ -1,8 +1,7 @@
 import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar
-
+from typing import Any, ClassVar, Optional, TypeVar
 
 import pandas as pd
 from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
@@ -23,7 +22,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 
-    _merge_on: List[str] = (
+    _merge_on: list[str] = (
         PrivateAttr()
     )  # what relationship properties should we merge on
 
@@ -52,7 +51,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         except ValidationError:
             warnings.warn(
                 (
-                    "Relationship Type should contain only alphanumeric characters and underscores."
+                    "Relationship type should contain only alphanumeric characters and underscores."
                     " It should begin with an alphabetic character."
                 )
             )
@@ -74,11 +73,11 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     def _get_merge_parameters(
         self, source_prop: str, target_prop: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
 
         Returns:
-            Dict[str, Any]: a dictionary of key/value pairs.
+            dict[str, Any]: a dictionary of key/value pairs.
         """
 
         exclusions = {"source", "target"}
@@ -151,8 +150,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def merge_relationships(
-        cls: Type[R],
-        rels: List[R],
+        cls: type[R],
+        rels: list[R],
         source_prop: Optional[str] = None,
         target_prop: Optional[str] = None,
     ) -> None:
@@ -165,8 +164,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         so we can specify what property to use.
 
         Args:
-            cls (Type[R]): this class
-            rels (List[R]): a list of relationships which are instances of this class
+            cls (type[R]): this class
+            rels (list[R]): a list of relationships which are instances of this class
 
         Raises:
             TypeError: If relationships are provided which aren't of this class
@@ -206,7 +205,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                     "Relationship must have a defined relationship type for creating a relationship."
                 )
 
-            rel_list: List[Dict[str, Any]] = [
+            rel_list: list[dict[str, Any]] = [
                 x._get_merge_parameters(source_prop, target_prop) for x in common_rels
             ]
 
@@ -224,10 +223,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def merge_records(
-        cls: Type[R],
-        records: List[Dict[str, Any]],
-        source_type: Optional[Type[BaseNode]] = None,
-        target_type: Optional[Type[BaseNode]] = None,
+        cls: type[R],
+        records: list[dict[str, Any]],
+        source_type: Optional[type[BaseNode]] = None,
+        target_type: Optional[type[BaseNode]] = None,
         source_prop: Optional[str] = None,
         target_prop: Optional[str] = None,
     ) -> None:
@@ -240,7 +239,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             value of the respective nodes.
 
         Args:
-            records (List[Dict[str, Any]]): a list of dictionaries used to populate relationships
+            records (list[dict[str, Any]]): a list of dictionaries used to populate relationships
             source_type: explicitly state the class to use for source node
             target_type: explicitly state the class to use for target node
         """
@@ -282,10 +281,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def merge_df(
-        cls: Type[R],
+        cls: type[R],
         df: pd.DataFrame,
-        source_type: Optional[Type[BaseNode]] = None,
-        target_type: Optional[Type[BaseNode]] = None,
+        source_type: Optional[type[BaseNode]] = None,
+        target_type: Optional[type[BaseNode]] = None,
         source_prop: Optional[str] = None,
         target_prop: Optional[str] = None,
     ) -> None:
@@ -314,7 +313,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     @classmethod
     def match_relationships(
         cls, limit: Optional[int] = None, skip: Optional[int] = None
-    ) -> List["BaseRelationship"]:
+    ) -> list["BaseRelationship"]:
         gc = GraphConnection()
         result = gc.match_relationships(cls, limit, skip)
 
@@ -378,8 +377,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     @classmethod
     def neontology_schema(
         cls,
-        source_labels: Optional[List[str]] = None,
-        target_labels: Optional[List[str]] = None,
+        source_labels: Optional[list[str]] = None,
+        target_labels: Optional[list[str]] = None,
     ) -> RelationshipSchema:
         schema_properties = []
         rel_type = cls.__relationshiptype__
@@ -454,5 +453,5 @@ class RelationshipTypeData(BaseModel):
     relationship_class: type[BaseRelationship]
     source_class: type[BaseNode]
     target_class: type[BaseNode]
-    all_source_classes: List[type[BaseNode]]
-    all_target_classes: List[type[BaseNode]]
+    all_source_classes: list[type[BaseNode]]
+    all_target_classes: list[type[BaseNode]]
