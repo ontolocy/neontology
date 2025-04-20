@@ -58,7 +58,7 @@ extend-ignore = [
     # This behaviour may raise E203 whitespace before ':' warnings in style guide enforcement tools like Flake8.
     # Since E203 is not PEP 8 compliant, we tell Flake8 to ignore this warning.
     # https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#slices    
-    "E203"
+    #"E203"
 ]
 
 [dependency-groups]

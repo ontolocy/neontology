@@ -4,7 +4,7 @@ import warnings
 from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar
 
 import pandas as pd
-from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
+from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator, Field
 
 from neontology.graphconnection import GraphConnection
 
@@ -17,8 +17,8 @@ R = TypeVar("R", bound="BaseRelationship")
 
 
 class BaseRelationship(CommonModel):  # pyre-ignore[13]
-    source: BaseNode
-    target: BaseNode
+    source: BaseNode = Field(..., json_schema_extra={"never_set": True})
+    target: BaseNode = Field(..., json_schema_extra={"never_set": True})
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 

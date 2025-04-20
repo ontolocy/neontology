@@ -7,6 +7,7 @@ from .graphconnection import GraphConnection, init_neontology
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
 from .utils import auto_constrain_neo4j
+from .elementidmodel import ElementIdModel
 
 __all__ = [
     # BaseNode

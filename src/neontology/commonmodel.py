@@ -16,6 +16,7 @@ class CommonModel(BaseModel):
     _set_on_match: List[str] = PrivateAttr()
     _set_on_create: List[str] = PrivateAttr()
     _always_set: List[str] = PrivateAttr()
+    _never_set: List[str] = PrivateAttr()
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -25,10 +26,15 @@ class CommonModel(BaseModel):
     def _set_prop_usage(cls) -> None:
         cls._set_on_match = cls._get_prop_usage("set_on_match")
         cls._set_on_create = cls._get_prop_usage("set_on_create")
+        cls._never_set = cls._get_prop_usage("never_set")
         cls._always_set = [
             x
             for x in cls.model_fields.keys()
-            if x not in cls._set_on_match + cls._set_on_create + ["source", "target"]
+            if x
+            not in cls._set_on_match
+            + cls._set_on_create
+            + cls._never_set
+            + ["source", "target"]
         ]
 
     @classmethod
