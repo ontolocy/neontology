@@ -56,6 +56,10 @@ def neo4j_node_to_neontology_node(
 
         node = node_classes[primary_label](**node_dict)
 
+        elementidproperty = getattr(node_classes[primary_label],'__elementidproperty__',None)
+        if elementidproperty:
+            setattr(node,elementidproperty, neo4j_node.element_id)
+
         # warn if the secondary labels aren't what's expected
 
         if set(node.__secondarylabels__) != secondary_labels:

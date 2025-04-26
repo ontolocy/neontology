@@ -199,8 +199,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         gc = GraphConnection()
 
         results = gc.create_nodes(all_labels, pp_key, node_details, self.__class__)
-
-        return results[0]
+        assert len(results) == 1
+        self.check_sync_result(results[0])
+        return self
 
     def merge(self) -> List["BaseNode"]:
         """Merge this node into the graph."""
@@ -214,8 +215,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         gc = GraphConnection()
 
         results = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
-
-        return results
+        assert len(results) == 1
+        self.check_sync_result(results[0])
+        return [self]
 
     @classmethod
     def create_nodes(cls, nodes: List["BaseNode"]) -> List["BaseNode"]:
