@@ -57,7 +57,8 @@ class GraphEngineBase:
                     )
 
             return [cls._export_type_converter(x) for x in value]
-
+        elif value is None:
+            return None
         elif isinstance(value, cls._supported_types) is False:
             return str(value)
 
@@ -197,7 +198,8 @@ class GraphEngineBase:
         rel_type: str,
         merge_on_props: List[str],
         rel_props: List[dict],
-    ) -> None:
+        rel_class: type["BaseRelationship"],
+    ) -> NeontologyResult:
         # build a string of properties to merge on "prop_name: $prop_name"
         merge_props = ", ".join(
             [
@@ -206,21 +208,41 @@ class GraphEngineBase:
             ]
         )
 
+        if rel_props[0]["source_element_id_prop"] == source_prop:
+            source_match_cypher = """elementId(source)"""
+        else:
+            source_match_cypher = (
+                f"""source.{gql_identifier_adapter.validate_strings(source_prop)}"""
+            )
+        if rel_props[0]["target_element_id_prop"] == target_prop:
+            target_match_cypher = """elementId(target)"""
+        else:
+            target_match_cypher = (
+                f"""target.{gql_identifier_adapter.validate_strings(target_prop)}"""
+            )
         cypher = f"""
         UNWIND $rel_list AS rel
         MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
-        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
+        WHERE {source_match_cypher} = rel.source_prop
         MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
-        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
+        WHERE {target_match_cypher} = rel.target_prop
         MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
         ON MATCH SET r += rel.set_on_match
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
+        RETURN r, source, target
         """
 
         params = {"rel_list": rel_props}
 
-        self.evaluate_query_single(cypher, params)
+        from ..utils import get_node_types, get_rels_by_type
+
+        rel_types = get_rels_by_type(rel_class)
+        node_classes = get_node_types()
+
+        return self.evaluate_query(
+            cypher, params, node_classes=node_classes, relationship_classes=rel_types
+        )
 
     def match_nodes(
         self,

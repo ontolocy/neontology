@@ -70,8 +70,33 @@ def test_create_nonunique(use_graph):
         source=child1_node, target=parent1_node, element_id="4567"
     )
     rel1.merge()
+    rel2 = ParentUniqueRelationship(
+        source=child2_node, target=parent1_node, element_id="8910"
+    )
+    rel2.merge()
 
     # element_id should be updated from server on create/merge
     assert parent1_node.element_id != "1234"
     assert rel1.element_id != "4567"
     assert child1_node.element_id != child2_node.element_id
+
+    cypher_nonuniquecount = """
+    MATCH (n:NonUniqueNode {nonpp:'Child'}) RETURN count(n)
+    """
+    node_count = use_graph.evaluate_query_single(cypher_nonuniquecount)
+    # check two nonunique nodes are returned
+    assert node_count == 2
+
+    cypher_relcount = """
+    MATCH (n)-[r:HAS_PARENT]->(p) RETURN count(r)
+    """
+    rel_count = use_graph.evaluate_query_single(cypher_relcount)
+    # check two relationships are returned
+    assert rel_count == 2
+
+    # check that element_id (python property) is not being saved to server
+    cypher_elid = """
+    MATCH (n:UniqueNode {pp:'Parent1'}) RETURN n.element_id
+    """
+    result_elid = use_graph.evaluate_query_single(cypher_elid)
+    assert result_elid is None

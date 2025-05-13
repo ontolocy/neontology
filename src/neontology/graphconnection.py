@@ -155,8 +155,9 @@ class GraphConnection(object):
         rel_type: str,
         merge_on_props: List[str],
         rel_props: List[dict],
-    ) -> None:
-        self.engine.merge_relationships(
+        rel_class: type["BaseRelationship"],
+    ) -> NeontologyResult:
+        return self.engine.merge_relationships(
             source_label,
             target_label,
             source_prop,
@@ -164,6 +165,7 @@ class GraphConnection(object):
             rel_type,
             merge_on_props,
             rel_props,
+            rel_class,
         )
 
     def close(self) -> None:

@@ -70,9 +70,8 @@ class CommonModel(BaseModel):
         Returns:
             dict: a dictionary export of this model instance
         """
-
         pydantic_export_dict = self.model_dump(
-            exclude_none=True, exclude=exclude, **kwargs
+            exclude_none=False, exclude=exclude, **kwargs
         )
 
         # return pydantic_export_dict
@@ -109,22 +108,20 @@ class CommonModel(BaseModel):
                 ),
             )
         return data
-    
-    def check_sync_result(self, result: BaseModel)-> None:
+
+    def check_sync_result(self, result: BaseModel) -> None:
         """Checks that a returned result matches the current object based on always_set properties.
-            Synchronizing the element_id from result to self
-            if applicable.
-            
-            Raises ValueError if self and result do not match"""
-        if not isinstance(result,type(self)):
-            raise ValueError(f'Result type is {type(result)}; expected {type(self)}.')
+        Synchronizing the element_id from result to self
+        if applicable.
+
+        Raises ValueError if self and result do not match"""
+        if not isinstance(result, type(self)):
+            raise ValueError(f"Result type is {type(result)}; expected {type(self)}.")
         for k in self._always_set:
-            if getattr(self,k) != getattr(result,k):
-                raise ValueError(f'Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}.')
-        elementidproperty = getattr(self,'__elementidproperty__',None)
-        if elementidproperty: #copy element id from result to self
-            setattr(self,elementidproperty
-                    ,getattr(result,elementidproperty))
-  
-
-
+            if getattr(self, k) != getattr(result, k):
+                raise ValueError(
+                    f"Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}."
+                )
+        elementidproperty = getattr(self, "__elementidproperty__", None)
+        if elementidproperty:  # copy element id from result to self
+            setattr(self, elementidproperty, getattr(result, elementidproperty))

@@ -56,9 +56,11 @@ def neo4j_node_to_neontology_node(
 
         node = node_classes[primary_label](**node_dict)
 
-        elementidproperty = getattr(node_classes[primary_label],'__elementidproperty__',None)
+        elementidproperty = getattr(
+            node_classes[primary_label], "__elementidproperty__", None
+        )
         if elementidproperty:
-            setattr(node,elementidproperty, neo4j_node.element_id)
+            setattr(node, elementidproperty, neo4j_node.element_id)
 
         # warn if the secondary labels aren't what's expected
 
@@ -111,6 +113,12 @@ def neo4j_relationship_to_neontology_rel(
     rel_props = convert_neo4j_types(dict(neo4j_rel))
     rel_props["source"] = src_node
     rel_props["target"] = tgt_node
+
+    element_id_prop_name = getattr(
+        rel_type_data.relationship_class, "__elementidproperty__", None
+    )
+    if element_id_prop_name:
+        rel_props[element_id_prop_name] = neo4j_rel.element_id
 
     return rel_type_data.relationship_class(**rel_props)
 

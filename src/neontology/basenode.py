@@ -101,7 +101,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Dict[str, Any]: a dictionary of key/value pairs.
         """
 
-        all_props = self.model_dump()
+        all_props = self._engine_dict()
 
         always_set = {k: all_props[k] for k in self._always_set}
         set_on_match = {k: all_props[k] for k in self._set_on_match}
@@ -186,11 +186,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # if self.match(pp) is not None:
         #    raise RuntimeError(f"Node already exists: {pp}")
 
-        all_props = self._engine_dict()
+        merge_props = self._get_merge_parameters()
+        create_props = merge_props["always_set"] | merge_props["set_on_create"]
 
-        pp_value = all_props.pop(self.__primaryproperty__)
+        pp_value = merge_props["pp"]
 
-        node_details = [{"pp": pp_value, "props": all_props}]
+        node_details = [{"pp": pp_value, "props": create_props}]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
 
@@ -205,12 +206,16 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
     def merge(self) -> List["BaseNode"]:
         """Merge this node into the graph."""
+        pp_key = self.__primaryproperty__
+
+        element_id_prop_name = getattr(self, "__elementidproperty__", None)
+        if pp_key == element_id_prop_name:
+            # Special handeling for primary property of element_id
+            return [self.create()]
 
         node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
-
-        pp_key = self.__primaryproperty__
 
         gc = GraphConnection()
 
