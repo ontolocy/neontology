@@ -101,18 +101,13 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Dict[str, Any]: a dictionary of key/value pairs.
         """
 
-        all_props = self._engine_dict()
+        params = self._get_merge_parameters_common()
+        # get all the properties
+        all_props = params.pop("all_props")
 
-        always_set = {k: all_props[k] for k in self._always_set}
-        set_on_match = {k: all_props[k] for k in self._set_on_match}
-        set_on_create = {k: all_props[k] for k in self._set_on_create}
-
-        params = {
+        params.update({
             "pp": all_props[self.__primaryproperty__],
-            "always_set": always_set,
-            "set_on_match": set_on_match,
-            "set_on_create": set_on_create,
-        }
+        })
 
         return params
 

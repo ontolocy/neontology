@@ -83,17 +83,12 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         exclusions = {"source", "target"}
 
+        params = self._get_merge_parameters_common(exclude=exclusions)
         # get all the properties
-        all_props = self.model_dump(exclude=exclusions)
+        all_props = params.pop("all_props")
 
         # merge_props properties will be referenced individually with kwargs
         merge_props = {k: all_props[k] for k in self._merge_on}
-
-        always_set = {k: all_props[k] for k in self._always_set}
-
-        set_on_match = {k: all_props[k] for k in self._set_on_match}
-
-        set_on_create = {k: all_props[k] for k in self._set_on_create}
 
         source_prop = self.source.model_dump()[source_prop]
         target_prop = self.target.model_dump()[target_prop]
@@ -101,16 +96,13 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_element_id_prop = getattr(self.source, "__elementidproperty__", None)
         target_element_id_prop = getattr(self.target, "__elementidproperty__", None)
 
-        params = {
+        params.update({
             "source_prop": source_prop,
             "source_element_id_prop": source_element_id_prop,
             "target_prop": target_prop,
             "target_element_id_prop": target_element_id_prop,
-            "always_set": always_set,
-            "set_on_match": set_on_match,
-            "set_on_create": set_on_create,
             **merge_props,
-        }
+        })
 
         return params
 
