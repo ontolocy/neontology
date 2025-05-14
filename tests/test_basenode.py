@@ -1,11 +1,11 @@
 # type: ignore
 from datetime import datetime
-from typing import ClassVar, List, Optional
+from typing import ClassVar, List, Optional, Annotated
 from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
-from pydantic import Field, ValidationInfo, field_serializer, field_validator
+from pydantic import Field, ValidationInfo, field_serializer, field_validator, ConfigDict
 
 from neontology import (
     BaseNode,
@@ -14,7 +14,7 @@ from neontology import (
     related_nodes,
     related_property,
 )
-
+from neontology.result import NeontologyResult
 
 class PracticeNode(BaseNode):
     __primaryproperty__: ClassVar[GQLIdentifier] = "pp"
@@ -998,3 +998,31 @@ def test_create_mass_nodes(use_graph, benchmark):
     benchmark(ComplexPerson.merge_df, people_df)
 
     assert Person.get_count() == 1000
+
+class UserWithAliases(BaseNode):
+    __primaryproperty__: ClassVar[str] = "userName"
+    __primarylabel__: ClassVar[str] = "User"
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+    user_name: Annotated[str, Field(alias='userName')]
+    some_other_property: Annotated[Optional[str],Field(None,alias="otherProperty")]
+
+def test_aliased_properties(use_graph):
+    user1: UserWithAliases = UserWithAliases(userName="User1")
+    user2: UserWithAliases = UserWithAliases(user_name="User2", some_other_property="alpha")
+    user3: UserWithAliases = UserWithAliases(userName="User3", otherProperty="beta")
+    assert user1.user_name == "User1"
+    assert user3.some_other_property == "beta"
+
+    user1.merge()
+    user2.merge()
+    user3.merge()
+
+    cypher = """
+    MATCH (n:User)
+    RETURN n
+    ORDER BY n.userName ASC
+    """
+
+    result: NeontologyResult = use_graph.evaluate_query(cypher)
+    #TODO: Add / Improve Asserts
+    assert result.nodes[0].user_name == "User1"
