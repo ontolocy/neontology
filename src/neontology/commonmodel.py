@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Self
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
 from pydantic_core import PydanticCustomError
@@ -28,8 +28,8 @@ class CommonModel(BaseModel):
         cls._set_on_create = cls._get_prop_usage("set_on_create")
         cls._never_set = cls._get_prop_usage("never_set")
         cls._always_set = [
-            x
-            for x in cls.model_fields.keys()
+            v.alias if v.alias else x
+            for x, v in cls.model_fields.items()
             if x
             not in cls._set_on_match
             + cls._set_on_create
@@ -71,7 +71,7 @@ class CommonModel(BaseModel):
             dict: a dictionary export of this model instance
         """
         pydantic_export_dict = self.model_dump(
-            exclude_none=False, exclude=exclude, **kwargs
+            exclude_none=False, exclude=exclude, by_alias=True, **kwargs
         )
 
         # return pydantic_export_dict
@@ -84,6 +84,26 @@ class CommonModel(BaseModel):
             export_dict = pydantic_export_dict
 
         return export_dict
+
+    def _get_merge_parameters_common(self, exclude: Set[str] = set()) -> Dict[str,Any]:
+        """Input an all properties dictionary, and filter based on property types.
+
+            Returns:
+                Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
+            """
+        # get all the properties
+        all_props = self._engine_dict(exclude=exclude)
+
+        always_set = {k: all_props[k] for k in self._always_set}
+        set_on_match = {k: all_props[k] for k in self._set_on_match}
+        set_on_create = {k: all_props[k] for k in self._set_on_create}
+        params = {
+            "all_props": all_props,
+            "always_set": always_set,
+            "set_on_match": set_on_match,
+            "set_on_create": set_on_create,
+        }
+        return params
 
     #
     # validators
@@ -109,16 +129,17 @@ class CommonModel(BaseModel):
             )
         return data
 
-    def check_sync_result(self, result: BaseModel) -> None:
+    def check_sync_result(self, result: Self) -> None:
         """Checks that a returned result matches the current object based on always_set properties.
         Synchronizing the element_id from result to self
         if applicable.
 
         Raises ValueError if self and result do not match"""
+        result_always_set = result._get_merge_parameters_common()["always_set"]
         if not isinstance(result, type(self)):
             raise ValueError(f"Result type is {type(result)}; expected {type(self)}.")
-        for k in self._always_set:
-            if getattr(self, k) != getattr(result, k):
+        for k,v in self._get_merge_parameters_common()["always_set"].items():
+            if v != result_always_set[k]:
                 raise ValueError(
                     f"Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}."
                 )

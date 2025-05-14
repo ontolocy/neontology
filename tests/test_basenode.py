@@ -1024,5 +1024,16 @@ def test_aliased_properties(use_graph):
     """
 
     result: NeontologyResult = use_graph.evaluate_query(cypher)
-    #TODO: Add / Improve Asserts
     assert result.nodes[0].user_name == "User1"
+    assert hasattr(result.nodes[0],"userName") ==  False
+    assert result.records_raw[0][0]['userName'] == "User1"
+    assert result.nodes[0].some_other_property is None
+    assert result.records_raw[0][0]['otherProperty'] is None
+
+    assert result.nodes[1].user_name == "User2"
+    assert result.nodes[1].some_other_property == "alpha"
+    assert result.records_raw[1][0]['otherProperty'] == "alpha"
+
+    assert result.nodes[2].user_name == "User3"
+    assert result.records_raw[2][0]['otherProperty'] == "beta"
+    
