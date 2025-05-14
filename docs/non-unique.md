@@ -20,7 +20,7 @@ In this example, the element_id defaults to an empty string, but is set to the g
 from neontology import BaseNode, ElementIdModel
 class ElephantNode(BaseNode,ElementIdModel):
     __primaryproperty__: ClassVar[str] = "name"
-    __primarylabel__: ClassVar[Optional[str]] = "Elephant"
+    __primarylabel__: ClassVar[str] = "Elephant"
     name: str
 
 ellie = ElephantNode (name="Ellie)
