@@ -101,11 +101,7 @@ class GraphConnection(object):
         refresh_classes: bool = True,
     ) -> NeontologyResult:
         if refresh_classes is True:
-            from .utils import get_node_types, get_rels_by_type
-
-            # capture all currently defined types of node and relationship
-            self.global_nodes = get_node_types()
-            self.global_rels = get_rels_by_type()
+            self.refresh_classes()
 
         if not node_classes:
             node_classes = self.global_nodes
@@ -116,6 +112,14 @@ class GraphConnection(object):
         return self.engine.evaluate_query(
             cypher, params, node_classes, relationship_classes
         )
+
+    def refresh_classes(self):
+        # capture all currently defined types of node and relationship
+
+        from .utils import get_node_types, get_rels_by_type
+
+        self.global_nodes = get_node_types()
+        self.global_rels = get_rels_by_type()
 
     def create_nodes(
         self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]

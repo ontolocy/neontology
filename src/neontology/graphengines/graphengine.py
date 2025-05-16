@@ -318,7 +318,7 @@ class GraphEngineBase:
             cypher += " LIMIT $limit "
             params["limit"] = int_adapter.validate_python(limit)
 
-        rel_types = get_rels_by_type()
+        rel_types = get_rels_by_type(relationship_class)
         node_classes = get_node_types()
 
         result = self.evaluate_query(
