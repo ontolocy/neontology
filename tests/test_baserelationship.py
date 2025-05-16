@@ -233,6 +233,10 @@ def test_defined_relationship_type_inherited():
     assert rel.get_relationship_type() == "TEST_RELATIONSHIP_TYPE"
 
 
+class SubclassNode(PracticeNode):
+    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+    myprop: str
+    
 class NewRelType(BaseRelationship):
     source: PracticeNode
     target: PracticeNode
@@ -240,6 +244,9 @@ class NewRelType(BaseRelationship):
 
     new_rel_prop: str
 
+class NewRelTypeSecondary(NewRelType):
+    """Same as NewRelType, but PracticeNode->SubClassNode instead of PracticeNode->PracticeNode"""
+    target: SubclassNode
 
 def test_merge_relationships_defined_types(use_graph):
     node1 = PracticeNode(pp="Source Node")
@@ -285,9 +292,6 @@ def test_get_count_none(use_graph):
     assert NewRelType.get_count() == 0
 
 
-class SubclassNode(PracticeNode):
-    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-    myprop: str
 
 
 class NewRelType2(BaseRelationship):

@@ -22,16 +22,12 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
         # we can define 'abstract' nodes which don't have a label
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph
-        if (
-            hasattr(subclass, "__primarylabel__")
-            and subclass.__primarylabel__ is not None
-        ):
-            node_types[subclass.__primarylabel__] = subclass
+        subclass_node_types = get_node_types(subclass)
 
-        if subclass.__subclasses__():
-            subclass_node_types = get_node_types(subclass)
-
-            node_types.update(subclass_node_types)
+        #TODO: the update on existing causes weird class leakage failure in pytest 
+        ## When test_basenode and test_baserelationship are run sequentially
+        #update_non_existing_inplace(node_types, subclass_node_types)
+        node_types.update(subclass_node_types)
 
     return node_types
 
@@ -70,21 +66,20 @@ def get_rels_by_type(
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph
 
-        if (
-            hasattr(rel_subclass, "__relationshiptype__")
-            and rel_subclass.__relationshiptype__ is not None
-        ):
-            rel_types[rel_subclass.__relationshiptype__] = (
-                generate_relationship_type_data(rel_subclass)
-            )
+        subclass_rel_types = get_rels_by_type(rel_subclass)
 
-        if rel_subclass.__subclasses__():
-            subclass_rel_types = get_rels_by_type(rel_subclass)
-
-            rel_types.update(subclass_rel_types)
+        update_non_existing_inplace(rel_types, subclass_rel_types)
 
     return rel_types
 
+def update_non_existing_inplace(original_dict: dict, to_add: dict) -> None:
+    for key in to_add.keys():
+        if key not in original_dict:
+            original_dict[key] = to_add[key]
+        else:
+            import warnings
+            warnings.warn(UserWarning(f'Duplicate dictionary key {key} ignored.'
+                                      f' Requested {to_add[key]}, but already has {original_dict[key]}'))
 
 def all_subclasses(cls: type) -> set:
     return set(cls.__subclasses__()).union(

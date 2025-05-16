@@ -1,4 +1,4 @@
-# Neontology: Neo4j, Python and Pydantic
+# Neontolojay: Neo4j, Python and Pydantic
 
 [![PyPI - Version](https://img.shields.io/pypi/v/neontology)](https://pypi.org/project/neontology/)
 [![Read the Docs](https://img.shields.io/readthedocs/neontology)](https://neontology.readthedocs.io/en/latest/)
@@ -9,16 +9,25 @@
 
 > *Easily ingest data into a openCypher / GQL (Graph Query Language) graph database like Neo4j using Python, Pydantic and pandas.*
 
-Neontology is a simple object-graph mapper which lets you use [Pydantic](https://pydantic-docs.helpmanual.io/) models to define Nodes and Relationships. It imposes certain restrictions on how you model data, which aims to make life easier for most users in areas like the construction of knowledge graphs and development of graph database applications.
+Neontolojay is a fork of Neontology, a simple object-graph mapper which lets you use [Pydantic](https://pydantic-docs.helpmanual.io/) models to define Nodes and Relationships. It imposes certain restrictions on how you model data, which aims to make life easier for most users in areas like the construction of knowledge graphs and development of graph database applications.
 
 Neontology is inspired by projects like py2neo (which is no longer maintained), Beanie and SQLModel.
 
-Read the documentation [here](https://neontology.readthedocs.io/en/latest/).
+Read the original documentation [here](https://neontology.readthedocs.io/en/latest/).
+
+## Differences from Neontology
+- Support non-unique elements, optionally mapping Neo4j Element_ID into Neontolojay Node and Relationship Properties (#2)
+- Support for Pydantic Field Aliases in Property Names (#3)
+- Support multiple relationship classes with the same relationship_type (#5)
 
 ## Installation
 
+### Temporary
+Download this repository and add it as a local dependency for your project.
+
+### IN WORK - future state will publish to pypi to enable the following
 ```bash
-pip install neontology
+pip install neontolojay
 ```
 
 ## Note on v2
