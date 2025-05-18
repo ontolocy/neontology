@@ -54,6 +54,8 @@ def get_rels_by_type(
 ) -> Dict[str, RelationshipTypeData]:
     rel_types: dict = defaultdict(dict)
 
+    # if we're starting with a relationship type that has a relationshiptype, include this in results
+    # if it has a relationshiptype, it is a concrete class and don't searcch subclasses
     if (
         hasattr(base_type, "__relationshiptype__")
         and base_type.__relationshiptype__ is not None
@@ -61,15 +63,15 @@ def get_rels_by_type(
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(
             base_type
         )
-    #TODO: Check if this can be put in an ELSE to prevent further processing for a concrete rel
-    for rel_subclass in base_type.__subclasses__():
-        # we can define 'abstract' relationships which don't have a label
-        # these are to provide common properties to be used by subclassed relationships
-        # but shouldn't be put in the graph
+    else:
+        for rel_subclass in base_type.__subclasses__():
+            # we can define 'abstract' relationships which don't have a label
+            # these are to provide common properties to be used by subclassed relationships
+            # but shouldn't be put in the graph
 
-        subclass_rel_types = get_rels_by_type(rel_subclass)
+            subclass_rel_types = get_rels_by_type(rel_subclass)
 
-        update_non_existing_inplace(rel_types, subclass_rel_types)
+            update_non_existing_inplace(rel_types, subclass_rel_types)
 
     return rel_types
 
