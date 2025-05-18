@@ -12,23 +12,24 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
     node_types = {}
 
     # if we're starting with a node type that has a primary label, include this in results
+    # if it has a primary label, it is a concrete class and don't searcch subclasses
     if (
         hasattr(base_type, "__primarylabel__")
         and base_type.__primarylabel__ is not None
     ):
         node_types[base_type.__primarylabel__] = base_type
+    else:
+        for subclass in base_type.__subclasses__():
+            # we can define 'abstract' nodes which don't have a label
+            # these are to provide common properties to be used by subclassed nodes
+            # but shouldn't be put in the graph
+            subclass_node_types = get_node_types(subclass)
 
-    for subclass in base_type.__subclasses__():
-        # we can define 'abstract' nodes which don't have a label
-        # these are to provide common properties to be used by subclassed nodes
-        # but shouldn't be put in the graph
-        subclass_node_types = get_node_types(subclass)
-
-        #TODO: the update on existing causes weird class leakage failure in pytest 
-        ## When test_basenode and test_baserelationship are run sequentially
-        #update_non_existing_inplace(node_types, subclass_node_types)
-        node_types.update(subclass_node_types)
-
+            #TODO: the update on existing causes weird class leakage failure in pytest 
+            ## When test_basenode and test_baserelationship are run sequentially
+            #update_non_existing_inplace(node_types, subclass_node_types)
+            node_types.update(subclass_node_types)
+    
     return node_types
 
 
@@ -60,7 +61,7 @@ def get_rels_by_type(
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(
             base_type
         )
-
+    #TODO: Check if this can be put in an ELSE to prevent further processing for a concrete rel
     for rel_subclass in base_type.__subclasses__():
         # we can define 'abstract' relationships which don't have a label
         # these are to provide common properties to be used by subclassed relationships

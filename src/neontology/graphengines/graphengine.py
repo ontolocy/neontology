@@ -238,7 +238,10 @@ class GraphEngineBase:
         from ..utils import get_node_types, get_rels_by_type
 
         rel_types = get_rels_by_type(rel_class)
-        node_classes = get_node_types()
+        node_classes = get_node_types(rel_class.model_fields['source'].annotation)
+        if (rel_class.model_fields['source'].annotation 
+            != rel_class.model_fields['target'].annotation):
+            node_classes.update(get_node_types(rel_class.model_fields['target'].annotation))
 
         return self.evaluate_query(
             cypher, params, node_classes=node_classes, relationship_classes=rel_types
@@ -319,7 +322,10 @@ class GraphEngineBase:
             params["limit"] = int_adapter.validate_python(limit)
 
         rel_types = get_rels_by_type(relationship_class)
-        node_classes = get_node_types()
+        node_classes = get_node_types(relationship_class.model_fields['source'].annotation)
+        if (relationship_class.model_fields['source'].annotation 
+            != relationship_class.model_fields['target'].annotation):
+            node_classes.update(get_node_types(relationship_class.model_fields['target'].annotation))
 
         result = self.evaluate_query(
             cypher,

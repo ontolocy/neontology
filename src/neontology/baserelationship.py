@@ -477,3 +477,8 @@ class RelationshipTypeData(BaseModel):
     target_class: type[BaseNode]
     all_source_classes: List[type[BaseNode]]
     all_target_classes: List[type[BaseNode]]
+    
+    def __repr_args__(self):
+        return [(k, v) for k, v in self.__dict__.items() 
+                if k not in ["source_class","target_class",
+                             "all_source_classes","all_target_classes",]]

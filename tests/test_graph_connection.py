@@ -233,7 +233,7 @@ def test_undefined_label(use_graph):
     RETURN n
     """
 
-    with pytest.warns(UserWarning, match="Unexpected primary labels returned:"):
+    with pytest.warns(UserWarning, match="Unexpected primary labels returned"):
         result = gc.evaluate_query(match_cypher)
 
     assert len(result.records) == 2
@@ -262,7 +262,7 @@ def test_multiple_primary_labels(use_graph):
 
     with pytest.warns(
         UserWarning,
-        match=r"Unexpected primary labels returned: {('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}",
+        match=r"Unexpected primary labels returned \[('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')\]",
     ):
         result = gc.evaluate_query(match_cypher)
 
