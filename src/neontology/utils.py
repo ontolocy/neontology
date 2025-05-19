@@ -25,11 +25,11 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
             # but shouldn't be put in the graph
             subclass_node_types = get_node_types(subclass)
 
-            #TODO: the update on existing causes weird class leakage failure in pytest 
-            ## When test_basenode and test_baserelationship are run sequentially
-            #update_non_existing_inplace(node_types, subclass_node_types)
+            # TODO: the update on existing causes weird class leakage failure in pytest
+            #   When test_basenode and test_baserelationship are run sequentially
+            # update_non_existing_inplace(node_types, subclass_node_types)
             node_types.update(subclass_node_types)
-    
+
     return node_types
 
 
@@ -75,14 +75,21 @@ def get_rels_by_type(
 
     return rel_types
 
+
 def update_non_existing_inplace(original_dict: dict, to_add: dict) -> None:
     for key in to_add.keys():
         if key not in original_dict:
             original_dict[key] = to_add[key]
         else:
             import warnings
-            warnings.warn(UserWarning(f'Duplicate dictionary key {key} ignored.'
-                                      f' Requested {to_add[key]}, but already has {original_dict[key]}'))
+
+            warnings.warn(
+                UserWarning(
+                    f"Duplicate dictionary key {key} ignored."
+                    f" Requested {to_add[key]}, but already has {original_dict[key]}"
+                )
+            )
+
 
 def all_subclasses(cls: type) -> set:
     return set(cls.__subclasses__()).union(

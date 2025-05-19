@@ -1,15 +1,15 @@
 import os
-from typing import Any, ClassVar, Optional, List
+from typing import Any, ClassVar, List, Optional
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j import Result as Neo4jResult
 from pydantic import model_validator
 
+from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
 from .graphengine import GraphEngineBase, GraphEngineConfig
 from .neo4jengine import neo4j_records_to_neontology_records
-from ..gql import gql_identifier_adapter
 
 
 class MemgraphEngine(GraphEngineBase):
@@ -77,7 +77,7 @@ class MemgraphEngine(GraphEngineBase):
 
         else:
             return None
-    
+
     def merge_relationships(
         self,
         source_label: str,
@@ -127,10 +127,14 @@ class MemgraphEngine(GraphEngineBase):
         from ..utils import get_node_types, get_rels_by_type
 
         rel_types = get_rels_by_type(rel_class)
-        node_classes = get_node_types(rel_class.model_fields['source'].annotation)
-        if (rel_class.model_fields['source'].annotation 
-            != rel_class.model_fields['target'].annotation):
-            node_classes.update(get_node_types(rel_class.model_fields['target'].annotation))
+        node_classes = get_node_types(rel_class.model_fields["source"].annotation)
+        if (
+            rel_class.model_fields["source"].annotation
+            != rel_class.model_fields["target"].annotation
+        ):
+            node_classes.update(
+                get_node_types(rel_class.model_fields["target"].annotation)
+            )
 
         return self.evaluate_query(
             cypher, params, node_classes=node_classes, relationship_classes=rel_types

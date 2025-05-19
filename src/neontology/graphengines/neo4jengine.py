@@ -78,7 +78,9 @@ def neo4j_node_to_neontology_node(
 
 
 def neo4j_relationship_to_neontology_rel(
-    neo4j_rel: Neo4jRelationship, node_classes: dict, rel_classes: dict[str,"RelationshipTypeData"]
+    neo4j_rel: Neo4jRelationship,
+    node_classes: dict,
+    rel_classes: dict[str, "RelationshipTypeData"],
 ) -> Optional["BaseRelationship"]:
     rel_type = neo4j_rel.type
     rel_type_data = rel_classes[rel_type]
@@ -110,9 +112,11 @@ def neo4j_relationship_to_neontology_rel(
     src_node = neo4j_node_to_neontology_node(neo4j_rel.start_node, node_classes)
     tgt_node = neo4j_node_to_neontology_node(neo4j_rel.end_node, node_classes)
 
-    #ensure source and target types are allowed for this relationship class
-    if not( (type(src_node) in rel_type_data.all_source_classes)
-           and (type(tgt_node) in rel_type_data.all_target_classes)):
+    # ensure source and target types are allowed for this relationship class
+    if not (
+        (type(src_node) in rel_type_data.all_source_classes)
+        and (type(tgt_node) in rel_type_data.all_target_classes)
+    ):
         return None
 
     rel_props = convert_neo4j_types(dict(neo4j_rel))

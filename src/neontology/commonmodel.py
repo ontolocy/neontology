@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Set, Self
+from typing import Any, Dict, List, Self, Set
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
 from pydantic_core import PydanticCustomError
@@ -85,12 +85,12 @@ class CommonModel(BaseModel):
 
         return export_dict
 
-    def _get_merge_parameters_common(self, exclude: Set[str] = set()) -> Dict[str,Any]:
+    def _get_merge_parameters_common(self, exclude: Set[str] = set()) -> Dict[str, Any]:
         """Input an all properties dictionary, and filter based on property types.
 
-            Returns:
-                Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
-            """
+        Returns:
+            Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
+        """
         # get all the properties
         all_props = self._engine_dict(exclude=exclude)
 
@@ -138,7 +138,7 @@ class CommonModel(BaseModel):
         result_always_set = result._get_merge_parameters_common()["always_set"]
         if not isinstance(result, type(self)):
             raise ValueError(f"Result type is {type(result)}; expected {type(self)}.")
-        for k,v in self._get_merge_parameters_common()["always_set"].items():
+        for k, v in self._get_merge_parameters_common()["always_set"].items():
             if v != result_always_set[k]:
                 raise ValueError(
                     f"Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}."

@@ -1,18 +1,18 @@
 import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Dict, List, Optional, Type, TypeVar, Self
+from typing import Any, ClassVar, Dict, List, Optional, Self, Type, TypeVar
 
 import pandas as pd
-from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator, Field
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError, model_validator
 
 from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
-from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
 from .result import NeontologyResult
+from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
 
 R = TypeVar("R", bound="BaseRelationship")
 
@@ -96,13 +96,15 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         source_element_id_prop = getattr(self.source, "__elementidproperty__", None)
         target_element_id_prop = getattr(self.target, "__elementidproperty__", None)
 
-        params.update({
-            "source_prop": source_prop,
-            "source_element_id_prop": source_element_id_prop,
-            "target_prop": target_prop,
-            "target_element_id_prop": target_element_id_prop,
-            **merge_props,
-        })
+        params.update(
+            {
+                "source_prop": source_prop,
+                "source_element_id_prop": source_element_id_prop,
+                "target_prop": target_prop,
+                "target_element_id_prop": target_element_id_prop,
+                **merge_props,
+            }
+        )
 
         return params
 
@@ -477,8 +479,16 @@ class RelationshipTypeData(BaseModel):
     target_class: type[BaseNode]
     all_source_classes: List[type[BaseNode]]
     all_target_classes: List[type[BaseNode]]
-    
+
     def __repr_args__(self):
-        return [(k, v) for k, v in self.__dict__.items() 
-                if k not in ["source_class","target_class",
-                             "all_source_classes","all_target_classes",]]
+        return [
+            (k, v)
+            for k, v in self.__dict__.items()
+            if k
+            not in [
+                "source_class",
+                "target_class",
+                "all_source_classes",
+                "all_target_classes",
+            ]
+        ]

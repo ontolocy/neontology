@@ -105,9 +105,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # get all the properties
         all_props = params.pop("all_props")
 
-        params.update({
-            "pp": all_props[self.__primaryproperty__],
-        })
+        params.update(
+            {
+                "pp": all_props[self.__primaryproperty__],
+            }
+        )
 
         return params
 
