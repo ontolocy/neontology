@@ -1,6 +1,6 @@
 [project]
 name = "neontolojay"
-version = "2025.0.0b2"
+version = "2025.0.0b3"
 requires-python = ">=3.9"
 description = "A Python package for modelling data in a Neo4j graph database with Pydantic and Pandas. A fork of neontology with added support for non-unique primary keys."
 dependencies = [
@@ -18,6 +18,9 @@ markers = [
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore:Duplicate dictionary key PRACTICE_RELATIONSHIP"
+]
 log_cli = 1
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"

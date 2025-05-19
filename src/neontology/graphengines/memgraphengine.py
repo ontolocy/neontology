@@ -1,11 +1,12 @@
 import os
-from typing import Any, ClassVar, Optional
+from typing import Any, ClassVar, List, Optional
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j import Result as Neo4jResult
 from pydantic import model_validator
 
+from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
 from .graphengine import GraphEngineBase, GraphEngineConfig
 from .neo4jengine import neo4j_records_to_neontology_records
@@ -76,6 +77,68 @@ class MemgraphEngine(GraphEngineBase):
 
         else:
             return None
+
+    def merge_relationships(
+        self,
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        merge_on_props: List[str],
+        rel_props: List[dict],
+        rel_class: type["BaseRelationship"],
+    ) -> NeontologyResult:
+        # build a string of properties to merge on "prop_name: $prop_name"
+        merge_props = ", ".join(
+            [
+                f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}"
+                for x in merge_on_props
+            ]
+        )
+
+        if rel_props[0]["source_element_id_prop"] == source_prop:
+            source_match_cypher = """toString(id(source))"""
+        else:
+            source_match_cypher = (
+                f"""source.{gql_identifier_adapter.validate_strings(source_prop)}"""
+            )
+        if rel_props[0]["target_element_id_prop"] == target_prop:
+            target_match_cypher = """toString(id(target))"""
+        else:
+            target_match_cypher = (
+                f"""target.{gql_identifier_adapter.validate_strings(target_prop)}"""
+            )
+        cypher = f"""
+        UNWIND $rel_list AS rel
+        MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
+        WHERE {source_match_cypher} = rel.source_prop
+        MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
+        WHERE {target_match_cypher} = rel.target_prop
+        MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
+        ON MATCH SET r += rel.set_on_match
+        ON CREATE SET r += rel.set_on_create
+        SET r += rel.always_set
+        RETURN r, source, target
+        """
+
+        params = {"rel_list": rel_props}
+
+        from ..utils import get_node_types, get_rels_by_type
+
+        rel_types = get_rels_by_type(rel_class)
+        node_classes = get_node_types(rel_class.model_fields["source"].annotation)
+        if (
+            rel_class.model_fields["source"].annotation
+            != rel_class.model_fields["target"].annotation
+        ):
+            node_classes.update(
+                get_node_types(rel_class.model_fields["target"].annotation)
+            )
+
+        return self.evaluate_query(
+            cypher, params, node_classes=node_classes, relationship_classes=rel_types
+        )
 
 
 class MemgraphConfig(GraphEngineConfig):
