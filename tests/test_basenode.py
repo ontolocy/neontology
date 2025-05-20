@@ -353,6 +353,23 @@ def test_create_multiple_defined_label(use_graph):
     assert "Special Test Node" in results
     assert "Special Test Node2" in results
 
+class OptionalPropertyNode(BaseNode):
+    __primarylabel__: ClassVar[Optional[str]] = "OptionalProperty"
+    __primaryproperty__: ClassVar[str] = "pp"
+
+    pp: str
+    opt_prop: Optional[str] = None
+
+def test_merge_optional_property(use_graph):
+    node_full = OptionalPropertyNode(pp="Alpha", opt_prop="Beta")
+    node_full.merge()
+
+    node_partial = OptionalPropertyNode(pp="Alpha")
+    node_partial.merge()
+
+    # node_partial should pick up value of opt_prop from matched node on merge()
+    assert node_full.opt_prop == node_partial.opt_prop
+
 
 def test_creation_datetime(use_graph):
     """
