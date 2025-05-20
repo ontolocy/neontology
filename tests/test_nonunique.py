@@ -27,16 +27,22 @@ class ParentUniqueRelationship(BaseRelationship, ElementIdModel):
 
 
 def test_merge_nonunique(use_graph):
-    child1_node = NonUniqueNode(nonpp="Child")
+    child1_node = NonUniqueNode(nonpp="Child", element_id='150')
     child1_node.merge()
+    child1_elementid = child1_node.element_id
+    print(f'{child1_elementid=}')
+    # check server element id is stable by merging twice to ensure child1 isn't duplicated
+    child1_node.merge()
+    assert child1_node.element_id == child1_elementid
+
     parent1_node = UniqueNode(pp="Parent1", element_id="1234")
     parent1_node.merge()
     rel1 = ParentUniqueRelationship(source=child1_node, target=parent1_node)
     rel1.merge()
 
-    child2_node = NonUniqueNode(nonpp="Child")
+    child2_node = NonUniqueNode(nonpp="Child", element_id='250')
     child2_node.merge()
-    parent2_node = UniqueNode(pp="Parent2")
+    parent2_node = UniqueNode(pp="Parent2", element_id='5678')
     parent2_node.merge()
     rel2 = ParentUniqueRelationship(source=child2_node, target=parent2_node)
     rel2.merge()
@@ -60,9 +66,9 @@ def test_merge_nonunique(use_graph):
 
 
 def test_create_nonunique(use_graph):
-    child1_node = NonUniqueNode(nonpp="Child")
+    child1_node = NonUniqueNode(nonpp="Child", element_id="100")
     child1_node.create()
-    child2_node = NonUniqueNode(nonpp="Child")
+    child2_node = NonUniqueNode(nonpp="Child", element_id="200")
     child2_node.create()
     parent1_node = UniqueNode(pp="Parent1", element_id="1234")
     parent1_node.create()
@@ -97,6 +103,12 @@ def test_create_nonunique(use_graph):
     # check that element_id (python property) is not being saved to server
     cypher_elid = """
     MATCH (n:UniqueNode {pp:'Parent1'}) RETURN n.element_id
+    """
+    result_elid = use_graph.evaluate_query_single(cypher_elid)
+    assert result_elid is None
+    
+    cypher_elid = """
+    MATCH (n:NonUniqueNode {nonpp:'Child'}) RETURN n.element_id LIMIT 1
     """
     result_elid = use_graph.evaluate_query_single(cypher_elid)
     assert result_elid is None
