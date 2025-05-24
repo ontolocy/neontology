@@ -122,13 +122,13 @@ class GraphConnection(object):
         self.global_rels = get_rels_by_type()
 
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNode]
     ) -> List["BaseNode"]:
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> List["BaseNode"]:
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNode]
+    ) -> List[BaseNode]:
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
 
     def match_nodes(

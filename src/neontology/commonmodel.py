@@ -94,7 +94,7 @@ class CommonModel(BaseModel):
         # get all the properties
         all_props = self._engine_dict(exclude=exclude)
 
-        always_set = {k: all_props[k] for k in self._always_set}
+        always_set = {k: all_props[k] for k in self._always_set if (all_props[k] is not None)}
         set_on_match = {k: all_props[k] for k in self._set_on_match}
         set_on_create = {k: all_props[k] for k in self._set_on_create}
         params = {
@@ -135,11 +135,15 @@ class CommonModel(BaseModel):
         if applicable.
 
         Raises ValueError if self and result do not match"""
-        result_always_set = result._get_merge_parameters_common()["always_set"]
         if not isinstance(result, type(self)):
             raise ValueError(f"Result type is {type(result)}; expected {type(self)}.")
-        for k, v in self._get_merge_parameters_common()["always_set"].items():
-            if v != result_always_set[k]:
+        result_always_set = result._get_merge_parameters_common()["always_set"]
+        self_always_set = self._get_merge_parameters_common()["always_set"]
+        all_always_set_keys = self_always_set.keys() | result_always_set.keys()
+        for k in all_always_set_keys:
+            if k not in self_always_set:
+                setattr(self,k,result_always_set[k])
+            elif k not in result_always_set or (k in self_always_set and self_always_set[k] != result_always_set[k]):
                 raise ValueError(
                     f"Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}."
                 )

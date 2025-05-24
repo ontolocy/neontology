@@ -1,7 +1,7 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Self, Tuple, Union
 
 import pandas as pd
 from pydantic import ValidationError, model_validator
@@ -175,7 +175,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         warnings.warn(("get_primary_property_value is deprecated, use get_pp instead."))
         return self.get_pp()
 
-    def create(self) -> "BaseNode":
+    def create(self) -> Self:
         """Create this node in the graph."""
 
         # pp = self.get_pp()
@@ -201,7 +201,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         self.check_sync_result(results[0])
         return self
 
-    def merge(self) -> List["BaseNode"]:
+    def merge(self) -> List[Self]:
         """Merge this node into the graph."""
         pp_key = self.__primaryproperty__
 
@@ -216,7 +216,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        results = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
+        results: list[Self] = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
         assert len(results) == 1
         self.check_sync_result(results[0])
         return [self]
