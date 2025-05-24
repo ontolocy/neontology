@@ -666,6 +666,7 @@ def test_set_on_match(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_match is None
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
 
     test_node2 = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
     test_node2.merge()
@@ -673,6 +674,7 @@ def test_set_on_match(use_graph):
     cypher_result2 = use_graph.evaluate_query(cypher)
 
     assert cypher_result2.nodes[0].only_set_on_match == "Foo"
+    assert test_node2.only_set_on_match == "Foo"
 
 
 def test_set_on_create(use_graph):
@@ -698,6 +700,7 @@ def test_set_on_create(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_create == "Foo"
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_create == "Foo"
 
     test_node2 = TestModel(only_set_on_create="Fee", normal_field="Fi", pp="test_node")
     test_node2.merge()
@@ -706,6 +709,7 @@ def test_set_on_create(use_graph):
 
     assert cypher_result2.nodes[0].only_set_on_create == "Foo"
     assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
 
 
 class Person(BaseNode):
