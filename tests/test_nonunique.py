@@ -25,6 +25,16 @@ class ParentUniqueRelationship(BaseRelationship, ElementIdModel):
     source: NonUniqueNode
     target: UniqueNode
 
+def test_match_nonunique(use_graph):
+    tn = NonUniqueNode(nonpp="Special Test Node")
+
+    tn.create()
+
+    result = NonUniqueNode.match(pp=tn.element_id)
+
+    assert isinstance(result, NonUniqueNode)
+
+    assert "Special Test Node" == result.nonpp
 
 def test_merge_nonunique(use_graph):
     child1_node = NonUniqueNode(nonpp="Child", element_id='150')

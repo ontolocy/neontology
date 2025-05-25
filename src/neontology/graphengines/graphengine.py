@@ -127,9 +127,15 @@ class GraphEngineBase:
 
         label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
 
+        element_id_prop_name = getattr(node_class, "__elementidproperty__", None)
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            pp_cypher = ""
+        else:
+            pp_cypher = f"{{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}}"
+
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        create (n:{":".join(label_identifiers)} {pp_cypher})
         SET n += node.props
         RETURN n
         """
@@ -261,10 +267,15 @@ class GraphEngineBase:
         Returns:
             Optional[B]: If the node exists, return it as an instance.
         """
+        element_id_prop_name = getattr(node_class, "__elementidproperty__", None)
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            match_cypher = "elementId(n)"
+        else:
+            match_cypher = f"n.{node_class.__primaryproperty__}"
 
         cypher = f"""
         MATCH (n:{node_class.__primarylabel__})
-        WHERE n.{node_class.__primaryproperty__} = $pp
+        WHERE {match_cypher} = $pp
         RETURN n
         """
 
