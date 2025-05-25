@@ -19,6 +19,8 @@ Read the original documentation [here](https://neontology.readthedocs.io/en/late
 - Support non-unique elements, optionally mapping Neo4j Element_ID into Neontolojay Node and Relationship Properties (#2)
 - Support for Pydantic Field Aliases in Property Names (#3)
 - Support multiple relationship classes with the same relationship_type (#5)
+- Merge() behavior no longer overwrites database element properties for optional fields (#8)
+- On create and on match properties are synchronized back to calling object on merge()
 
 ## Installation
 
