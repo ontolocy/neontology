@@ -216,7 +216,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        results: list[Self] = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
+        results: list[Self] = gc.merge_nodes(
+            all_labels, pp_key, node_list, self.__class__
+        )
         assert len(results) == 1
         self.check_sync_result(results[0])
         return [self]

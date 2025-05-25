@@ -94,7 +94,9 @@ class CommonModel(BaseModel):
         # get all the properties
         all_props = self._engine_dict(exclude=exclude)
 
-        always_set = {k: all_props[k] for k in self._always_set if (all_props[k] is not None)}
+        always_set = {
+            k: all_props[k] for k in self._always_set if (all_props[k] is not None)
+        }
         set_on_match = {k: all_props[k] for k in self._set_on_match}
         set_on_create = {k: all_props[k] for k in self._set_on_create}
         params = {
@@ -131,19 +133,27 @@ class CommonModel(BaseModel):
 
     def check_sync_result(self, result: Self) -> None:
         """Checks that a returned result matches the current object based on always_set properties.
-        Synchronizing the element_id from result to self
-        if applicable.
+        Synchronizes result.element_id to self if applicable.
+        Synchronizes result.properties to self if self.property = None (i.e. not specified).
+        Synchronizes result.properties to self if property set_on_match or set_on_create.
 
         Raises ValueError if self and result do not match"""
         if not isinstance(result, type(self)):
             raise ValueError(f"Result type is {type(result)}; expected {type(self)}.")
-        result_always_set = result._get_merge_parameters_common()["always_set"]
+        result_merge_parameters = result._get_merge_parameters_common()
+        result_prop_keys = (
+            result_merge_parameters["always_set"]
+            | result_merge_parameters["set_on_create"]
+            | result_merge_parameters["set_on_match"]
+        )
         self_always_set = self._get_merge_parameters_common()["always_set"]
-        all_always_set_keys = self_always_set.keys() | result_always_set.keys()
+        all_always_set_keys = self_always_set.keys() | result_prop_keys.keys()
         for k in all_always_set_keys:
             if k not in self_always_set:
-                setattr(self,k,result_always_set[k])
-            elif k not in result_always_set or (k in self_always_set and self_always_set[k] != result_always_set[k]):
+                setattr(self, k, result_prop_keys[k])
+            elif k not in result_prop_keys or (
+                k in self_always_set and self_always_set[k] != result_prop_keys[k]
+            ):
                 raise ValueError(
                     f"Resulting {type(self)} {result.__repr__} does not match the calling object {self.__repr__}."
                 )
