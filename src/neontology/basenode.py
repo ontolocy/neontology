@@ -356,25 +356,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Optional[B]: If the node exists, return it as an instance.
         """
 
-        cypher = f"""
-        MATCH (n:{cls.__primarylabel__})
-        WHERE n.{cls.__primaryproperty__} = $pp
-        RETURN n
-        """
-
-        params = {"pp": pp}
-
         gc = GraphConnection()
 
-        result = gc.evaluate_query(
-            cypher, params, node_classes={cls.__primarylabel__: cls}
-        )
-
-        if result.nodes:
-            return result.nodes[0]
-
-        else:
-            return None
+        return gc.match_node(pp, cls)
 
     @classmethod
     def delete(cls, pp: str) -> None:

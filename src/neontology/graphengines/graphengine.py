@@ -250,7 +250,36 @@ class GraphEngineBase:
         return self.evaluate_query(
             cypher, params, node_classes=node_classes, relationship_classes=rel_types
         )
+    
+    def match_node(self, pp: str, node_class: type[BaseNode]) -> Optional[BaseNode]:
+        """MATCH a single node of this type with the given primary property.
 
+        Args:
+            pp (str): The value of the primary property (pp) to match on.
+            node_class (type[BaseNode]): Class of the node to match
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+        """
+
+        cypher = f"""
+        MATCH (n:{node_class.__primarylabel__})
+        WHERE n.{node_class.__primaryproperty__} = $pp
+        RETURN n
+        """
+
+        params = {"pp": pp}
+
+        result = self.evaluate_query(
+            cypher, params, node_classes={node_class.__primarylabel__: node_class}
+        )
+
+        if result.nodes:
+            return result.nodes[0]
+
+        else:
+            return None
+        
     def match_nodes(
         self,
         node_class: type["BaseNode"],
