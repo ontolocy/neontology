@@ -354,6 +354,25 @@ def test_create_multiple_defined_label(use_graph):
     assert "Special Test Node2" in results
 
 
+class OptionalPropertyNode(BaseNode):
+    __primarylabel__: ClassVar[Optional[str]] = "OptionalProperty"
+    __primaryproperty__: ClassVar[str] = "pp"
+
+    pp: str
+    opt_prop: Optional[str] = None
+
+
+def test_merge_optional_property(use_graph):
+    node_full = OptionalPropertyNode(pp="Alpha", opt_prop="Beta")
+    node_full.merge()
+
+    node_partial = OptionalPropertyNode(pp="Alpha")
+    node_partial.merge()
+
+    # node_partial should pick up value of opt_prop from matched node on merge()
+    assert node_full.opt_prop == node_partial.opt_prop
+
+
 def test_creation_datetime(use_graph):
     """
     Check we can manually define the created datetime, and then check we can
@@ -649,6 +668,7 @@ def test_set_on_match(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_match is None
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
 
     test_node2 = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
     test_node2.merge()
@@ -656,6 +676,7 @@ def test_set_on_match(use_graph):
     cypher_result2 = use_graph.evaluate_query(cypher)
 
     assert cypher_result2.nodes[0].only_set_on_match == "Foo"
+    assert test_node2.only_set_on_match == "Foo"
 
 
 def test_set_on_create(use_graph):
@@ -681,6 +702,7 @@ def test_set_on_create(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_create == "Foo"
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_create == "Foo"
 
     test_node2 = TestModel(only_set_on_create="Fee", normal_field="Fi", pp="test_node")
     test_node2.merge()
@@ -689,6 +711,60 @@ def test_set_on_create(use_graph):
 
     assert cypher_result2.nodes[0].only_set_on_create == "Foo"
     assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
+
+
+def test_set_on_create_and_merge(use_graph):
+    """Check that we successfully identify field to set on match and on create
+    in same Node class"""
+
+    class TestModel(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel3"
+        pp: str = "test_node"
+        only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
+        only_set_on_match: Optional[str] = Field(
+            json_schema_extra={"set_on_match": True}, default=None
+        )
+        normal_field: str
+
+    test_node = TestModel(
+        only_set_on_create="Foo",
+        only_set_on_match="Fu",
+        normal_field="Bar",
+        pp="test_node",
+    )
+    test_node.merge()
+
+    cypher = """
+    MATCH (n:TestModel3)
+    WHERE n.pp = 'test_node'
+    RETURN n
+    """
+
+    cypher_result = use_graph.evaluate_query(cypher)
+
+    assert cypher_result.nodes[0].only_set_on_match is None
+    assert cypher_result.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
+    assert test_node.only_set_on_create == "Foo"
+
+    test_node2 = TestModel(
+        only_set_on_create="Fee",
+        only_set_on_match="Fa",
+        normal_field="Fi",
+        pp="test_node",
+    )
+    test_node2.merge()
+
+    cypher_result2 = use_graph.evaluate_query(cypher)
+
+    assert cypher_result2.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result2.nodes[0].only_set_on_match == "Fa"
+    assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
+    assert test_node2.only_set_on_match == "Fa"
 
 
 class Person(BaseNode):
