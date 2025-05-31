@@ -205,11 +205,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """Merge this node into the graph."""
         pp_key = self.__primaryproperty__
 
-        element_id_prop_name = getattr(self, "__elementidproperty__", None)
-        if pp_key == element_id_prop_name:
-            # Special handeling for primary property of element_id
-            return [self.create()]
-
         node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__

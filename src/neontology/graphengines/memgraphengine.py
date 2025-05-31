@@ -77,7 +77,7 @@ class MemgraphEngine(GraphEngineBase):
 
         else:
             return None
-        
+
     def match_node(self, pp: str, node_class: type["BaseNode"]) -> Optional["BaseNode"]:
         """MATCH a single node of this type with the given primary property.
         Memgraph specific element id function version
@@ -112,7 +112,11 @@ class MemgraphEngine(GraphEngineBase):
 
         else:
             return None
-        
+
+    @staticmethod
+    def _where_elementId_cypher() -> str:
+        return "toString(id(n)) = $pp"
+
     def merge_relationships(
         self,
         source_label: str,

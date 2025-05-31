@@ -25,6 +25,7 @@ class ParentUniqueRelationship(BaseRelationship, ElementIdModel):
     source: NonUniqueNode
     target: UniqueNode
 
+
 def test_match_nonunique(use_graph):
     tn = NonUniqueNode(nonpp="Special Test Node")
 
@@ -36,11 +37,12 @@ def test_match_nonunique(use_graph):
 
     assert "Special Test Node" == result.nonpp
 
+
 def test_merge_nonunique(use_graph):
-    child1_node = NonUniqueNode(nonpp="Child", element_id='150')
+    child1_node = NonUniqueNode(nonpp="Child", element_id="150")
     child1_node.merge()
     child1_elementid = child1_node.element_id
-    print(f'{child1_elementid=}')
+    print(f"{child1_elementid=}")
     # check server element id is stable by merging twice to ensure child1 isn't duplicated
     child1_node.merge()
     assert child1_node.element_id == child1_elementid
@@ -50,9 +52,9 @@ def test_merge_nonunique(use_graph):
     rel1 = ParentUniqueRelationship(source=child1_node, target=parent1_node)
     rel1.merge()
 
-    child2_node = NonUniqueNode(nonpp="Child", element_id='250')
+    child2_node = NonUniqueNode(nonpp="Child", element_id="250")
     child2_node.merge()
-    parent2_node = UniqueNode(pp="Parent2", element_id='5678')
+    parent2_node = UniqueNode(pp="Parent2", element_id="5678")
     parent2_node.merge()
     rel2 = ParentUniqueRelationship(source=child2_node, target=parent2_node)
     rel2.merge()
@@ -116,7 +118,7 @@ def test_create_nonunique(use_graph):
     """
     result_elid = use_graph.evaluate_query_single(cypher_elid)
     assert result_elid is None
-    
+
     cypher_elid = """
     MATCH (n:NonUniqueNode {nonpp:'Child'}) RETURN n.element_id LIMIT 1
     """

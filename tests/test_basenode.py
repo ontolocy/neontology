@@ -180,7 +180,10 @@ def test_none_primary_label():
         __primarylabel__: ClassVar[Optional[str]] = None
         pp: str
 
-    with pytest.warns(UserWarning,match="Primary Label should contain only alphanumeric characters and underscores"):
+    with pytest.warns(
+        UserWarning,
+        match="Primary Label should contain only alphanumeric characters and underscores",
+    ):
         with pytest.raises(NotImplementedError):
             SpecialPracticeNode(pp="Test Node")
 

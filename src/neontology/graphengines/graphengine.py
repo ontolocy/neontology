@@ -131,7 +131,9 @@ class GraphEngineBase:
         if node_class.__primaryproperty__ == element_id_prop_name:
             pp_cypher = ""
         else:
-            pp_cypher = f"{{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}}"
+            pp_cypher = (
+                f"{{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}}"
+            )
 
         cypher = f"""
         UNWIND $node_list AS node
@@ -149,7 +151,11 @@ class GraphEngineBase:
         return results.nodes
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+        self,
+        labels: list[str],
+        pp_key: str,
+        properties: list[dict],
+        node_class: type["BaseNode"],
     ) -> List["BaseNode"]:
         """_summary_
 
@@ -165,6 +171,14 @@ class GraphEngineBase:
         """
 
         label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+
+        element_id_prop_name: str | None = getattr(
+            node_class, "__elementidproperty__", None
+        )
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            return self._merge_element_id_nodes(
+                label_identifiers, pp_key, properties, node_class, element_id_prop_name
+            )
 
         cypher = f"""
         UNWIND $node_list AS node
@@ -182,6 +196,56 @@ class GraphEngineBase:
         results = self.evaluate_query(cypher, params, node_classes)
 
         return results.nodes
+
+    def _merge_element_id_nodes(
+        self,
+        label_identifiers: list[str],
+        pp_key: str,
+        properties: list[dict],
+        node_class: type["BaseNode"],
+        element_id_prop_name: str,
+    ) -> List["BaseNode"]:
+        """Manually merge element ID nodes
+        Args:
+            labels (list): _description_
+            pp_key (str): _description_
+            properties (list): A list of dictionaries representing each node to be created.
+                four keys with associated values: pp (the value to assign the primary property)
+                set_on_match, set_on_create and always_set (dicts with key value pairs for all other properties).
+            node_class (type[BaseNode]): class of nodes being merged
+            element_id_prop_name (str): property of class used as an element id
+
+        Returns:
+            list: list of merged Nodes
+        """
+        result_list = []
+        for node_prop in properties:
+            match = self.match_node(node_prop["pp"], node_class)
+            if not match:
+                create_props = node_prop["always_set"] | node_prop["set_on_create"]
+                node_details = [{"pp": node_prop["pp"], "props": create_props}]
+                result_list.extend(
+                    self.create_nodes(
+                        label_identifiers, pp_key, node_details, node_class
+                    )
+                )
+            else:
+                cypher = f"""
+                MATCH (n:{":".join(label_identifiers)})
+                WHERE {self._where_elementId_cypher()}
+                SET n += $set_on_match
+                SET n += $always_set
+                RETURN n
+                """
+                results = self.evaluate_query(
+                    cypher, node_prop, {node_class.__primarylabel__: node_class}
+                )
+                result_list.extend(results.nodes)
+        return result_list
+
+    @staticmethod
+    def _where_elementId_cypher() -> str:
+        return "elementId(n) = $pp"
 
     def delete_nodes(self, label: str, pp_key: str, pp_values: List[Any]) -> None:
         cypher = f"""
@@ -256,7 +320,7 @@ class GraphEngineBase:
         return self.evaluate_query(
             cypher, params, node_classes=node_classes, relationship_classes=rel_types
         )
-    
+
     def match_node(self, pp: str, node_class: type[BaseNode]) -> Optional[BaseNode]:
         """MATCH a single node of this type with the given primary property.
 
@@ -290,7 +354,7 @@ class GraphEngineBase:
 
         else:
             return None
-        
+
     def match_nodes(
         self,
         node_class: type["BaseNode"],
