@@ -2,7 +2,9 @@
 
 from typing import ClassVar, Optional
 
-from neontology import BaseNode, BaseRelationship, GQLIdentifier, ElementIdModel
+from pydantic import Field
+
+from neontology import BaseNode, BaseRelationship, ElementIdModel, GQLIdentifier
 
 
 class NonUniqueNode(BaseNode, ElementIdModel):
@@ -27,6 +29,7 @@ class ParentUniqueRelationship(BaseRelationship, ElementIdModel):
 
 
 def test_match_nonunique(use_graph):
+    """Test match for an element ID primary property node class"""
     tn = NonUniqueNode(nonpp="Special Test Node")
 
     tn.create()
@@ -39,6 +42,7 @@ def test_match_nonunique(use_graph):
 
 
 def test_merge_nonunique(use_graph):
+    """Test merge for an element ID primary property node class"""
     child1_node = NonUniqueNode(nonpp="Child", element_id="150")
     child1_node.merge()
     child1_elementid = child1_node.element_id
@@ -78,6 +82,7 @@ def test_merge_nonunique(use_graph):
 
 
 def test_create_nonunique(use_graph):
+    """Test node and relationship creation for an element ID primary property node class"""
     child1_node = NonUniqueNode(nonpp="Child", element_id="100")
     child1_node.create()
     child2_node = NonUniqueNode(nonpp="Child", element_id="200")
@@ -124,3 +129,57 @@ def test_create_nonunique(use_graph):
     """
     result_elid = use_graph.evaluate_query_single(cypher_elid)
     assert result_elid is None
+
+
+def test_set_on_create_and_merge(use_graph):
+    """Check that we successfully identify field to set on match and on create
+    in same Node class for an element ID primary property node class"""
+
+    class TestModel(BaseNode, ElementIdModel):
+        __primaryproperty__: ClassVar[GQLIdentifier] = "element_id"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel3"
+        nonpp: str = "test_node"
+        only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
+        only_set_on_match: Optional[str] = Field(
+            json_schema_extra={"set_on_match": True}, default=None
+        )
+        normal_field: str
+
+    test_node = TestModel(
+        only_set_on_create="Foo",
+        only_set_on_match="Fu",
+        normal_field="Bar",
+        nonpp="test_node",
+    )
+    test_node.merge()
+
+    cypher = """
+    MATCH (n:TestModel3)
+    WHERE n.nonpp = 'test_node'
+    RETURN n
+    """
+
+    cypher_result = use_graph.evaluate_query(cypher)
+
+    assert cypher_result.nodes[0].only_set_on_match is None
+    assert cypher_result.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
+    assert test_node.only_set_on_create == "Foo"
+
+    test_node2 = TestModel(
+        only_set_on_create="Fee",
+        only_set_on_match="Fa",
+        normal_field="Fi",
+        nonpp="test_node",
+        element_id=test_node.element_id,
+    )
+    test_node2.merge()
+
+    cypher_result2 = use_graph.evaluate_query(cypher)
+
+    assert cypher_result2.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result2.nodes[0].only_set_on_match == "Fa"
+    assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
+    assert test_node2.only_set_on_match == "Fa"
