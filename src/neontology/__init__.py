@@ -2,6 +2,7 @@
 
 from .basenode import BaseNode, related_nodes, related_property
 from .baserelationship import BaseRelationship
+from .elementidmodel import ElementIdModel
 from .gql import GQLIdentifier, gql_identifier_adapter
 from .graphconnection import GraphConnection, init_neontology
 from .graphengines.memgraphengine import MemgraphConfig

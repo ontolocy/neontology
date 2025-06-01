@@ -1,7 +1,7 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Optional, Union
+from typing import Any, Callable, ClassVar, Optional, Union, Self
 
 import pandas as pd
 from pydantic import ValidationError, model_validator
@@ -101,18 +101,15 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             dict[str, Any]: a dictionary of key/value pairs.
         """
 
-        all_props = self.model_dump()
+        params = self._get_merge_parameters_common()
+        # get all the properties
+        all_props = params.pop("all_props")
 
-        always_set = {k: all_props[k] for k in self._always_set}
-        set_on_match = {k: all_props[k] for k in self._set_on_match}
-        set_on_create = {k: all_props[k] for k in self._set_on_create}
-
-        params = {
-            "pp": all_props[self.__primaryproperty__],
-            "always_set": always_set,
-            "set_on_match": set_on_match,
-            "set_on_create": set_on_create,
-        }
+        params.update(
+            {
+                "pp": all_props[self.__primaryproperty__],
+            }
+        )
 
         return params
 
@@ -178,7 +175,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         warnings.warn(("get_primary_property_value is deprecated, use get_pp instead."))
         return self.get_pp()
 
-    def create(self) -> "BaseNode":
+    def create(self) -> Self:
         """Create this node in the graph."""
 
         # pp = self.get_pp()
@@ -186,11 +183,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # if self.match(pp) is not None:
         #    raise RuntimeError(f"Node already exists: {pp}")
 
-        all_props = self._engine_dict()
+        merge_props = self._get_merge_parameters()
+        create_props = merge_props["always_set"] | merge_props["set_on_create"]
 
-        pp_value = all_props.pop(self.__primaryproperty__)
+        pp_value = merge_props["pp"]
 
-        node_details = [{"pp": pp_value, "props": all_props}]
+        node_details = [{"pp": pp_value, "props": create_props}]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
 
@@ -199,23 +197,26 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         gc = GraphConnection()
 
         results = gc.create_nodes(all_labels, pp_key, node_details, self.__class__)
+        assert len(results) == 1
+        self.check_sync_result(results[0])
+        return self
 
-        return results[0]
-
-    def merge(self) -> list["BaseNode"]:
+    def merge(self) -> list[Self]:
         """Merge this node into the graph."""
+        pp_key = self.__primaryproperty__
 
         node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
 
-        pp_key = self.__primaryproperty__
-
         gc = GraphConnection()
 
-        results = gc.merge_nodes(all_labels, pp_key, node_list, self.__class__)
-
-        return results
+        results: list[Self] = gc.merge_nodes(
+            all_labels, pp_key, node_list, self.__class__
+        )
+        assert len(results) == 1
+        self.check_sync_result(results[0])
+        return [self]
 
     @classmethod
     def create_nodes(cls, nodes: list["BaseNode"]) -> list["BaseNode"]:
@@ -350,25 +351,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Optional[B]: If the node exists, return it as an instance.
         """
 
-        cypher = f"""
-        MATCH (n:{cls.__primarylabel__})
-        WHERE n.{cls.__primaryproperty__} = $pp
-        RETURN n
-        """
-
-        params = {"pp": pp}
-
         gc = GraphConnection()
 
-        result = gc.evaluate_query(
-            cypher, params, node_classes={cls.__primarylabel__: cls}
-        )
-
-        if result.nodes:
-            return result.nodes[0]
-
-        else:
-            return None
+        return gc.match_node(pp, cls)
 
     @classmethod
     def delete(cls, pp: str) -> None:

@@ -56,6 +56,12 @@ def neo4j_node_to_neontology_node(
 
         node = node_classes[primary_label](**node_dict)
 
+        elementidproperty = getattr(
+            node_classes[primary_label], "__elementidproperty__", None
+        )
+        if elementidproperty:
+            setattr(node, elementidproperty, neo4j_node.element_id)
+
         # warn if the secondary labels aren't what's expected
 
         if set(node.__secondarylabels__) != secondary_labels:
@@ -66,13 +72,15 @@ def neo4j_node_to_neontology_node(
     # gracefully handle cases where we don't have a class defined
     # for the identified label or where we get more than one valid primary label
     else:
-        warnings.warn(f"Unexpected primary labels returned: {primary_labels}")
+        warnings.warn(f"Unexpected primary labels returned {node_labels}")
 
         return None
 
 
 def neo4j_relationship_to_neontology_rel(
-    neo4j_rel: Neo4jRelationship, node_classes: dict, rel_classes: dict
+    neo4j_rel: Neo4jRelationship,
+    node_classes: dict,
+    rel_classes: dict[str, "RelationshipTypeData"],
 ) -> Optional["BaseRelationship"]:
     rel_type = neo4j_rel.type
     rel_type_data = rel_classes[rel_type]
@@ -104,9 +112,22 @@ def neo4j_relationship_to_neontology_rel(
     src_node = neo4j_node_to_neontology_node(neo4j_rel.start_node, node_classes)
     tgt_node = neo4j_node_to_neontology_node(neo4j_rel.end_node, node_classes)
 
+    # ensure source and target types are allowed for this relationship class
+    if not (
+        (type(src_node) in rel_type_data.all_source_classes)
+        and (type(tgt_node) in rel_type_data.all_target_classes)
+    ):
+        return None
+
     rel_props = convert_neo4j_types(dict(neo4j_rel))
     rel_props["source"] = src_node
     rel_props["target"] = tgt_node
+
+    element_id_prop_name = getattr(
+        rel_type_data.relationship_class, "__elementidproperty__", None
+    )
+    if element_id_prop_name:
+        rel_props[element_id_prop_name] = neo4j_rel.element_id
 
     return rel_type_data.relationship_class(**rel_props)
 

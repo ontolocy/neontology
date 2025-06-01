@@ -1,11 +1,17 @@
 # type: ignore
 from datetime import datetime
-from typing import ClassVar, Optional
+from typing import ClassVar, Optional, Annotated
 from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
-from pydantic import Field, ValidationInfo, field_serializer, field_validator
+from pydantic import (
+    Field,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+    ConfigDict,
+)
 
 from neontology import (
     BaseNode,
@@ -14,6 +20,7 @@ from neontology import (
     related_nodes,
     related_property,
 )
+from neontology.result import NeontologyResult
 
 
 class PracticeNode(BaseNode):
@@ -173,8 +180,12 @@ def test_none_primary_label():
         __primarylabel__: ClassVar[Optional[str]] = None
         pp: str
 
-    with pytest.raises(NotImplementedError):
-        SpecialPracticeNode(pp="Test Node")
+    with pytest.warns(
+        UserWarning,
+        match="Primary Label should contain only alphanumeric characters and underscores",
+    ):
+        with pytest.raises(NotImplementedError):
+            SpecialPracticeNode(pp="Test Node")
 
 
 def test_create_multilabel(use_graph):
@@ -345,6 +356,25 @@ def test_create_multiple_defined_label(use_graph):
 
     assert "Special Test Node" in results
     assert "Special Test Node2" in results
+
+
+class OptionalPropertyNode(BaseNode):
+    __primarylabel__: ClassVar[Optional[str]] = "OptionalProperty"
+    __primaryproperty__: ClassVar[str] = "pp"
+
+    pp: str
+    opt_prop: Optional[str] = None
+
+
+def test_merge_optional_property(use_graph):
+    node_full = OptionalPropertyNode(pp="Alpha", opt_prop="Beta")
+    node_full.merge()
+
+    node_partial = OptionalPropertyNode(pp="Alpha")
+    node_partial.merge()
+
+    # node_partial should pick up value of opt_prop from matched node on merge()
+    assert node_full.opt_prop == node_partial.opt_prop
 
 
 def test_creation_datetime(use_graph):
@@ -642,6 +672,7 @@ def test_set_on_match(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_match is None
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
 
     test_node2 = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
     test_node2.merge()
@@ -649,6 +680,7 @@ def test_set_on_match(use_graph):
     cypher_result2 = use_graph.evaluate_query(cypher)
 
     assert cypher_result2.nodes[0].only_set_on_match == "Foo"
+    assert test_node2.only_set_on_match == "Foo"
 
 
 def test_set_on_create(use_graph):
@@ -674,6 +706,7 @@ def test_set_on_create(use_graph):
 
     assert cypher_result.nodes[0].only_set_on_create == "Foo"
     assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_create == "Foo"
 
     test_node2 = TestModel(only_set_on_create="Fee", normal_field="Fi", pp="test_node")
     test_node2.merge()
@@ -682,6 +715,60 @@ def test_set_on_create(use_graph):
 
     assert cypher_result2.nodes[0].only_set_on_create == "Foo"
     assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
+
+
+def test_set_on_create_and_merge(use_graph):
+    """Check that we successfully identify field to set on match and on create
+    in same Node class"""
+
+    class TestModel(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "TestModel3"
+        pp: str = "test_node"
+        only_set_on_create: str = Field(json_schema_extra={"set_on_create": True})
+        only_set_on_match: Optional[str] = Field(
+            json_schema_extra={"set_on_match": True}, default=None
+        )
+        normal_field: str
+
+    test_node = TestModel(
+        only_set_on_create="Foo",
+        only_set_on_match="Fu",
+        normal_field="Bar",
+        pp="test_node",
+    )
+    test_node.merge()
+
+    cypher = """
+    MATCH (n:TestModel3)
+    WHERE n.pp = 'test_node'
+    RETURN n
+    """
+
+    cypher_result = use_graph.evaluate_query(cypher)
+
+    assert cypher_result.nodes[0].only_set_on_match is None
+    assert cypher_result.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result.nodes[0].normal_field == "Bar"
+    assert test_node.only_set_on_match is None
+    assert test_node.only_set_on_create == "Foo"
+
+    test_node2 = TestModel(
+        only_set_on_create="Fee",
+        only_set_on_match="Fa",
+        normal_field="Fi",
+        pp="test_node",
+    )
+    test_node2.merge()
+
+    cypher_result2 = use_graph.evaluate_query(cypher)
+
+    assert cypher_result2.nodes[0].only_set_on_create == "Foo"
+    assert cypher_result2.nodes[0].only_set_on_match == "Fa"
+    assert cypher_result2.nodes[0].normal_field == "Fi"
+    assert test_node2.only_set_on_create == "Foo"
+    assert test_node2.only_set_on_match == "Fa"
 
 
 class Person(BaseNode):
@@ -998,3 +1085,45 @@ def test_create_mass_nodes(use_graph, benchmark):
     benchmark(ComplexPerson.merge_df, people_df)
 
     assert Person.get_count() == 1000
+
+
+class UserWithAliases(BaseNode):
+    __primaryproperty__: ClassVar[str] = "userName"
+    __primarylabel__: ClassVar[str] = "User"
+    model_config = ConfigDict(validate_by_name=True, validate_by_alias=True)
+    user_name: Annotated[str, Field(alias="userName")]
+    some_other_property: Annotated[Optional[str], Field(None, alias="otherProperty")]
+
+
+def test_aliased_properties(use_graph):
+    user1: UserWithAliases = UserWithAliases(userName="User1")
+    user2: UserWithAliases = UserWithAliases(
+        user_name="User2", some_other_property="alpha"
+    )
+    user3: UserWithAliases = UserWithAliases(userName="User3", otherProperty="beta")
+    assert user1.user_name == "User1"
+    assert user3.some_other_property == "beta"
+
+    user1.merge()
+    user2.merge()
+    user3.merge()
+
+    cypher = """
+    MATCH (n:User)
+    RETURN n
+    ORDER BY n.userName ASC
+    """
+
+    result: NeontologyResult = use_graph.evaluate_query(cypher)
+    assert result.nodes[0].user_name == "User1"
+    assert not hasattr(result.nodes[0], "userName")
+    assert result.records_raw[0][0]["userName"] == "User1"
+    assert result.nodes[0].some_other_property is None
+    assert result.records_raw[0][0]["otherProperty"] is None
+
+    assert result.nodes[1].user_name == "User2"
+    assert result.nodes[1].some_other_property == "alpha"
+    assert result.records_raw[1][0]["otherProperty"] == "alpha"
+
+    assert result.nodes[2].user_name == "User3"
+    assert result.records_raw[2][0]["otherProperty"] == "beta"

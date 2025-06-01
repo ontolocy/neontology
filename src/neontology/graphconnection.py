@@ -101,11 +101,7 @@ class GraphConnection(object):
         refresh_classes: bool = True,
     ) -> NeontologyResult:
         if refresh_classes is True:
-            from .utils import get_node_types, get_rels_by_type
-
-            # capture all currently defined types of node and relationship
-            self.global_nodes = get_node_types()
-            self.global_rels = get_rels_by_type()
+            self.refresh_classes()
 
         if not node_classes:
             node_classes = self.global_nodes
@@ -117,15 +113,36 @@ class GraphConnection(object):
             cypher, params, node_classes, relationship_classes
         )
 
+    def refresh_classes(self):
+        # capture all currently defined types of node and relationship
+
+        from .utils import get_node_types, get_rels_by_type
+
+        self.global_nodes = get_node_types()
+        self.global_rels = get_rels_by_type()
+
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNode]
     ) -> list["BaseNode"]:
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> list["BaseNode"]:
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNode]
+    ) -> list[BaseNode]:
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
+
+    def match_node(self, pp: str, node_class: type[BaseNode]) -> Optional["BaseNode"]:
+        """MATCH a single node of this type with the given primary property.
+
+        Args:
+            pp (str): The value of the primary property (pp) to match on.
+            node_class (type[BaseNode]): Class of the node to match
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+        """
+
+        return self.engine.match_node(pp, node_class)
 
     def match_nodes(
         self,
@@ -155,8 +172,9 @@ class GraphConnection(object):
         rel_type: str,
         merge_on_props: list[str],
         rel_props: list[dict],
-    ) -> None:
-        self.engine.merge_relationships(
+        rel_class: type["BaseRelationship"],
+    ) -> NeontologyResult:
+        return self.engine.merge_relationships(
             source_label,
             target_label,
             source_prop,
@@ -164,6 +182,7 @@ class GraphConnection(object):
             rel_type,
             merge_on_props,
             rel_props,
+            rel_class,
         )
 
     def close(self) -> None:

@@ -7,6 +7,7 @@ nav:
     - Advanced Usage: advanced-usage.md
     - Running Queries: queries.md
     - Cookbook: recipes.md
+    - Working with Non-Unique Schemas: non-unique.md
     - Graph Engines: graph-engines.md
     - Setting Up Neo4j: setting-up-neo4j.md
 markdown_extensions:

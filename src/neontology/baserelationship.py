@@ -1,24 +1,25 @@
 import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Optional, TypeVar
+from typing import Any, ClassVar, Optional, Self, TypeVar
 
 import pandas as pd
-from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError, model_validator
 
 from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
+from .result import NeontologyResult
 from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
 
 R = TypeVar("R", bound="BaseRelationship")
 
 
 class BaseRelationship(CommonModel):  # pyre-ignore[13]
-    source: BaseNode
-    target: BaseNode
+    source: BaseNode = Field(..., json_schema_extra={"never_set": True})
+    target: BaseNode = Field(..., json_schema_extra={"never_set": True})
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 
@@ -82,35 +83,34 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         exclusions = {"source", "target"}
 
+        params = self._get_merge_parameters_common(exclude=exclusions)
         # get all the properties
-        all_props = self.model_dump(exclude=exclusions)
+        all_props = params.pop("all_props")
 
         # merge_props properties will be referenced individually with kwargs
         merge_props = {k: all_props[k] for k in self._merge_on}
 
-        always_set = {k: all_props[k] for k in self._always_set}
-
-        set_on_match = {k: all_props[k] for k in self._set_on_match}
-
-        set_on_create = {k: all_props[k] for k in self._set_on_create}
-
         source_prop = self.source.model_dump()[source_prop]
         target_prop = self.target.model_dump()[target_prop]
 
-        params = {
-            "source_prop": source_prop,
-            "target_prop": target_prop,
-            "always_set": always_set,
-            "set_on_match": set_on_match,
-            "set_on_create": set_on_create,
-            **merge_props,
-        }
+        source_element_id_prop = getattr(self.source, "__elementidproperty__", None)
+        target_element_id_prop = getattr(self.target, "__elementidproperty__", None)
+
+        params.update(
+            {
+                "source_prop": source_prop,
+                "source_element_id_prop": source_element_id_prop,
+                "target_prop": target_prop,
+                "target_element_id_prop": target_element_id_prop,
+                **merge_props,
+            }
+        )
 
         return params
 
     def merge(
         self,
-    ) -> None:
+    ) -> NeontologyResult:
         """Merge this relationship into the database."""
         source_label = self.source.__primarylabel__
         target_label = self.target.__primarylabel__
@@ -138,7 +138,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        gc.merge_relationships(
+        result = gc.merge_relationships(
             source_label,
             target_label,
             source_prop,
@@ -146,7 +146,30 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             rel_type,
             merge_on_props,
             [rel_props],
+            self.__class__,
         )
+        result_len = len(result.relationships) if result else -1
+        if (
+            result
+            and result_len == 1
+            and isinstance(result.relationships[0], type(self))
+        ):
+            result_rel: Self = result.relationships[0]
+            if not (
+                result_rel.source == self.source and result_rel.target == self.target
+            ):
+                raise ValueError(
+                    "Could not validate that result and self source/target match."
+                )
+            element_id_prop = getattr(self, "__elementidproperty__", None)
+            if element_id_prop:
+                setattr(self, element_id_prop, getattr(result_rel, element_id_prop))
+            result.relationships[0] = self
+        else:
+            raise ValueError(
+                f"Expected 1 {type(self)}, merge returned {result_len if result_len >= 0 else 'None'} {type(result.relationships[0]) if result_len > 0 else 'relationships'}"
+            )
+        return result
 
     @classmethod
     def merge_relationships(
@@ -154,7 +177,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         rels: list[R],
         source_prop: Optional[str] = None,
         target_prop: Optional[str] = None,
-    ) -> None:
+    ) -> NeontologyResult:
         """Merge multiple relationships (of this type) into the database.
 
         Sometimes the source and target label may be ambiguous (e.g. where we have subclassed nodes)
@@ -219,6 +242,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                 rel_type,
                 merge_on_props,
                 rel_list,
+                cls,
             )
 
     @classmethod
@@ -455,3 +479,16 @@ class RelationshipTypeData(BaseModel):
     target_class: type[BaseNode]
     all_source_classes: list[type[BaseNode]]
     all_target_classes: list[type[BaseNode]]
+
+    def __repr_args__(self):
+        return [
+            (k, v)
+            for k, v in self.__dict__.items()
+            if k
+            not in [
+                "source_class",
+                "target_class",
+                "all_source_classes",
+                "all_target_classes",
+            ]
+        ]

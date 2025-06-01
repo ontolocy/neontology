@@ -1,6 +1,16 @@
-[build-system]
-requires = ["setuptools>=42"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "neontolojay"
+version = "2025.0.0b5"
+requires-python = ">=3.9"
+description = "A Python package for modelling data in a Neo4j graph database with Pydantic and Pandas. A fork of neontology with added support for non-unique primary keys."
+dependencies = [
+    "neo4j>5,<6",
+    "pydantic~=2.7",
+    "pandas>2,<3",
+    "python-dotenv>1,<2",
+    "Jinja2>3,<4",
+]
+
 
 [tool.pytest.ini_options]
 markers = [
@@ -8,6 +18,14 @@ markers = [
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
+filterwarnings = [
+    "ignore:Duplicate dictionary key PRACTICE_RELATIONSHIP"
+]
+log_cli = 1
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%s"
+addopts = "--capture=tee-sys"
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
@@ -30,3 +48,40 @@ profile = "black"
 [tool.pydocstyle]
 convention = "google"
 add_ignore = ["D104", "D100", "D202", "D107", "D101", "D106"]
+
+[tool.flake8]
+# Check that this is aligned with your other tools like Black
+max-line-length = 160
+exclude = [
+    # No need to traverse our git directory
+    ".git",
+    # There's no value in checking cache directories
+    "__pycache__",
+    ".venv",
+]
+# Use extend-ignore to add to already ignored checks which are anti-patterns like W503.
+extend-ignore = [
+    # PEP 8 recommends to treat : in slices as a binary operator with the lowest priority, and to leave an equal
+    # amount of space on either side, except if a parameter is omitted (e.g. ham[1 + 1 :]).
+    # This behaviour may raise E203 whitespace before ':' warnings in style guide enforcement tools like Flake8.
+    # Since E203 is not PEP 8 compliant, we tell Flake8 to ignore this warning.
+    # https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#slices    
+    #"E203"
+]
+
+[dependency-groups]
+dev = [
+    "black>=22.3",
+    "coverage>=6.4",
+    "flake8>=4.0",
+    "flake8-pyproject>=1.2.3",
+    "isort>=5.10",
+    "mkdocs==1.*",
+    "mypy>=0.961",
+    "pydocstyle[toml]>=6.1",
+    "pytest>=8.1",
+    "pytest-benchmark>=4",
+    "pytest-cov>=3.0",
+    "ruff>=0.11.6",
+    "types-pyyaml>=6.0.12.20250402",
+]

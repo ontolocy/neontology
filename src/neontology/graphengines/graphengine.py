@@ -57,7 +57,8 @@ class GraphEngineBase:
                     )
 
             return [cls._export_type_converter(x) for x in value]
-
+        elif value is None:
+            return None
         elif isinstance(value, cls._supported_types) is False:
             return str(value)
 
@@ -126,9 +127,17 @@ class GraphEngineBase:
 
         label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
 
+        element_id_prop_name = getattr(node_class, "__elementidproperty__", None)
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            pp_cypher = ""
+        else:
+            pp_cypher = (
+                f"{{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}}"
+            )
+
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        create (n:{":".join(label_identifiers)} {pp_cypher})
         SET n += node.props
         RETURN n
         """
@@ -142,7 +151,11 @@ class GraphEngineBase:
         return results.nodes
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
+        self,
+        labels: list[str],
+        pp_key: str,
+        properties: list[dict],
+        node_class: type["BaseNode"],
     ) -> list["BaseNode"]:
         """_summary_
 
@@ -158,6 +171,14 @@ class GraphEngineBase:
         """
 
         label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+
+        element_id_prop_name: str | None = getattr(
+            node_class, "__elementidproperty__", None
+        )
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            return self._merge_element_id_nodes(
+                label_identifiers, pp_key, properties, node_class, element_id_prop_name
+            )
 
         cypher = f"""
         UNWIND $node_list AS node
@@ -176,7 +197,57 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def delete_nodes(self, label: str, pp_key: str, pp_values: list[Any]) -> None:
+    def _merge_element_id_nodes(
+        self,
+        label_identifiers: list[str],
+        pp_key: str,
+        properties: list[dict],
+        node_class: type["BaseNode"],
+        element_id_prop_name: str,
+    ) -> list["BaseNode"]:
+        """Manually merge element ID nodes
+        Args:
+            labels (list): _description_
+            pp_key (str): _description_
+            properties (list): A list of dictionaries representing each node to be created.
+                four keys with associated values: pp (the value to assign the primary property)
+                set_on_match, set_on_create and always_set (dicts with key value pairs for all other properties).
+            node_class (type[BaseNode]): class of nodes being merged
+            element_id_prop_name (str): property of class used as an element id
+
+        Returns:
+            list: list of merged Nodes
+        """
+        result_list = []
+        for node_prop in properties:
+            match = self.match_node(node_prop["pp"], node_class)
+            if not match:
+                create_props = node_prop["always_set"] | node_prop["set_on_create"]
+                node_details = [{"pp": node_prop["pp"], "props": create_props}]
+                result_list.extend(
+                    self.create_nodes(
+                        label_identifiers, pp_key, node_details, node_class
+                    )
+                )
+            else:
+                cypher = f"""
+                MATCH (n:{":".join(label_identifiers)})
+                WHERE {self._where_elementId_cypher()}
+                SET n += $set_on_match
+                SET n += $always_set
+                RETURN n
+                """
+                results = self.evaluate_query(
+                    cypher, node_prop, {node_class.__primarylabel__: node_class}
+                )
+                result_list.extend(results.nodes)
+        return result_list
+
+    @staticmethod
+    def _where_elementId_cypher() -> str:
+        return "elementId(n) = $pp"
+
+    def delete_nodes(self, label: str, pp_key: str, pp_values: List[Any]) -> None:
         cypher = f"""
         UNWIND $pp_values AS pp
         MATCH (n:{gql_identifier_adapter.validate_strings(label)})
@@ -197,7 +268,8 @@ class GraphEngineBase:
         rel_type: str,
         merge_on_props: list[str],
         rel_props: list[dict],
-    ) -> None:
+        rel_class: type["BaseRelationship"],
+    ) -> NeontologyResult:
         # build a string of properties to merge on "prop_name: $prop_name"
         merge_props = ", ".join(
             [
@@ -206,21 +278,82 @@ class GraphEngineBase:
             ]
         )
 
+        if rel_props[0]["source_element_id_prop"] == source_prop:
+            source_match_cypher = """elementId(source)"""
+        else:
+            source_match_cypher = (
+                f"""source.{gql_identifier_adapter.validate_strings(source_prop)}"""
+            )
+        if rel_props[0]["target_element_id_prop"] == target_prop:
+            target_match_cypher = """elementId(target)"""
+        else:
+            target_match_cypher = (
+                f"""target.{gql_identifier_adapter.validate_strings(target_prop)}"""
+            )
         cypher = f"""
         UNWIND $rel_list AS rel
         MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
-        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
+        WHERE {source_match_cypher} = rel.source_prop
         MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
-        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
+        WHERE {target_match_cypher} = rel.target_prop
         MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
         ON MATCH SET r += rel.set_on_match
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
+        RETURN r, source, target
         """
 
         params = {"rel_list": rel_props}
 
-        self.evaluate_query_single(cypher, params)
+        from ..utils import get_node_types, get_rels_by_type
+
+        rel_types = get_rels_by_type(rel_class)
+        node_classes = get_node_types(rel_class.model_fields["source"].annotation)
+        if (
+            rel_class.model_fields["source"].annotation
+            != rel_class.model_fields["target"].annotation
+        ):
+            node_classes.update(
+                get_node_types(rel_class.model_fields["target"].annotation)
+            )
+
+        return self.evaluate_query(
+            cypher, params, node_classes=node_classes, relationship_classes=rel_types
+        )
+
+    def match_node(self, pp: str, node_class: type[BaseNode]) -> Optional[BaseNode]:
+        """MATCH a single node of this type with the given primary property.
+
+        Args:
+            pp (str): The value of the primary property (pp) to match on.
+            node_class (type[BaseNode]): Class of the node to match
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+        """
+        element_id_prop_name = getattr(node_class, "__elementidproperty__", None)
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            match_cypher = "elementId(n)"
+        else:
+            match_cypher = f"n.{node_class.__primaryproperty__}"
+
+        cypher = f"""
+        MATCH (n:{node_class.__primarylabel__})
+        WHERE {match_cypher} = $pp
+        RETURN n
+        """
+
+        params = {"pp": pp}
+
+        result = self.evaluate_query(
+            cypher, params, node_classes={node_class.__primarylabel__: node_class}
+        )
+
+        if result.nodes:
+            return result.nodes[0]
+
+        else:
+            return None
 
     def match_nodes(
         self,
@@ -296,8 +429,17 @@ class GraphEngineBase:
             cypher += " LIMIT $limit "
             params["limit"] = int_adapter.validate_python(limit)
 
-        rel_types = get_rels_by_type()
-        node_classes = get_node_types()
+        rel_types = get_rels_by_type(relationship_class)
+        node_classes = get_node_types(
+            relationship_class.model_fields["source"].annotation
+        )
+        if (
+            relationship_class.model_fields["source"].annotation
+            != relationship_class.model_fields["target"].annotation
+        ):
+            node_classes.update(
+                get_node_types(relationship_class.model_fields["target"].annotation)
+            )
 
         result = self.evaluate_query(
             cypher,
