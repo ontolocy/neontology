@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, List, Set, Type
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
 from .graphconnection import GraphConnection
 
 
-def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseNode]]:
+def get_node_types(base_type: type[BaseNode] = BaseNode) -> dict[str, type[BaseNode]]:
     node_types = {}
 
     # if we're starting with a node type that has a primary label, include this in results
@@ -36,7 +35,7 @@ def get_node_types(base_type: Type[BaseNode] = BaseNode) -> Dict[str, Type[BaseN
     return node_types
 
 
-def generate_relationship_type_data(rel_class: Type[BaseRelationship]):
+def generate_relationship_type_data(rel_class: type[BaseRelationship]):
     defined_source_class = rel_class.model_fields["source"].annotation
     defined_target_class = rel_class.model_fields["target"].annotation
 
@@ -53,8 +52,8 @@ def generate_relationship_type_data(rel_class: Type[BaseRelationship]):
 
 
 def get_rels_by_type(
-    base_type: Type[BaseRelationship] = BaseRelationship,
-) -> Dict[str, RelationshipTypeData]:
+    base_type: type[BaseRelationship] = BaseRelationship,
+) -> dict[str, RelationshipTypeData]:
     rel_types: dict = defaultdict(dict)
 
     if (
@@ -93,8 +92,8 @@ def all_subclasses(cls: type) -> set:
 
 
 def get_rels_by_node(
-    base_type: Type[BaseRelationship] = BaseRelationship, by_source: bool = True
-) -> Dict[str, Set[str]]:
+    base_type: type[BaseRelationship] = BaseRelationship, by_source: bool = True
+) -> dict[str, set[str]]:
     if by_source is True:
         node_dir = "source_class"
 
@@ -103,7 +102,7 @@ def get_rels_by_node(
 
     all_rels = get_rels_by_type(base_type)
 
-    by_node: Dict[str, Set[str]] = defaultdict(set)
+    by_node: dict[str, set[str]] = defaultdict(set)
 
     for rel_type, entry in all_rels.items():
         try:
@@ -123,18 +122,18 @@ def get_rels_by_node(
 
 
 def get_rels_by_source(
-    base_type: Type[BaseRelationship] = BaseRelationship,
-) -> Dict[str, Set[str]]:
+    base_type: type[BaseRelationship] = BaseRelationship,
+) -> dict[str, set[str]]:
     return get_rels_by_node(base_type, by_source=True)
 
 
 def get_rels_by_target(
-    base_type: Type[BaseRelationship] = BaseRelationship,
-) -> Dict[str, Set[str]]:
+    base_type: type[BaseRelationship] = BaseRelationship,
+) -> dict[str, set[str]]:
     return get_rels_by_node(base_type, by_source=False)
 
 
-def apply_neo4j_constraints(node_types: List[type[BaseNode]]) -> None:
+def apply_neo4j_constraints(node_types: list[type[BaseNode]]) -> None:
     """Apply constraints based on primary properties for arbitrary set of node types"""
 
     graph = GraphConnection()

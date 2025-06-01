@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 from logging import getLogger
-from typing import Any, List, Optional, Union, get_args, get_origin
+from typing import Any, Optional, Union, get_args, get_origin
 
 from jinja2 import Template
 from pydantic import BaseModel
@@ -27,18 +27,18 @@ class SchemaProperty(BaseModel):
 class RelationshipSchema(BaseModel):
     name: str
     relationship_type: str
-    source_labels: List[str]
-    target_labels: List[str]
+    source_labels: list[str]
+    target_labels: list[str]
 
-    properties: List[SchemaProperty]
+    properties: list[SchemaProperty]
 
 
 class NodeSchema(BaseModel):
     label: str
     title: str
-    secondary_labels: List[str]
-    properties: List[SchemaProperty]
-    outgoing_relationships: List[RelationshipSchema] = []
+    secondary_labels: list[str]
+    properties: list[SchemaProperty]
+    outgoing_relationships: list[RelationshipSchema] = []
 
     def md_node_table(self) -> str:
         """Take a node schema and produce markdown ontology documentation"""
@@ -109,7 +109,7 @@ def extract_type_mapping(
                 if isinstance(entry, type(None)):
                     pass
                 else:
-                    # we do this recursively in case the next layer down is something like List[int]
+                    # we do this recursively in case the next layer down is something like list[int]
                     if show_optional is True:
                         representation = (
                             f"Optional[{extract_type_mapping(entry).representation}]"
@@ -126,10 +126,10 @@ def extract_type_mapping(
         else:
             raise TypeError(f"Unsupported union type: {annotation}")
 
-    elif get_origin(annotation) == list:
+    elif get_origin(annotation) is list:
         if len(get_args(annotation)) == 1:
             try:
-                # field type is something like typing.List[str]
+                # field type is something like typing.list[str]
                 representation = str(annotation).split(".")[1]
 
             except IndexError:

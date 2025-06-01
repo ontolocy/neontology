@@ -32,7 +32,7 @@ See the [changelog](CHANGELOG.md) or [read the docs](https://neontology.readthed
 ## Example
 
 ```python
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional
 import pandas as pd
 from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 
@@ -40,7 +40,7 @@ from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
 class PersonNode(BaseNode):
     __primarylabel__: ClassVar[str] = "Person"
     __primaryproperty__: ClassVar[str] = "name"
-    __secondarylabels__: ClassVar[Optional[List]] = ["Individual", "Somebody"]
+    __secondarylabels__: ClassVar[Optional[list]] = ["Individual", "Somebody"]
     
     name: str
     age: int

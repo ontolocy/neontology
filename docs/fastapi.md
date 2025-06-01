@@ -23,7 +23,7 @@ First we need to define models for the different types of node we want to store.
 
 ```python
 # main.py
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional
 
 from fastapi import FastAPI, HTTPException
 from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
@@ -125,7 +125,7 @@ Here we'll add some more routes to get the teams that have been created.
 
 ```python
 @app.get("/teams/")
-async def get_teams() -> List[TeamNode]:
+async def get_teams() -> list[TeamNode]:
 
     return TeamNode.match_nodes()
 
@@ -147,7 +147,7 @@ In full, this becomes:
 
 ```python
 # main.py
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional
 
 from fastapi import FastAPI, HTTPException
 from neontology import BaseNode, BaseRelationship, init_neontology
@@ -197,7 +197,7 @@ async def create_team(team: TeamNode):
 
 
 @app.get("/teams/")
-async def get_teams() -> List[TeamNode]:
+async def get_teams() -> list[TeamNode]:
 
     return TeamNode.match_nodes()
 
@@ -225,7 +225,7 @@ async def create_team_member(member: TeamMemberNode, team_name: str):
 
 
 @app.get("/team-members/")
-async def get_team_members() -> List[TeamMemberNode]:
+async def get_team_members() -> list[TeamMemberNode]:
 
     return TeamMemberNode.match_nodes()
 

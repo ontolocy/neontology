@@ -1,11 +1,17 @@
 # type: ignore
 from datetime import datetime
-from typing import ClassVar, List, Optional
+from typing import Annotated, ClassVar, Optional
 from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
-from pydantic import Field, ValidationInfo, field_serializer, field_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+)
 
 from neontology import (
     BaseNode,
@@ -14,6 +20,7 @@ from neontology import (
     related_nodes,
     related_property,
 )
+from neontology.result import NeontologyResult
 
 
 class PracticeNode(BaseNode):
@@ -531,7 +538,7 @@ class ModelTestIntListExplicit(BaseNode):
     __primaryproperty__: ClassVar[str] = "pp"
     __primarylabel__: ClassVar[Optional[str]] = "TestModelIntListExplicit"
     pp: str
-    test_prop_int_list_exp: List[int]
+    test_prop_int_list_exp: list[int]
 
 
 @pytest.mark.parametrize(
@@ -998,3 +1005,49 @@ def test_create_mass_nodes(use_graph, benchmark):
     benchmark(ComplexPerson.merge_df, people_df)
 
     assert Person.get_count() == 1000
+
+
+class UserWithAliases(BaseNode):
+    __primaryproperty__: ClassVar[str] = "userName"
+    __primarylabel__: ClassVar[str] = "User"
+    model_config = ConfigDict(
+        validate_by_name=True,
+        validate_by_alias=True,
+        populate_by_name=True,  # allow population by name and alias
+    )
+    user_name: Annotated[str, Field(alias="userName")]
+    some_other_property: Annotated[Optional[str], Field(None, alias="otherProperty")]
+
+
+def test_aliased_properties(use_graph):
+    user1: UserWithAliases = UserWithAliases(userName="User1")
+    user2: UserWithAliases = UserWithAliases(
+        user_name="User2", some_other_property="alpha"
+    )
+    user3: UserWithAliases = UserWithAliases(userName="User3", otherProperty="beta")
+    assert user1.user_name == "User1"
+    assert user3.some_other_property == "beta"
+
+    user1.merge()
+    user2.merge()
+    user3.merge()
+
+    cypher = """
+    MATCH (n:User)
+    RETURN n
+    ORDER BY n.userName ASC
+    """
+
+    result: NeontologyResult = use_graph.evaluate_query(cypher)
+    assert result.nodes[0].user_name == "User1"
+    assert hasattr(result.nodes[0], "userName") == False
+    assert result.records_raw[0][0]["userName"] == "User1"
+    assert result.nodes[0].some_other_property is None
+    assert result.records_raw[0][0]["otherProperty"] is None
+
+    assert result.nodes[1].user_name == "User2"
+    assert result.nodes[1].some_other_property == "alpha"
+    assert result.records_raw[1][0]["otherProperty"] == "alpha"
+
+    assert result.nodes[2].user_name == "User3"
+    assert result.records_raw[2][0]["otherProperty"] == "beta"
