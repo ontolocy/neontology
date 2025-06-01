@@ -65,7 +65,7 @@ class PersonNode(BaseNode):
     
     name: str
     age: int
-    uuid: str = Field(default_factory=lambda: uuid4().hex)
+    id: str = Field(default_factory=lambda: uuid4().hex)
 ```
 
 Depending on what you're trying to achieve, you could also use a custom field_validator to help generate an appropriate unique value.

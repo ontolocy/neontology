@@ -10,6 +10,7 @@ from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
 from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
+from .result import NeontologyResult
 
 
 def _find_this_node(query, params, node):
@@ -105,9 +106,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # get all the properties
         all_props = params.pop("all_props")
 
-        params.update({
-            "pp": all_props[self.__primaryproperty__],
-        })
+        params.update(
+            {
+                "pp": all_props[self.__primaryproperty__],
+            }
+        )
 
         return params
 
@@ -420,7 +423,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         limit: Optional[int] = None,
         skip: Optional[int] = None,
         distinct: bool = False,
-    ) -> tuple:
+    ) -> NeontologyResult:
         if target_label:
             target = f"o:{gql_identifier_adapter.validate_strings(target_label)}"
         else:
