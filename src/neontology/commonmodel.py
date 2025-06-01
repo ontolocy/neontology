@@ -26,8 +26,8 @@ class CommonModel(BaseModel):
         cls._set_on_match = cls._get_prop_usage("set_on_match")
         cls._set_on_create = cls._get_prop_usage("set_on_create")
         cls._always_set = [
-            x
-            for x in cls.model_fields.keys()
+            v.alias if v.alias else x
+            for x, v in cls.model_fields.items()
             if x not in cls._set_on_match + cls._set_on_create + ["source", "target"]
         ]
 
@@ -66,7 +66,7 @@ class CommonModel(BaseModel):
         """
 
         pydantic_export_dict = self.model_dump(
-            exclude_none=True, exclude=exclude, **kwargs
+            exclude_none=False, exclude=exclude, by_alias=True, **kwargs
         )
 
         # return pydantic_export_dict
@@ -79,6 +79,26 @@ class CommonModel(BaseModel):
             export_dict = pydantic_export_dict
 
         return export_dict
+
+    def _get_merge_parameters_common(self, exclude: set[str] = set()) -> dict[str,Any]:
+        """Input an all properties dictionary, and filter based on property types.
+
+            Returns:
+                Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
+            """
+        # get all the properties
+        all_props = self._engine_dict(exclude=exclude)
+
+        always_set = {k: all_props[k] for k in self._always_set}
+        set_on_match = {k: all_props[k] for k in self._set_on_match}
+        set_on_create = {k: all_props[k] for k in self._set_on_create}
+        params = {
+            "all_props": all_props,
+            "always_set": always_set,
+            "set_on_match": set_on_match,
+            "set_on_create": set_on_create,
+        }
+        return params
 
     #
     # validators

@@ -57,6 +57,9 @@ class GraphEngineBase:
                     )
 
             return [cls._export_type_converter(x) for x in value]
+        
+        elif value is None:
+            return None
 
         elif isinstance(value, cls._supported_types) is False:
             return str(value)
