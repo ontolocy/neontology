@@ -1,7 +1,7 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Optional, Union, Self
+from typing import Any, Callable, ClassVar, Optional, Self, Union
 
 import pandas as pd
 from pydantic import ValidationError, model_validator

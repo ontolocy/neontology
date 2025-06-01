@@ -247,7 +247,7 @@ class GraphEngineBase:
     def _where_elementId_cypher() -> str:
         return "elementId(n) = $pp"
 
-    def delete_nodes(self, label: str, pp_key: str, pp_values: List[Any]) -> None:
+    def delete_nodes(self, label: str, pp_key: str, pp_values: list[Any]) -> None:
         cypher = f"""
         UNWIND $pp_values AS pp
         MATCH (n:{gql_identifier_adapter.validate_strings(label)})

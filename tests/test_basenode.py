@@ -1,16 +1,16 @@
 # type: ignore
 from datetime import datetime
-from typing import ClassVar, Optional, Annotated
+from typing import Annotated, ClassVar, Optional
 from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
 from pydantic import (
+    ConfigDict,
     Field,
     ValidationInfo,
     field_serializer,
     field_validator,
-    ConfigDict,
 )
 
 from neontology import (
