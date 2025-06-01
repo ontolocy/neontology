@@ -131,6 +131,19 @@ class GraphConnection(object):
     ) -> List[BaseNode]:
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
 
+    def match_node(self, pp: str, node_class: type[BaseNode]) -> Optional["BaseNode"]:
+        """MATCH a single node of this type with the given primary property.
+
+        Args:
+            pp (str): The value of the primary property (pp) to match on.
+            node_class (type[BaseNode]): Class of the node to match
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+        """
+
+        return self.engine.match_node(pp, node_class)
+
     def match_nodes(
         self,
         node_class: type["BaseNode"],

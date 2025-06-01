@@ -78,6 +78,45 @@ class MemgraphEngine(GraphEngineBase):
         else:
             return None
 
+    def match_node(self, pp: str, node_class: type["BaseNode"]) -> Optional["BaseNode"]:
+        """MATCH a single node of this type with the given primary property.
+        Memgraph specific element id function version
+
+        Args:
+            pp (str): The value of the primary property (pp) to match on.
+            node_class (type[BaseNode]): Class of the node to match
+
+        Returns:
+            Optional[B]: If the node exists, return it as an instance.
+        """
+        element_id_prop_name = getattr(node_class, "__elementidproperty__", None)
+        if node_class.__primaryproperty__ == element_id_prop_name:
+            match_cypher = "toString(id(n))"
+        else:
+            match_cypher = f"n.{node_class.__primaryproperty__}"
+
+        cypher = f"""
+        MATCH (n:{node_class.__primarylabel__})
+        WHERE {match_cypher} = $pp
+        RETURN n
+        """
+
+        params = {"pp": pp}
+
+        result = self.evaluate_query(
+            cypher, params, node_classes={node_class.__primarylabel__: node_class}
+        )
+
+        if result.nodes:
+            return result.nodes[0]
+
+        else:
+            return None
+
+    @staticmethod
+    def _where_elementId_cypher() -> str:
+        return "toString(id(n)) = $pp"
+
     def merge_relationships(
         self,
         source_label: str,
@@ -89,6 +128,7 @@ class MemgraphEngine(GraphEngineBase):
         rel_props: List[dict],
         rel_class: type["BaseRelationship"],
     ) -> NeontologyResult:
+        """Merge relationships - memgraph specific element id function version"""
         # build a string of properties to merge on "prop_name: $prop_name"
         merge_props = ", ".join(
             [

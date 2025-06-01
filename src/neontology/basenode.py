@@ -205,11 +205,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """Merge this node into the graph."""
         pp_key = self.__primaryproperty__
 
-        element_id_prop_name = getattr(self, "__elementidproperty__", None)
-        if pp_key == element_id_prop_name:
-            # Special handeling for primary property of element_id
-            return [self.create()]
-
         node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
@@ -356,25 +351,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             Optional[B]: If the node exists, return it as an instance.
         """
 
-        cypher = f"""
-        MATCH (n:{cls.__primarylabel__})
-        WHERE n.{cls.__primaryproperty__} = $pp
-        RETURN n
-        """
-
-        params = {"pp": pp}
-
         gc = GraphConnection()
 
-        result = gc.evaluate_query(
-            cypher, params, node_classes={cls.__primarylabel__: cls}
-        )
-
-        if result.nodes:
-            return result.nodes[0]
-
-        else:
-            return None
+        return gc.match_node(pp, cls)
 
     @classmethod
     def delete(cls, pp: str) -> None:

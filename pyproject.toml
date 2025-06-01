@@ -1,6 +1,6 @@
 [project]
 name = "neontolojay"
-version = "2025.0.0b3"
+version = "2025.0.0b5"
 requires-python = ">=3.9"
 description = "A Python package for modelling data in a Neo4j graph database with Pydantic and Pandas. A fork of neontology with added support for non-unique primary keys."
 dependencies = [
