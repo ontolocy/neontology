@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.1.0
+
+### Features
+
+- Add support for Pydantic Field Aliases for Node/Relationship property names (thanks to @Forgen)
+
+### Changed
+
+- Tidies up type hinting with generics from standard library (thanks to @BiBzz)
+
 ## v2.0.5
 
 ### Dependencies and Support
