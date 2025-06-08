@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pandas as pd
 import pytest
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, ConfigDict
 
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
@@ -88,12 +88,21 @@ def test_merge_relationship(use_graph):
     assert result == "Default Practice Relationship Property"
 
 
+class SubclassNode(PracticeNode):
+    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+    myprop: str
+
+
+@pytest.mark.filterwarnings("ignore:Unexpected primary labels returned:UserWarning")
 def test_match_relationship(use_graph):
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
     target_node = PracticeNode(pp="Target Node")
     target_node.create()
+
+    sub_target_node = SubclassNode(pp="Subclass Target Node", myprop="Sub")
+    sub_target_node.create()
 
     br = PracticeRelationship(
         source=source_node,
@@ -102,9 +111,23 @@ def test_match_relationship(use_graph):
     )
     br.merge()
 
+    sr = PracticeRelSecondary(
+        source=source_node,
+        target=sub_target_node,
+        practice_rel_prop="TESTING MATCH SUB NODE RELATIONSHIP",
+    )
+    sr.merge()
+
     rels = PracticeRelationship.match_relationships()
 
+    # should be only 1 Practice Relationship
+    assert len(rels) == 1
     assert rels[0].practice_rel_prop == "TESTING MATCH RELATIONSHIP"
+
+    # should be only 1 Secondary Relationship
+    rels_secondary = PracticeRelSecondary.match_relationships()
+    assert len(rels_secondary) == 1
+    assert rels_secondary[0].practice_rel_prop == "TESTING MATCH SUB NODE RELATIONSHIP"
 
 
 class RelMergeOnMatchTest(PracticeRelationship):
@@ -138,6 +161,57 @@ def test_merge_relationship_merge_on_match(use_graph):
     assert result == "Foo"
 
     br2 = RelMergeOnMatchTest(
+        source=source_node,
+        target=target_node,
+        prop_to_merge_on="MergeMe",
+        my_prop="Bar",
+    )
+    br2.merge()
+
+    result2 = use_graph.evaluate_query_single(cypher)
+
+    assert result2 == "Bar"
+
+
+def test_merge_relationship_merge_on_match_with_aliases(use_graph):
+    class RelMergeOnMatchAliasesTest(PracticeRelationship):
+        __relationshiptype__: ClassVar[Optional[str]] = (
+            "TEST_REL_MERGE_ON_MATCH_ALIASED"
+        )
+        prop_to_merge_on: str = Field(
+            json_schema_extra={"merge_on": True}, alias="mergeOn"
+        )
+        my_prop: str = Field(..., alias="myProp")
+        model_config = ConfigDict(
+            validate_by_name=True,
+            validate_by_alias=True,
+            populate_by_name=True,
+        )
+
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+
+    target_node = PracticeNode(pp="Target Node")
+    target_node.create()
+
+    br = RelMergeOnMatchAliasesTest(
+        source=source_node,
+        target=target_node,
+        prop_to_merge_on="MergeMe",
+        my_prop="Foo",
+    )
+    br.merge()
+
+    cypher = """
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_MATCH_ALIASED]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN r.myProp
+    """
+
+    result = use_graph.evaluate_query_single(cypher)
+
+    assert result == "Foo"
+
+    br2 = RelMergeOnMatchAliasesTest(
         source=source_node,
         target=target_node,
         prop_to_merge_on="MergeMe",
@@ -241,6 +315,12 @@ class NewRelType(BaseRelationship):
     new_rel_prop: str
 
 
+class PracticeRelSecondary(PracticeRelationship):
+    """Same as PracticeRelationship, but PracticeNode->SubClassNode instead of PracticeNode->PracticeNode"""
+
+    target: SubclassNode
+
+
 def test_merge_relationships_defined_types(use_graph):
     node1 = PracticeNode(pp="Source Node")
     node1.create()
@@ -283,11 +363,6 @@ def test_get_count(use_graph):
 
 def test_get_count_none(use_graph):
     assert NewRelType.get_count() == 0
-
-
-class SubclassNode(PracticeNode):
-    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-    myprop: str
 
 
 class NewRelType2(BaseRelationship):
