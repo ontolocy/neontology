@@ -11,23 +11,17 @@ def get_node_types(base_type: type[BaseNode] = BaseNode) -> dict[str, type[BaseN
     node_types = {}
 
     # if we're starting with a node type that has a primary label, include this in results
+    # if it has a primary label, it is a concrete class and don't searcch subclasses
     if (
         hasattr(base_type, "__primarylabel__")
         and base_type.__primarylabel__ is not None
     ):
         node_types[base_type.__primarylabel__] = base_type
-
-    for subclass in base_type.__subclasses__():
-        # we can define 'abstract' nodes which don't have a label
-        # these are to provide common properties to be used by subclassed nodes
-        # but shouldn't be put in the graph
-        if (
-            hasattr(subclass, "__primarylabel__")
-            and subclass.__primarylabel__ is not None
-        ):
-            node_types[subclass.__primarylabel__] = subclass
-
-        if subclass.__subclasses__():
+    else:
+        for subclass in base_type.__subclasses__():
+            # we can define 'abstract' nodes which don't have a label
+            # these are to provide common properties to be used by subclassed nodes
+            # but shouldn't be put in the graph
             subclass_node_types = get_node_types(subclass)
 
             node_types.update(subclass_node_types)
@@ -56,6 +50,8 @@ def get_rels_by_type(
 ) -> dict[str, RelationshipTypeData]:
     rel_types: dict = defaultdict(dict)
 
+    # if we're starting with a relationship type that has a relationshiptype, include this in results
+    # if it has a relationshiptype, it is a concrete class and don't searcch subclasses
     if (
         hasattr(base_type, "__relationshiptype__")
         and base_type.__relationshiptype__ is not None
@@ -63,26 +59,32 @@ def get_rels_by_type(
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(
             base_type
         )
+    else:
+        for rel_subclass in base_type.__subclasses__():
+            # we can define 'abstract' relationships which don't have a label
+            # these are to provide common properties to be used by subclassed relationships
+            # but shouldn't be put in the graph
 
-    for rel_subclass in base_type.__subclasses__():
-        # we can define 'abstract' relationships which don't have a label
-        # these are to provide common properties to be used by subclassed relationships
-        # but shouldn't be put in the graph
-
-        if (
-            hasattr(rel_subclass, "__relationshiptype__")
-            and rel_subclass.__relationshiptype__ is not None
-        ):
-            rel_types[rel_subclass.__relationshiptype__] = (
-                generate_relationship_type_data(rel_subclass)
-            )
-
-        if rel_subclass.__subclasses__():
             subclass_rel_types = get_rels_by_type(rel_subclass)
 
-            rel_types.update(subclass_rel_types)
+            update_non_existing_inplace(rel_types, subclass_rel_types)
 
     return rel_types
+
+
+def update_non_existing_inplace(original_dict: dict, to_add: dict) -> None:
+    for key in to_add.keys():
+        if key not in original_dict:
+            original_dict[key] = to_add[key]
+        else:
+            import warnings
+
+            warnings.warn(
+                UserWarning(
+                    f"Duplicate dictionary key {key} ignored."
+                    f" Requested {to_add[key]}, but already has {original_dict[key]}"
+                )
+            )
 
 
 def all_subclasses(cls: type) -> set:
