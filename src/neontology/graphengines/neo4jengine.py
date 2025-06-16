@@ -1,9 +1,7 @@
 import itertools
-import os
 import warnings
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
-from dotenv import load_dotenv
 from neo4j import GraphDatabase
 from neo4j import Record as Neo4jRecord
 from neo4j import Result as Neo4jResult
@@ -13,7 +11,7 @@ from neo4j.graph import Relationship as Neo4jRelationship
 from neo4j.time import Date as Neo4jDate
 from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Time as Neo4jTime
-from pydantic import model_validator
+from typing_extensions import LiteralString, cast
 
 from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
@@ -23,8 +21,21 @@ if TYPE_CHECKING:
     from ..basenode import BaseNode
     from ..baserelationship import BaseRelationship, RelationshipTypeData
 
+BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
+
 
 def convert_neo4j_types(input_dict: dict) -> dict:
+    """Convert Neo4j types in a dictionary to their native Python equivalents.
+
+    Specifically, this function converts Neo4j DateTime, Date, and Time
+    objects to their native Python types.
+
+    Args:
+        input_dict (dict): Dictionary containing Neo4j types.
+
+    Returns:
+        dict: Dictionary with Neo4j types converted to native Python types.
+    """
     output_dict = dict(input_dict)
 
     for key in output_dict:
@@ -40,9 +51,16 @@ def convert_neo4j_types(input_dict: dict) -> dict:
     return output_dict
 
 
-def neo4j_node_to_neontology_node(
-    neo4j_node: Neo4jNode, node_classes: dict
-) -> Optional["BaseNode"]:
+def neo4j_node_to_neontology_node(neo4j_node: Neo4jNode, node_classes: dict[str, type[BaseNodeT]]) -> Optional[BaseNodeT]:
+    """Convert a native Neo4j node to a Neontology node.
+
+    Args:
+        neo4j_node (Neo4jNode): The Neo4j node to convert.
+        node_classes (dict): Mapping of labels to node classes used for populating with results.
+
+    Returns:
+        Optional[BaseNode]: The converted Neontology node, or None if conversion fails.
+    """
     node_labels = list(neo4j_node.labels)
 
     primary_labels = set(node_labels).intersection(set(node_classes.keys()))
@@ -74,6 +92,16 @@ def neo4j_node_to_neontology_node(
 def neo4j_relationship_to_neontology_rel(
     neo4j_rel: Neo4jRelationship, node_classes: dict, rel_classes: dict
 ) -> Optional["BaseRelationship"]:
+    """Convert a native Neo4j relationship to a Neontology relationship.
+
+    Args:
+        neo4j_rel (Neo4jRelationship): The Neo4j relationship to convert.
+        node_classes (dict): Mapping of labels to node classes used for populating with results.
+        rel_classes (dict[str, RelationshipTypeData]): Mapping of relationship types to classes for populating with results.
+
+    Returns:
+        Optional[BaseRelationship]: The converted Neontology relationship, or None if conversion fails.
+    """
     rel_type = neo4j_rel.type
     rel_type_data = rel_classes[rel_type]
 
@@ -86,12 +114,7 @@ def neo4j_relationship_to_neontology_rel(
         )
         return None
 
-    if (
-        not neo4j_rel.start_node
-        or not neo4j_rel.start_node.labels
-        or not neo4j_rel.end_node
-        or not neo4j_rel.end_node.labels
-    ):
+    if not neo4j_rel.start_node or not neo4j_rel.start_node.labels or not neo4j_rel.end_node or not neo4j_rel.end_node.labels:
         warnings.warn(
             (
                 f"{rel_type} relationship type query did not include nodes."
@@ -116,6 +139,20 @@ def neo4j_records_to_neontology_records(
     node_classes: dict,
     rel_classes: dict[str, "RelationshipTypeData"],
 ) -> tuple:
+    """Convert native Neo4j records to Neontology records.
+
+    Args:
+        records (list[Neo4jRecord]): List of Neo4j records to convert.
+        node_classes (dict): Mapping of labels to node classes used for populating with results.
+        rel_classes (dict[str, RelationshipTypeData]): Mapping of relationship types to classes for populating with results.
+
+    Returns:
+        tuple: A tuple containing:
+            - new_records (list): List of converted records in Neontology format.
+            - unique_nodes (list): List of unique nodes.
+            - rels (list): List of relationships.
+            - paths (list): List of paths.
+    """
     new_records = []
 
     for record in records:
@@ -129,9 +166,7 @@ def neo4j_records_to_neontology_records(
                     new_record["nodes"][key] = neontology_node
 
             elif isinstance(entry, Neo4jRelationship):
-                neontology_rel = neo4j_relationship_to_neontology_rel(
-                    entry, node_classes, rel_classes
-                )
+                neontology_rel = neo4j_relationship_to_neontology_rel(entry, node_classes, rel_classes)
 
                 if neontology_rel:
                     new_record["relationships"][key] = neontology_rel
@@ -139,9 +174,7 @@ def neo4j_records_to_neontology_records(
             elif isinstance(entry, Neo4jPath):
                 entry_path = []
                 for step in entry:
-                    step_rel = neo4j_relationship_to_neontology_rel(
-                        step, node_classes, rel_classes
-                    )
+                    step_rel = neo4j_relationship_to_neontology_rel(step, node_classes, rel_classes)
                     entry_path.append(step_rel)
                 if entry_path:
                     new_record["paths"][key] = entry_path
@@ -167,18 +200,22 @@ def neo4j_records_to_neontology_records(
 
 class Neo4jEngine(GraphEngineBase):
     def __init__(self, config: "Neo4jConfig") -> None:
-        """Initialise connection to the engine
+        """Initialise connection to the engine.
 
         Args:
-            config - Takes a Neo4jConfig object.
+            config (Neo4jConfig): Takes a Neo4jConfig object.
         """
-
-        self.driver = GraphDatabase.driver(  # type: ignore
-            config.uri,
-            auth=(config.username, config.password),
+        self.driver = GraphDatabase.driver(
+            config.connection_uri,
+            auth=(config.connection_username, config.connection_password),
         )
 
     def verify_connection(self) -> bool:
+        """Verify the connection to the Neo4j database.
+
+        Returns:
+            bool: True if the connection is successful, False otherwise.
+        """
         try:
             self.driver.verify_connectivity()
             return True
@@ -186,6 +223,7 @@ class Neo4jEngine(GraphEngineBase):
             return False
 
     def close_connection(self) -> None:
+        """Close the connection to the Neo4j database."""
         try:
             self.driver.close()
         except AttributeError:
@@ -193,11 +231,23 @@ class Neo4jEngine(GraphEngineBase):
 
     def evaluate_query(
         self,
-        cypher: str,
+        cypher: LiteralString,
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
     ) -> NeontologyResult:
+        """Evaluate a Cypher query and return the results as Neontology records.
+
+        Args:
+            cypher (str): query to evaluate.
+            params (dict, optional): parameters to pass through. Defaults to {}.
+            node_classes (dict, optional): mapping of labels to node classes used for populating with results. Defaults to {}.
+            relationship_classes (dict, optional): mapping of relationship types to classes used for populating with results.
+                Defaults to {}.
+
+        Returns:
+            NeontologyResult: Result object containing the records, nodes, relationships, and paths.
+        """
         result = self.driver.execute_query(cypher, parameters_=params)
 
         neo4j_records = result.records
@@ -213,10 +263,17 @@ class Neo4jEngine(GraphEngineBase):
             paths=paths,
         )
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
-        result = self.driver.execute_query(
-            cypher, parameters_=params, result_transformer_=Neo4jResult.single
-        )
+    def evaluate_query_single(self, cypher: LiteralString, params: dict = {}) -> Optional[Any]:
+        """Evaluate a Cypher query which returns a single result.
+
+        Args:
+            cypher (str): query to evaluate.
+            params (dict, optional): parameters to pass through. Defaults to {}.
+
+        Returns:
+            Optional[Any]: Query result, or None if no result is found.
+        """
+        result = self.driver.execute_query(cypher, parameters_=params, result_transformer_=Neo4jResult.single)
 
         if result:
             return result.value()
@@ -225,21 +282,37 @@ class Neo4jEngine(GraphEngineBase):
             return None
 
     def apply_constraint(self, label: str, property: str) -> None:
+        """Apply a constraint to ensure that a property is unique for a label.
+
+        Args:
+            label (str): The label to which the constraint applies.
+            property (str): The property that must be unique.
+        """
         cypher = f"""
         CREATE CONSTRAINT IF NOT EXISTS
         FOR (n:{gql_identifier_adapter.validate_strings(label)})
         REQUIRE n.{gql_identifier_adapter.validate_strings(property)} IS UNIQUE
         """
 
-        self.evaluate_query_single(cypher)
+        self.evaluate_query_single(cast(LiteralString, cypher))
 
     def drop_constraint(self, constraint_name: str) -> None:
+        """Drop a constraint by its name.
+
+        Args:
+            constraint_name (str): The name of the constraint to drop.
+        """
         drop_cypher = f"""
         DROP CONSTRAINT {gql_identifier_adapter.validate_strings(constraint_name)}
         """
-        self.evaluate_query_single(drop_cypher)
+        self.evaluate_query_single(cast(LiteralString, drop_cypher))
 
     def get_constraints(self) -> list:
+        """Get the constraints defined in the graph.
+
+        Returns:
+            list: A list of constraint names.
+        """
         get_constraints_query = """
         SHOW CONSTRAINTS yield name
         RETURN COLLECT(DISTINCT name)
@@ -255,23 +328,40 @@ class Neo4jEngine(GraphEngineBase):
 
 
 class Neo4jConfig(GraphEngineConfig):
-    engine: ClassVar[type[Neo4jEngine]] = Neo4jEngine
-    uri: str
-    username: str
-    password: str
+    """Configuration for a Neo4j graph engine."""
 
-    @model_validator(mode="before")
-    @classmethod
-    def populate_defaults(cls, data: Any) -> Any:
-        load_dotenv()
+    engine: ClassVar[type[GraphEngineBase]] = Neo4jEngine
+    uri: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
 
-        if data.get("uri") is None:
-            data["uri"] = os.getenv("NEO4J_URI")
+    env_fields: ClassVar[dict[str, str]] = {
+        "uri": "NEO4J_URI",
+        "username": "NEO4J_USERNAME",
+        "password": "NEO4J_PASSWORD",
+    }
 
-        if data.get("username") is None:
-            data["username"] = os.getenv("NEO4J_USERNAME")
+    # Properties that guarantee non-None values for type checking
+    @property
+    def connection_uri(self) -> str:
+        """Get the URI, guaranteed to be non-None after validation."""
+        if self.uri is None:
+            raise ValueError("URI should be set by validator")
 
-        if data.get("password") is None:
-            data["password"] = os.getenv("NEO4J_PASSWORD")
+        return self.uri
 
-        return data
+    @property
+    def connection_username(self) -> str:
+        """Get the username, guaranteed to be non-None after validation."""
+        if self.username is None:
+            raise ValueError("Username should be set by validator")
+
+        return self.username
+
+    @property
+    def connection_password(self) -> str:
+        """Get the password, guaranteed to be non-None after validation."""
+        if self.password is None:
+            raise ValueError("Password should be set by validator")
+
+        return self.password

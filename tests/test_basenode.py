@@ -53,7 +53,6 @@ class PracticeNodeDated(BaseNode):
         to be set equal to merged.
         Otherwise they will be a tiny amount of time different.
         """
-
         # if the created value has been manually set, don't override it
         if value is None:
             return values.data["test_merged"]
@@ -110,10 +109,7 @@ def test_create(use_graph):
 
 
 def test_create_if_exists(use_graph):
-    """
-    Neontology does not check if a node already exists, it is for the user to enforce this at the database level.
-    """
-
+    """Neontology does not check if a node already exists, it is for the user to enforce this at the database level."""
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -355,11 +351,9 @@ def test_create_multiple_defined_label(use_graph):
 
 
 def test_creation_datetime(use_graph):
-    """
-    Check we can manually define the created datetime, and then check we can
+    """Check we can manually define the created datetime, and then check we can
     query for it using neo4j DateTime type.
     """
-
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
     bn = PracticeNodeDated(pp="Test Node", test_created=my_datetime)
