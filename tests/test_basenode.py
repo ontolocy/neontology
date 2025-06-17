@@ -1,5 +1,6 @@
-# type: ignore
+import json
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, ClassVar, Optional
 from uuid import UUID, uuid4
 
@@ -794,11 +795,18 @@ def test_merge_empty_df():
     assert isinstance(result, pd.Series)
 
 
+class SampleEnum(Enum):
+    VALUE1 = "value1"
+    VALUE2 = "value2"
+    VALUE3 = "value3"
+
+
 class AugmentedPerson(BaseNode):
     __primaryproperty__: ClassVar[GQLIdentifier] = "name"
     __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
 
     name: str
+    optional_enum: Optional[SampleEnum] = SampleEnum.VALUE1.value
 
     @related_nodes
     def followers(self):
@@ -843,6 +851,15 @@ def test_node_schema():
     assert schema.properties[0].name == "name"
     assert schema.properties[0].required is True
     assert schema.outgoing_relationships[0].name == "AUGMENTED_PERSON_FOLLOWS"
+
+
+def test_node_schema_json():
+
+    schema_json = AugmentedPerson.neontology_schema().model_dump_json()
+
+    schema_dict = json.loads(schema_json)
+
+    assert schema_dict["properties"][1]["type_annotation"]["core_type"] == "SampleEnum"
 
 
 def test_node_schema_md():
