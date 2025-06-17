@@ -50,7 +50,11 @@ class NeontologyNodeRecord(BaseModel):
             data["label"] = data.get("input_record", {}).get("LABEL")
 
         if not data.get("output_record"):
-            data["output_record"] = {k: v for k, v in data.get("input_record", {}).items() if k not in ["LABEL"]}
+            data["output_record"] = {
+                k: v
+                for k, v in data.get("input_record", {}).items()
+                if k not in ["LABEL"]
+            }
 
         return data
 
@@ -81,7 +85,9 @@ class NeontologyRelationshipRecord(BaseModel):
             dict: processed dict of model fields ready for Pydantic validation.
         """
         if not data.get("RELATIONSHIP_TYPE"):
-            data["relationship_type"] = data.get("input_record", {}).get("RELATIONSHIP_TYPE")
+            data["relationship_type"] = data.get("input_record", {}).get(
+                "RELATIONSHIP_TYPE"
+            )
 
         if not data.get("source_label"):
             data["source_label"] = data.get("input_record", {}).get("SOURCE_LABEL")
@@ -173,7 +179,9 @@ def _import_relationships(
         # when we merge relationship records, we pass in target prop and source prop
         # we also need to hydrate based on the given source and target labels
         # therefore we need to group together records which share those properties
-        mapped_records[rel_type][record.target_prop][record.source_label][record.target_label].append(record)
+        mapped_records[rel_type][record.target_prop][record.source_label][
+            record.target_label
+        ].append(record)
 
     for rel_type, rel_records_by_prop in mapped_records.items():
         for target_prop, rel_records_by_source_label in rel_records_by_prop.items():
@@ -211,7 +219,10 @@ def _import_relationships(
                                 logger.warning(message)
 
                             elif len(result.nodes) == 0:
-                                error_msg = f"No target node for {rel_type} to {rel_entry.target}"
+                                error_msg = (
+                                    f"No target node for {rel_type} to {rel_entry.target} "
+                                    "Ensure primary properties are explicitly set or deterministic."
+                                )
 
                                 if error_on_unmatched is True:
                                     raise ValueError(error_msg)
@@ -289,7 +300,9 @@ def _process_sub_records(
 
         output_raw_records = [{**rel_dict, **{"target": x}} for x in rel_targets]
 
-        output_rels += [NeontologyRelationshipRecord(input_record=x) for x in output_raw_records]
+        output_rels += [
+            NeontologyRelationshipRecord(input_record=x) for x in output_raw_records
+        ]
 
     # returns a set of records to be used as input to import_records
     return output_nodes, output_rels
@@ -329,19 +342,15 @@ def _prepare_records(
             input_nodes.append(node_record)
 
             if rel_records:
-                logger.warning(
-                    (
-                        "Importing relationships which are sub-records to a Node. "
-                        "Note that this requires associated nodes to have explicit or deterministic primary keys."
-                    )
-                )
 
                 new_nodes, new_rels = _process_sub_records(node_record, rel_records)
                 input_nodes += new_nodes
                 input_relationships += new_rels
 
         elif "RELATIONSHIP_TYPE" in record.keys():
-            input_relationships.append(NeontologyRelationshipRecord(input_record=record))
+            input_relationships.append(
+                NeontologyRelationshipRecord(input_record=record)
+            )
 
         else:
             raise ValueError(

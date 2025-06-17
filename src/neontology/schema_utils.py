@@ -163,7 +163,7 @@ def extract_type_mapping(
         else:
             raise TypeError(f"Cannot have lists of multiple types: {annotation}")
 
-    logger.warn(f"Complex type annotation: {annotation}")
+    logger.warning(f"Complex type annotation: {annotation}")
     return NeontologyAnnotationData(
         representation=str(annotation.__name__), core_type=annotation
     )

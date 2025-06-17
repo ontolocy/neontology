@@ -177,8 +177,12 @@ def test_none_primary_label():
         __primarylabel__: ClassVar[Optional[str]] = None
         pp: str
 
-    with pytest.raises(NotImplementedError):
-        SpecialPracticeNode(pp="Test Node")
+    with pytest.warns(
+        UserWarning,
+        match="Primary Label should contain only alphanumeric characters and underscores",
+    ):
+        with pytest.raises(NotImplementedError):
+            SpecialPracticeNode(pp="Test Node")
 
 
 def test_create_multilabel(use_graph):
@@ -806,7 +810,13 @@ class AugmentedPerson(BaseNode):
     __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
 
     name: str
-    optional_enum: Optional[SampleEnum] = SampleEnum.VALUE1.value
+    optional_enum: Optional[SampleEnum] = Field(
+        default_factory=lambda: SampleEnum.VALUE1
+    )
+
+    @field_serializer("optional_enum")
+    def serialize_enum(self, value: Optional[SampleEnum]) -> Optional[str]:
+        return value.value if value is not None else None
 
     @related_nodes
     def followers(self):
@@ -860,6 +870,12 @@ def test_node_schema_json():
     schema_dict = json.loads(schema_json)
 
     assert schema_dict["properties"][1]["type_annotation"]["core_type"] == "SampleEnum"
+
+    assert schema_dict["properties"][1]["type_annotation"]["enum_values"] == [
+        "value1",
+        "value2",
+        "value3",
+    ]
 
 
 def test_node_schema_md():
