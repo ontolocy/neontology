@@ -12,18 +12,23 @@ from ..utils import get_node_types, get_rels_by_type
 logger = logging.getLogger(__name__)
 
 
-def nested_dict(n, type):
+def _nested_dict(n, type):
+    """Create a nested defaultdict of depth n with the given type."""
     if n == 1:
         return defaultdict(type)
     else:
-        return defaultdict(lambda: nested_dict(n - 1, type))
+        return defaultdict(lambda: _nested_dict(n - 1, type))
 
 
 class NeontologyNodeRaw(BaseModel):
+    """Pydantic model for a Neontology node raw record."""
+
     LABEL: str
 
 
 class NeontologyRelationshipRaw(BaseModel):
+    """Pydantic model for a Neontology relationship raw record."""
+
     RELATIONSHIP_TYPE: str
     TARGET_LABEL: str
     TARGET_NODES: Optional[list[NeontologyNodeRaw]] = None
@@ -32,12 +37,15 @@ class NeontologyRelationshipRaw(BaseModel):
 
 
 class NeontologyNodeRecord(BaseModel):
+    """Pydantic model for transforming a raw Neontology node record."""
+
     input_record: NeontologyNodeRaw
-    label: str
-    output_record: dict
+    label: Optional[str] = None
+    output_record: Optional[dict[str, Any]] = None
 
     @model_validator(mode="before")
     def populate_node_fields(cls, data):
+        """Use the raw input data (from input_record) to populate the fields of the model."""
         if not data.get("label"):
             data["label"] = data.get("input_record", {}).get("LABEL")
 
@@ -52,15 +60,19 @@ class NeontologyNodeRecord(BaseModel):
 
 
 class NeontologyRelationshipRecord(BaseModel):
+    """Pydantic model for transforming a raw Neontology relationship record."""
+
     input_record: NeontologyRelationshipRaw
-    relationship_type: str
+    relationship_type: Optional[str] = None
+
     target_prop: Optional[str] = None
-    source_label: str
-    target_label: str
-    source: Any
-    target: Any
-    relationship_properties: dict
-    output_record: dict
+    source_label: Optional[str] = None
+    target_label: Optional[str] = None
+    source: Optional[Any] = None
+    target: Optional[Any] = None
+
+    relationship_properties: Optional[dict] = None
+    output_record: Optional[dict] = None
 
     @model_validator(mode="before")
     def populate_rel_fields(cls, data: dict) -> dict:
@@ -128,6 +140,7 @@ class NeontologyRelationshipRecord(BaseModel):
 
     @model_validator(mode="after")
     def populate_fields(self):
+        """Use the raw input data (from input_record) to populate the fields of the model."""
         node_types = get_node_types()
 
         # if an explicit TARGET_PROPERTY wasn't passed in, use the primary property
@@ -156,7 +169,7 @@ def _import_relationships(
 ):
     # if we're meant to warn on unmatched, we need to look up source and target
 
-    mapped_records = nested_dict(4, list)
+    mapped_records = _nested_dict(4, list)
     rel_types = get_rels_by_type()
     node_types = get_node_types()
 
@@ -206,7 +219,10 @@ def _import_relationships(
                                 logger.warning(message)
 
                             elif len(result.nodes) == 0:
-                                error_msg = f"No target node for {rel_type} to {rel_entry.target}"
+                                error_msg = (
+                                    f"No target node for {rel_type} to {rel_entry.target} "
+                                    "Ensure primary properties are explicitly set or deterministic."
+                                )
 
                                 if error_on_unmatched is True:
                                     raise ValueError(error_msg)
@@ -240,7 +256,15 @@ def _process_sub_records(
     # then dump it
 
     source_label = source_node_record.label
+
+    if source_label is None:
+        raise ValueError("source_node_record.label is None, cannot look up node type.")
+
     source_class = node_types[source_label]
+
+    if not source_node_record.output_record:
+        raise TypeError("Expected output dictionary.")
+
     source_node = source_class(**source_node_record.output_record)
     source_node_pk = source_node.get_pp()
 
@@ -318,12 +342,6 @@ def _prepare_records(
             input_nodes.append(node_record)
 
             if rel_records:
-                logger.warning(
-                    (
-                        "Importing relationships which are sub-records to a Node. "
-                        "Note that this requires associated nodes to have explicit or deterministic primary keys."
-                    )
-                )
 
                 new_nodes, new_rels = _process_sub_records(node_record, rel_records)
                 input_nodes += new_nodes
@@ -337,8 +355,7 @@ def _prepare_records(
         else:
             raise ValueError(
                 (
-                    "Input record does not have LABEL (for node) "
-                    "or RELATIONSHIP_TYPE (for relationship). %s",
+                    "Input record does not have LABEL (for node) or RELATIONSHIP_TYPE (for relationship). %s",
                     record,
                 )
             )
@@ -352,6 +369,16 @@ def import_records(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
 ) -> None:
+    """Import 'Neontology' records into the graph database.
+
+    Args:
+        records (list): a list of dictionaries representing nodes and relationships.
+        validate_only (bool, optional): validate the data is appropriately formatted
+            but do not populate the graph. Defaults to False.
+        check_unmatched (bool, optional): Check relationship targets exist, warn if not. Defaults to True.
+        error_on_unmatched (bool, optional): When checking for relationship targets,
+            raise an error if the target node is not in the graph. Defaults to False.
+    """
     input_nodes = []
     input_rels = []
 

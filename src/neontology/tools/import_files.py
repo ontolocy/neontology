@@ -34,6 +34,7 @@ def import_json(
     error_on_unmatched: bool = False,
     validate_only: bool = False,
 ) -> None:
+    """Import JSON files into the graph."""
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:
@@ -69,6 +70,11 @@ def import_yaml(
     error_on_unmatched: bool = False,
     validate_only: bool = False,
 ) -> None:
+    """Import YAML files into the graph.
+
+    The YAML files should contain a list of records, each record being a dictionary
+    with LABEL for the primary label keys for other node properties.
+    """
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:
@@ -104,6 +110,10 @@ def import_md(
     error_on_unmatched: bool = False,
     validate_only: bool = False,
 ) -> None:
+    """Import markdown files with frontmatter into the graph.
+
+    The frontmatter should be in YAML format and contain LABEL and a BODY_PROPERTY key
+    """
     file_paths = _identify_filepaths(path, path_pattern)
 
     if len(file_paths) == 0:

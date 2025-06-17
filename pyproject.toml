@@ -9,24 +9,12 @@ markers = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 
-[tool.mypy]
-plugins = ["pydantic.mypy"]
+[tool.ruff]
+line-length = 128
 
-[[tool.mypy.overrides]]
-module = "neontology.*"
-disallow_untyped_defs = true
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "D"]
+ignore = ["D100", "D101", "D104", "D107"]
 
-[[tool.mypy.overrides]]
-module = "neo4j.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "pandas.*"
-ignore_missing_imports = true
-
-[tool.isort]
-profile = "black"
-
-[tool.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
-add_ignore = ["D104", "D100", "D202", "D107", "D101", "D106"]

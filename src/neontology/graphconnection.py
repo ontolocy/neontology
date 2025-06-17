@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 from warnings import warn
 
 from .graphengines import MemgraphConfig, Neo4jConfig
@@ -14,6 +14,10 @@ if TYPE_CHECKING:
     from .baserelationship import BaseRelationship
 
 logger = logging.getLogger(__name__)
+
+
+BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
+BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
 
 
 class GraphConnection(object):
@@ -35,13 +39,12 @@ class GraphConnection(object):
         Returns:
             GraphConnection: Instance of the connection
         """
-
         if cls._instance is None:
             cls._instance = object.__new__(cls)
 
             if GraphConnection._instance:
                 try:
-                    GraphConnection._instance.engine = config.engine(config)  # type: ignore[union-attr,arg-type]
+                    GraphConnection._instance.engine = config.engine(config)
 
                 except Exception as exc:
                     GraphConnection._instance = None
@@ -81,6 +84,16 @@ class GraphConnection(object):
         cls,
         config: GraphEngineConfig,
     ) -> None:
+        """Change the graph engine used by Neontology.
+
+        This method allows changing the graph engine configuration after Neontology has been initialized.
+
+        Args:
+            config (GraphEngineConfig): The new configuration for the graph engine.
+
+        Raises:
+            RuntimeError: If Neontology has not been initialized yet.
+        """
         if not cls._instance:
             raise RuntimeError(
                 "Error: Can't change the engine without initializing Neontology first."
@@ -90,6 +103,17 @@ class GraphConnection(object):
         cls._instance.engine = config.engine(config)
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+        """Evaluate a Cypher query against the graph database which returns a single result.
+
+        Calls the underlying engine's evaluate_query_single method.
+
+        Args:
+            cypher (str): The Cypher query to execute.
+            params (dict): Parameters to pass to the Cypher query.
+
+        Returns:
+            Optional[Any]: The single result of the query execution, or None if no result.
+        """
         return self.engine.evaluate_query_single(cypher, params)
 
     def evaluate_query(
@@ -100,6 +124,18 @@ class GraphConnection(object):
         relationship_classes: dict = {},
         refresh_classes: bool = True,
     ) -> NeontologyResult:
+        """Evaluate a Cypher query against the graph database.
+
+        Args:
+            cypher (str): The Cypher query to execute.
+            params (dict): Parameters to pass to the Cypher query.
+            node_classes (dict): Optional dictionary of node classes to use.
+            relationship_classes (dict): Optional dictionary of relationship classes to use.
+            refresh_classes (bool): Whether to refresh the global node and relationship types.
+
+        Returns:
+            NeontologyResult: The result of the query execution.
+        """
         if refresh_classes is True:
             from .utils import get_node_types, get_rels_by_type
 
@@ -118,32 +154,91 @@ class GraphConnection(object):
         )
 
     def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> list["BaseNode"]:
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
+        """Create nodes in the graph database.
+
+        Calls the underlying engine's create_nodes method to create new nodes.
+
+        Args:
+            labels (list): List of labels for the nodes to create.
+            pp_key (str): The property key to match on.
+            properties (list): List of properties to set on the nodes.
+            node_class (type[BaseNode]): The class of the node to create.
+
+        Returns:
+            list[BaseNode]: List of created nodes.
+        """
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
     def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type["BaseNode"]
-    ) -> list["BaseNode"]:
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list["BaseNodeT"]:
+        """Merge nodes in the graph database.
+
+        Calls the underlying engine's merge_nodes method to create or update nodes.
+
+        Args:
+            labels (list): List of labels for the nodes to merge.
+            pp_key (str): The property key to match on.
+            properties (list): List of properties to set on the nodes.
+            node_class (type[BaseNode]): The class of the node to merge.
+
+        Returns:
+            list[BaseNode]: List of merged nodes.
+        """
         return self.engine.merge_nodes(labels, pp_key, properties, node_class)
 
     def match_nodes(
         self,
-        node_class: type["BaseNode"],
+        node_class: type[BaseNodeT],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> list["BaseNode"]:
+    ) -> list[BaseNodeT]:
+        """Match nodes in the graph database.
+
+        Calls the underlying engine's match_nodes method to retrieve nodes.
+
+        Args:
+            node_class (type[BaseNode]): The class of the node to match.
+            limit (Optional[int]): Maximum number of nodes to return.
+            skip (Optional[int]): Number of nodes to skip.
+
+        Returns:
+            list[BaseNode]: List of matched nodes.
+        """
         return self.engine.match_nodes(node_class, limit, skip)
 
     def match_relationships(
         self,
-        relationship_class: type["BaseRelationship"],
+        relationship_class: type[BaseRelationshipT],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
-    ) -> list["BaseRelationship"]:
+    ) -> list[BaseRelationshipT]:
+        """Match relationships in the graph database.
+
+        Calls the underlying engine's match_relationships method to retrieve relationships.
+
+        Args:
+            relationship_class (type[BaseRelationshipT]): The class of the relationship to match.
+            limit (Optional[int]): Maximum number of relationships to return.
+            skip (Optional[int]): Number of relationships to skip.
+
+        Returns:
+            list[BaseRelationshipT]: List of matched relationships.
+        """
         return self.engine.match_relationships(relationship_class, limit, skip)
 
     def delete_nodes(self, label: str, pp_key: str, pp_values: list) -> None:
+        """Delete nodes from the graph database.
+
+        Calls the underlying engine's delete_nodes method to remove nodes.
+
+        Args:
+            label (str): The label of the nodes to delete.
+            pp_key (str): The property key to match on.
+            pp_values (list): The list of property values to match for deletion.
+        """
         self.engine.delete_nodes(label, pp_key, pp_values)
 
     def merge_relationships(
@@ -156,6 +251,17 @@ class GraphConnection(object):
         merge_on_props: list[str],
         rel_props: list[dict],
     ) -> None:
+        """Merge relationships between nodes in the graph database.
+
+        Args:
+            source_label (str): The label of the source node.
+            target_label (str): The label of the target node.
+            source_prop (str): The property of the source node to match on.
+            target_prop (str): The property of the target node to match on.
+            rel_type (str): The type of relationship to merge.
+            merge_on_props (list[str]): Properties to use for merging relationships.
+            rel_props (list[dict]): Properties to set on the relationship.
+        """
         self.engine.merge_relationships(
             source_label,
             target_label,
@@ -167,12 +273,12 @@ class GraphConnection(object):
         )
 
     def close(self) -> None:
+        """Close the connection to the graph database."""
         self.engine.close_connection()
 
 
 def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> None:
     """Initialise neontology."""
-
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,

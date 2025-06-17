@@ -60,9 +60,7 @@ records_raw = {
 def test_export_import(use_graph):
     archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
     betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
-    bobalicerel = FollowsImportRel(
-        source=archy, target=betty, import_follows_prop_1="testing"
-    )
+    bobalicerel = FollowsImportRel(source=archy, target=betty, import_follows_prop_1="testing")
 
     import_data = {
         "nodes": [archy.neontology_dump(), betty.neontology_dump()],
@@ -80,9 +78,7 @@ def test_dump_and_import(use_graph):
     archy.merge()
     betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
     betty.merge()
-    bobalicerel = FollowsImportRel(
-        source=archy, target=betty, import_follows_prop_1="testing"
-    )
+    bobalicerel = FollowsImportRel(source=archy, target=betty, import_follows_prop_1="testing")
     bobalicerel.merge()
 
     assert len(PersonImportNode.match_nodes()) == 2
