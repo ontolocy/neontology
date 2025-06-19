@@ -4,3 +4,4 @@ pandas>2,<3
 python-dotenv>1,<2
 Jinja2>3,<4
 typing-extensions>4,<5
+PyYAML>6,<7
