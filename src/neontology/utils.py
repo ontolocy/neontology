@@ -25,17 +25,12 @@ def get_node_types(
     node_types = {}
 
     # if we're starting with a node type that has a primary label, include this in results
+    # if it has a primary label, it is a concrete class and don't searcch subclasses
     if getattr(base_type, "__primarylabel__", None):
         node_types[base_type.__primarylabel__] = base_type
-
-    for subclass in base_type.__subclasses__():
-        # we can define 'abstract' nodes which don't have a label
-        # these are to provide common properties to be used by subclassed nodes
-        # but shouldn't be put in the graph
-        if getattr(subclass, "__primarylabel__", None):
-            node_types[subclass.__primarylabel__] = subclass
-
-        node_types.update(get_node_types(subclass))
+    else:
+        for subclass in base_type.__subclasses__():
+            node_types.update(get_node_types(subclass))
 
     return node_types
 
@@ -67,22 +62,26 @@ def get_rels_by_type(
 ) -> dict[str, RelationshipTypeData]:
     """Get a dictionary of relationship type data keyed by relationship type.
 
+    This is based on the class hierarchy of BaseRelationship and its subclasses.
+
     Optionally pass in a relationship class to only retrieve classes and subclasses of that type.
+
+    Args:
+        base_type (type[BaseRelationship], optional): Relationship type to return subclass information for. Defaults to BaseRelationship.
+
+    Returns:
+        dict[str, type[BaseRelationship]]: Dictionary of relationship types keyed by __relationshiptype__.    
     """
     rel_types: dict = defaultdict(dict)
 
+    # if we're starting with a relationship type that has a relationshiptype, include this in results
+    # if it has a relationshiptype, it is a concrete class and don't searcch subclasses
     if getattr(base_type, "__relationshiptype__", None):
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type)
 
-    for rel_subclass in base_type.__subclasses__():
-        # we can define 'abstract' relationships which don't have a label
-        # these are to provide common properties to be used by subclassed relationships
-        # but shouldn't be put in the graph
-
-        if getattr(rel_subclass, "__relationshiptype__", None):
-            rel_types[rel_subclass.__relationshiptype__] = generate_relationship_type_data(rel_subclass)
-
-        rel_types.update(get_rels_by_type(rel_subclass))
+    else:
+        for rel_subclass in base_type.__subclasses__():
+            rel_types.update(get_rels_by_type(rel_subclass))
 
     return rel_types
 
