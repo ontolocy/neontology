@@ -70,7 +70,7 @@ def get_rels_by_type(
         base_type (type[BaseRelationship], optional): Relationship type to return subclass information for. Defaults to BaseRelationship.
 
     Returns:
-        dict[str, type[BaseRelationship]]: Dictionary of relationship types keyed by __relationshiptype__.    
+        dict[str, type[BaseRelationship]]: Dictionary of relationship types keyed by __relationshiptype__.
     """
     rel_types: dict = defaultdict(dict)
 
