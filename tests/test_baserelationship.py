@@ -113,37 +113,37 @@ def test_match_relationship(use_graph):
 
 @pytest.mark.filterwarnings("ignore:Unexpected primary labels returned:UserWarning")
 def test_match_relationship_subclass(use_graph):
-    source_node = PracticeNode(pp="Source Node")
-    source_node.create()
+    person_node = PracticeNode(pp="Source Node")
+    person_node.create()
 
-    target_node = PracticeNode(pp="Target Node")
-    target_node.create()
+    other_person_node = PracticeNode(pp="Target Node")
+    other_person_node.create()
 
-    sub_target_node = SubclassNode(pp="Subclass Target Node", myprop="Sub")
-    sub_target_node.create()
+    employee_node = SubclassNode(pp="Subclass Target Node", myprop="Sub")
+    employee_node.create()
 
     br = PracticeRelationship(
-        source=source_node,
-        target=target_node,
+        source=person_node,
+        target=other_person_node,
         practice_rel_prop="TESTING MATCH RELATIONSHIP",
     )
     br.merge()
 
-    sr = PracticeRelSecondary(
-        source=source_node,
-        target=sub_target_node,
+    sr = PracticeToSubclassOnlyRelationship(
+        source=person_node,
+        target=employee_node,
         practice_rel_prop="TESTING MATCH SUB NODE RELATIONSHIP",
     )
     sr.merge()
 
     rels = PracticeRelationship.match_relationships()
 
-    # should be only 1 Practice Relationship
-    assert len(rels) == 1
+    # should be 2 Practice Relationships (1 of PracticeNode target, 1 of SubclassNode target)
+    assert len(rels) == 2
     assert rels[0].practice_rel_prop == "TESTING MATCH RELATIONSHIP"
 
     # should be only 1 Secondary Relationship
-    rels_secondary = PracticeRelSecondary.match_relationships()
+    rels_secondary = PracticeToSubclassOnlyRelationship.match_relationships()
     assert len(rels_secondary) == 1
     assert rels_secondary[0].practice_rel_prop == "TESTING MATCH SUB NODE RELATIONSHIP"
 
@@ -281,7 +281,7 @@ class NewRelType(BaseRelationship):
     new_rel_prop: str
 
 
-class PracticeRelSecondary(PracticeRelationship):
+class PracticeToSubclassOnlyRelationship(PracticeRelationship):
     """Same as PracticeRelationship, but PracticeNode->SubClassNode instead of PracticeNode->PracticeNode"""
 
     target: SubclassNode

@@ -25,12 +25,10 @@ def get_node_types(
     node_types = {}
 
     # if we're starting with a node type that has a primary label, include this in results
-    # if it has a primary label, it is a concrete class and don't searcch subclasses
     if getattr(base_type, "__primarylabel__", None):
         node_types[base_type.__primarylabel__] = base_type
-    else:
-        for subclass in base_type.__subclasses__():
-            node_types.update(get_node_types(subclass))
+    for subclass in base_type.__subclasses__():
+        node_types.update(get_node_types(subclass))
 
     return node_types
 
