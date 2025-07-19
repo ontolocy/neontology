@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.1.3
+
+### Changed
+
+- Updated handling of development dependencies
+
 ## v2.1.2
 
 ### Changed
