@@ -1,7 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr, model_validator
-from pydantic_core import PydanticCustomError
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from .graphconnection import GraphConnection
 
@@ -62,7 +61,9 @@ class CommonModel(BaseModel):
 
         return selected_props
 
-    def _get_prop_values(self, props: list[str], exclude: set[str] = set()) -> dict[str, Any]:
+    def _get_prop_values(
+        self, props: list[str], exclude: set[str] = set()
+    ) -> dict[str, Any]:
         """Get a dictionary of property values for the given properties.
 
         Args:
@@ -88,7 +89,9 @@ class CommonModel(BaseModel):
         Returns:
             dict: a dictionary export of this model instance
         """
-        pydantic_export_dict = self.model_dump(exclude_none=False, exclude=exclude, by_alias=True, **kwargs)
+        pydantic_export_dict = self.model_dump(
+            exclude_none=False, exclude=exclude, by_alias=True, **kwargs
+        )
 
         # return pydantic_export_dict
 
@@ -123,34 +126,3 @@ class CommonModel(BaseModel):
             "set_on_create": set_on_create,
         }
         return params
-
-    #
-    # validators
-    #
-
-    @model_validator(mode="before")
-    @classmethod
-    def deprecated_merged_created(cls, data: Any) -> Any:
-        """Neontology v0 and v1 included and auto-populated this property.
-
-        This validator checks if the 'created' or 'merged' fields are present in the data.
-        If they are, it raises a PydanticCustomError indicating that native support for these fields has been removed.
-
-        Args:
-            data (Any): The input data to validate.
-
-        Returns:
-            Any: The validated data if no error is raised.
-
-        Raises:
-            PydanticCustomError: If 'created' or 'merged' fields are present in the data.
-        """
-        if ("created" in data and "created" not in cls.model_fields) or ("merged" in data and "merged" not in cls.model_fields):
-            raise PydanticCustomError(
-                "created_or_merged_fields",
-                (
-                    "Native neontology support for 'merged' and 'created' properties has been removed."
-                    " Consider adding these fields to your model(s) and read the docs for further info"
-                ),
-            )
-        return data
