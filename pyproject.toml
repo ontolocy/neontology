@@ -2,6 +2,66 @@
 requires = ["setuptools>=42"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "neontology"
+version = "2.1.1"
+authors = [
+    {name = "Ontolocy"},
+]
+description = "A Python package for modelling data in a Neo4j graph database with Pydantic and Pandas."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Database",
+]
+dependencies = [
+    "neo4j>=5.0,<6",
+    "pydantic>=2.7,<3",
+    "pandas>=2.0,<3",
+    "python-dotenv>=1.0,<2",
+    "Jinja2>=3.0,<4",
+    "typing-extensions>=4.0,<5",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+test = [
+    "coverage>=7.0,<8",
+    "pytest>=8.0,<9",
+    "pytest-cov>=3.0,<5",
+    "pytest-benchmark>=4.0,<5",
+]
+lint = [
+    "ruff>=0.1.0,<1",
+    "types-PyYAML>=6.0,<7",
+]
+docs = [
+    "mkdocs>=1.0,<2",
+]
+dev = [
+    # Include all development dependencies
+    "neontology[test,lint,docs]",
+]
+
+[project.urls]
+Homepage = "https://github.com/ontolocy/neontology"
+Repository = "https://github.com/ontolocy/neontology"
+Documentation = "https://neontology.readthedocs.io/"
+"Bug Tracker" = "https://github.com/ontolocy/neontology/issues"
+
+# Tool configurations (keeping your existing ones + removing flake8)
 [tool.pytest.ini_options]
 markers = [
     "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')"

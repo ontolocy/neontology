@@ -86,21 +86,15 @@ Target Label(s): {{ outgoing_rel.target_labels |join(', ') }}
 
         schema_template = Template(schema_template_raw)
 
-        return schema_template.render(
-            model_schema=self, heading_level=heading_level
-        ).strip()
+        return schema_template.render(model_schema=self, heading_level=heading_level).strip()
 
 
-def extract_type_mapping(
-    annotation: Any, show_optional: bool = True
-) -> NeontologyAnnotationData:
+def extract_type_mapping(annotation: Any, show_optional: bool = True) -> NeontologyAnnotationData:
     """Extract type information from a type annotation."""
     print(annotation)
 
     if isinstance(annotation, type):
-
         if issubclass(annotation, enum.Enum):
-
             enum_values = [e.value for e in annotation]
 
             return NeontologyAnnotationData(
@@ -127,14 +121,10 @@ def extract_type_mapping(
                 else:
                     # we do this recursively in case the next layer down is something like list[int]
                     if show_optional is True:
-                        representation = (
-                            f"Optional[{extract_type_mapping(entry).representation}]"
-                        )
+                        representation = f"Optional[{extract_type_mapping(entry).representation}]"
                         extracted_entry = extract_type_mapping(entry)
                         core_type = extracted_entry.core_type
-                        print(
-                            f"Extracted optional type: {representation}, core type: {core_type}"
-                        )
+                        print(f"Extracted optional type: {representation}, core type: {core_type}")
                         return NeontologyAnnotationData(
                             optional=True,
                             representation=representation,
@@ -164,6 +154,4 @@ def extract_type_mapping(
             raise TypeError(f"Cannot have lists of multiple types: {annotation}")
 
     logger.warning(f"Complex type annotation: {annotation}")
-    return NeontologyAnnotationData(
-        representation=str(annotation.__name__), core_type=annotation
-    )
+    return NeontologyAnnotationData(representation=str(annotation.__name__), core_type=annotation)
