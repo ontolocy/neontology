@@ -5,7 +5,7 @@ from logging import getLogger
 from typing import Any, Optional, Union, get_args, get_origin
 
 from jinja2 import Template
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 logger = getLogger(__name__)
 
@@ -16,6 +16,16 @@ class NeontologyAnnotationData(BaseModel):
     optional: bool = False
     union: bool = False
     enum_values: Optional[list] = None
+
+    @field_serializer("core_type")
+    def serialize_core_type(self, value: Any) -> str:
+        """Serialize the core type to a string representation."""
+        if isinstance(value, type):
+            return value.__name__
+        elif isinstance(value, enum.Enum):
+            return value.__name__
+        else:
+            return str(value)
 
 
 class SchemaProperty(BaseModel):
@@ -41,8 +51,7 @@ class NodeSchema(BaseModel):
     outgoing_relationships: list[RelationshipSchema] = []
 
     def md_node_table(self) -> str:
-        """Take a node schema and produce markdown ontology documentation"""
-
+        """Take a node schema and produce markdown ontology documentation."""
         schema_template_raw = """
 | Property Name | Type | Required |
 | ------------- | ---- | -------- |
@@ -56,8 +65,7 @@ class NodeSchema(BaseModel):
         return schema_template.render(model_schema=self).strip()
 
     def md_rel_tables(self, heading_level: int = 3) -> str:
-        """Take a node schema and produce markdown ontology documentation"""
-
+        """Take a node schema and produce markdown ontology documentation."""
         schema_template_raw = """
 {% if model_schema.outgoing_relationships %}
 {% for outgoing_rel in model_schema.outgoing_relationships -%}
@@ -78,28 +86,30 @@ Target Label(s): {{ outgoing_rel.target_labels |join(', ') }}
 
         schema_template = Template(schema_template_raw)
 
-        return schema_template.render(
-            model_schema=self, heading_level=heading_level
-        ).strip()
+        return schema_template.render(model_schema=self, heading_level=heading_level).strip()
 
 
-def extract_type_mapping(
-    annotation: Any, show_optional: bool = True
-) -> NeontologyAnnotationData:
+def extract_type_mapping(annotation: Any, show_optional: bool = True) -> NeontologyAnnotationData:
+    """Extract type information from a type annotation."""
+    print(annotation)
+
     if isinstance(annotation, type):
-        # we have a plain type, just return the name
-
         if issubclass(annotation, enum.Enum):
             enum_values = [e.value for e in annotation]
+
             return NeontologyAnnotationData(
                 representation="Enum",
                 core_type=annotation,
                 enum_values=enum_values,
             )
 
-        return NeontologyAnnotationData(
-            representation=str(annotation.__name__), core_type=annotation
-        )
+        else:
+            # we have a plain type, just return the name
+
+            return NeontologyAnnotationData(
+                representation=str(annotation.__name__),
+                core_type=annotation,
+            )
 
     elif get_origin(annotation) == Union:
         # We can only support union's of a single type plus none (i.e. Optional)
@@ -111,14 +121,15 @@ def extract_type_mapping(
                 else:
                     # we do this recursively in case the next layer down is something like list[int]
                     if show_optional is True:
-                        representation = (
-                            f"Optional[{extract_type_mapping(entry).representation}]"
-                        )
-                        core_type = extract_type_mapping(entry).core_type
+                        representation = f"Optional[{extract_type_mapping(entry).representation}]"
+                        extracted_entry = extract_type_mapping(entry)
+                        core_type = extracted_entry.core_type
+                        print(f"Extracted optional type: {representation}, core type: {core_type}")
                         return NeontologyAnnotationData(
                             optional=True,
                             representation=representation,
                             core_type=core_type,
+                            enum_values=extracted_entry.enum_values,
                         )
                     else:
                         return extract_type_mapping(entry)
@@ -142,7 +153,5 @@ def extract_type_mapping(
         else:
             raise TypeError(f"Cannot have lists of multiple types: {annotation}")
 
-    logger.warn(f"Complex type annotation: {annotation}")
-    return NeontologyAnnotationData(
-        representation=str(annotation.__name__), core_type=annotation
-    )
+    logger.warning(f"Complex type annotation: {annotation}")
+    return NeontologyAnnotationData(representation=str(annotation.__name__), core_type=annotation)

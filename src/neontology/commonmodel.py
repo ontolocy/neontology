@@ -23,6 +23,14 @@ class CommonModel(BaseModel):
 
     @classmethod
     def _set_prop_usage(cls) -> None:
+        """Set the properties that are used by Neontology for specific purposes.
+
+        This method initializes the class attributes `_set_on_match`, `_set_on_create`, and `_always_set`
+        based on the model's JSON schema.
+        It retrieves properties that are marked for specific usage types such as 'set_on_match' and 'set_on_create'.
+        It also sets the `_always_set` attribute to include properties that are not in `_set_on_match` or `_set_on_create`
+        and are not 'source' or 'target'.
+        """
         cls._set_on_match = cls._get_prop_usage("set_on_match")
         cls._set_on_create = cls._get_prop_usage("set_on_create")
         cls._always_set = [
@@ -33,6 +41,17 @@ class CommonModel(BaseModel):
 
     @classmethod
     def _get_prop_usage(cls, usage_type: str) -> list[str]:
+        """Get a list of properties that are used by Neontology for a specific purpose.
+
+        These enable complex creation and merging use cases based on model metadata.
+
+        Args:
+            usage_type (str): The type of usage to filter properties by.
+                              Can be 'set_on_match', 'set_on_create', or 'always_set'.
+
+        Returns:
+            list[str]: A list of property names that match the specified usage type.
+        """
         all_props = cls.model_json_schema()["properties"]
 
         selected_props = []
@@ -43,15 +62,16 @@ class CommonModel(BaseModel):
 
         return selected_props
 
-    def _get_prop_values(
-        self, props: list[str], exclude: set[str] = set()
-    ) -> dict[str, Any]:
-        """
+    def _get_prop_values(self, props: list[str], exclude: set[str] = set()) -> dict[str, Any]:
+        """Get a dictionary of property values for the given properties.
+
+        Args:
+        props (list[str]): List of property names to include in the output.
+        exclude (set[str], optional): Properties to exclude from the output. Defaults to set().
 
         Returns:
             dict[str, Any]: a dictionary of key/value pairs.
         """
-
         # prop_values = {
         #    k: v for k, v in self._engine_dict(exclude=exclude).items() if k in props
         # }
@@ -59,15 +79,16 @@ class CommonModel(BaseModel):
         return self._engine_dict(exclude=exclude, include=set(props))
 
     def _engine_dict(self, exclude: set[str] = set(), **kwargs: Any) -> dict[str, Any]:
-        """Return a dict made up of only types compatible with the GraphEngine
+        """Return a dict made up of only types compatible with the GraphEngine.
+
+        Args:
+            exclude (set[str], optional): Properties to exclude from the output. Defaults to set().
+            **kwargs: Additional keyword arguments to pass to the model_dump method.
 
         Returns:
             dict: a dictionary export of this model instance
         """
-
-        pydantic_export_dict = self.model_dump(
-            exclude_none=False, exclude=exclude, by_alias=True, **kwargs
-        )
+        pydantic_export_dict = self.model_dump(exclude_none=False, exclude=exclude, by_alias=True, **kwargs)
 
         # return pydantic_export_dict
 
@@ -80,12 +101,15 @@ class CommonModel(BaseModel):
 
         return export_dict
 
-    def _get_merge_parameters_common(self, exclude: set[str] = set()) -> dict[str,Any]:
+    def _get_merge_parameters_common(self, exclude: set[str] = set()) -> dict[str, Any]:
         """Input an all properties dictionary, and filter based on property types.
 
-            Returns:
-                Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
-            """
+        Args:
+            exclude (set[str], optional): Properties to exclude from the output. Defaults to set().
+
+        Returns:
+            Dict[str, Any]: Dictionary of always_set, set_on_match, and set_on_create dictionaries
+        """
         # get all the properties
         all_props = self._engine_dict(exclude=exclude)
 
@@ -108,13 +132,20 @@ class CommonModel(BaseModel):
     @classmethod
     def deprecated_merged_created(cls, data: Any) -> Any:
         """Neontology v0 and v1 included and auto-populated this property.
-        Flag a warning whe
-            temporarily supported/deprecated before being removed.
-        """
 
-        if ("created" in data and "created" not in cls.model_fields) or (
-            "merged" in data and "merged" not in cls.model_fields
-        ):
+        This validator checks if the 'created' or 'merged' fields are present in the data.
+        If they are, it raises a PydanticCustomError indicating that native support for these fields has been removed.
+
+        Args:
+            data (Any): The input data to validate.
+
+        Returns:
+            Any: The validated data if no error is raised.
+
+        Raises:
+            PydanticCustomError: If 'created' or 'merged' fields are present in the data.
+        """
+        if ("created" in data and "created" not in cls.model_fields) or ("merged" in data and "merged" not in cls.model_fields):
             raise PydanticCustomError(
                 "created_or_merged_fields",
                 (

@@ -20,9 +20,7 @@ class PracticeRelationshipGC(BaseRelationship):
     __relationshiptype__: ClassVar[Optional[str]] = "PRACTICE_RELATIONSHIP_GC"
 
 
-create_test_node_table_cypher = (
-    "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
-)
+create_test_node_table_cypher = "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
 
 
 def test_evaluate_query_single(use_graph):
@@ -288,9 +286,7 @@ def test_warn_on_unexpected_secondary_labels(use_graph):
 
     # check we raise a warning
 
-    with pytest.warns(
-        UserWarning, match="Unexpected secondary labels returned: {'TestNode'}"
-    ):
+    with pytest.warns(UserWarning, match="Unexpected secondary labels returned: {'TestNode'}"):
         result = gc.evaluate_query(match_cypher)
 
     # we should still capture as records and nodes
@@ -396,9 +392,7 @@ def test_evaluate_query_node_links(use_graph):
     baz = ComplexPracticeNodeGC(pp="baz", a_list=[])
     rel1 = ComplexPracticeRelationshipGC(source=foo, target=bar, b_list=[4, 5, 6])
     rel2 = ComplexPracticeRelationshipGC(source=bar, target=baz)
-    rel3 = ComplexPracticeRelationshipGC(
-        source=baz, target=foo, b_list=["hello", "world"], number=9
-    )
+    rel3 = ComplexPracticeRelationshipGC(source=baz, target=foo, b_list=["hello", "world"], number=9)
     rel4 = ComplexPracticeRelationshipGC(source=baz, target=foo)
 
     foo.merge()

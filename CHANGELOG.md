@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.1.1
+
+### Changed
+
+- Improved type hinting
+- Improved docstrings
+- Bugfixes
+
+### Development
+
+- Consolidate build info into pyproject.toml
+- Adopt UV
+
 ## v2.1.0
 
 ### Features

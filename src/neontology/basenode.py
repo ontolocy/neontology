@@ -1,16 +1,20 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Optional, Union
+from typing import Any, Callable, ClassVar, Optional, TypeVar, Union
 
 import pandas as pd
 from pydantic import ValidationError, model_validator
+from typing_extensions import ParamSpec, Self
 
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
-from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
 from .result import NeontologyResult
+from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def _find_this_node(query, params, node):
@@ -21,9 +25,7 @@ def _find_this_node(query, params, node):
     return new_query, params
 
 
-def _prepare_related_query(
-    node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any
-) -> tuple[str, dict]:
+def _prepare_related_query(node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any) -> tuple[str, dict]:
     try:
         query, params = wrapped_function(node, *args, **kwargs)
     except ValueError:
@@ -42,11 +44,11 @@ def _prepare_related_query(
     return new_query, params
 
 
-def related_property(f: Callable) -> Callable:
+def related_property(f: Callable[P, R]) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a single result."""
 
     @functools.wraps(f)
-    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> Optional[Any]:
+    def wrapper(self: "BaseNode", *args: P.args, **kwargs: P.kwargs) -> Optional[Any]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -54,16 +56,16 @@ def related_property(f: Callable) -> Callable:
 
         return result
 
-    wrapper.neontology_related_prop = True
+    wrapper.neontology_related_prop = True  # type: ignore
 
     return wrapper
 
 
-def related_nodes(f: Callable) -> Callable:
+def related_nodes(f: Callable[P, R]) -> Callable:
     """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
 
     @functools.wraps(f)
-    def wrapper(self: "BaseNode", *args: Any, **kwargs: Any) -> list["BaseNode"]:
+    def wrapper(self: "BaseNode", *args: P.args, **kwargs: P.kwargs) -> list["BaseNode"]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -71,7 +73,7 @@ def related_nodes(f: Callable) -> Callable:
 
         return result.nodes
 
-    wrapper.neontology_related_nodes = True
+    wrapper.neontology_related_nodes = True  # type: ignore
 
     return wrapper
 
@@ -88,20 +90,18 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph or even instantiated
         if self.__primarylabel__ is None:
-            raise NotImplementedError(
-                "Nodes to be used in the graph must define a primary label."
-            )
+            raise NotImplementedError("Nodes to be used in the graph must define a primary label.")
 
     def __str__(self) -> str:
+        """String representation of the node, showing the primary property value by default."""
         return str(self.get_pp())
 
     def _get_merge_parameters(self) -> dict[str, Any]:
-        """
+        """Get the parameters defined for merging on when merging into the graph.
 
         Returns:
-            dict[str, Any]: a dictionary of key/value pairs.
+        dict[str, Any]: a dictionary of key/value pairs.
         """
-
         params = self._get_merge_parameters_common()
         # get all the properties
         all_props = params.pop("all_props")
@@ -116,6 +116,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def get_related_node_methods(cls) -> dict:
+        """Gather all methods tagged with `related_nodes` decorator.
+
+        Returns:
+            dict: A dictionary of method names and their corresponding methods.
+        """
         related_node_attributes = {
             name: getattr(cls, name)
             # get all attributes, including methods, properties, and builtins
@@ -129,6 +134,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
     @classmethod
     def get_related_property_methods(cls) -> dict:
+        """Gather all methods tagged with `related_property` decorator.
+
+        Returns:
+            dict: A dictionary of method names and their corresponding methods.
+        """
         related_prop_attributes = {
             name: getattr(cls, name)
             # get all attributes, including methods, properties, and builtins
@@ -141,7 +151,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return related_prop_attributes
 
     @model_validator(mode="after")
-    def validate_identifiers(self) -> "BaseNode":
+    def validate_identifiers(self) -> Self:
+        """Validate data provided for primary label and primary property."""
         try:
             gql_identifier_adapter.validate_strings(self.__primarylabel__)
 
@@ -170,20 +181,26 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return self
 
     def get_pp(self) -> Union[str, int]:
+        """Get the primary property value for this node.
+
+        Returns:
+            Union[str, int]: The value of the primary property.
+        """
         return self._get_merge_parameters()["pp"]
 
     def get_primary_property_value(self) -> Union[str, int]:
+        """Get the primary property value for this node.
+
+        Deprecated: Use `get_pp()` instead.
+
+        Returns:
+            Union[str, int]: The value of the primary property.
+        """
         warnings.warn(("get_primary_property_value is deprecated, use get_pp instead."))
         return self.get_pp()
 
-    def create(self) -> "BaseNode":
+    def create(self) -> Self:
         """Create this node in the graph."""
-
-        # pp = self.get_pp()
-
-        # if self.match(pp) is not None:
-        #    raise RuntimeError(f"Node already exists: {pp}")
-
         all_props = self._engine_dict()
 
         pp_value = all_props.pop(self.__primaryproperty__)
@@ -200,9 +217,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return results[0]
 
-    def merge(self) -> list["BaseNode"]:
+    def merge(self) -> list[Self]:
         """Merge this node into the graph."""
-
         node_list = [self._get_merge_parameters()]
 
         all_labels = [self.__primarylabel__] + self.__secondarylabels__
@@ -216,7 +232,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def create_nodes(cls, nodes: list["BaseNode"]) -> list["BaseNode"]:
+    def create_nodes(cls, nodes: list[Self]) -> list[Self]:
         """Create the given nodes in the database.
 
         Args:
@@ -228,11 +244,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Raises:
             TypeError: Raised if one of the nodes isn't of this type.
         """
-
-        node_list = [
-            {"props": x._engine_dict(), "pp": x._engine_dict()[cls.__primaryproperty__]}
-            for x in nodes
-        ]
+        node_list = [{"props": x._engine_dict(), "pp": x._engine_dict()[cls.__primaryproperty__]} for x in nodes]
 
         all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
         pp_key = cls.__primaryproperty__
@@ -244,7 +256,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_nodes(cls, nodes: list["BaseNode"]) -> list["BaseNode"]:
+    def merge_nodes(cls, nodes: list[Self]) -> list[Self]:
         """Merge multiple nodes into the database.
 
         Args:
@@ -256,7 +268,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Raises:
             TypeError: Raised if any of the nodes provided don't match this class.
         """
-
         node_list = [x._get_merge_parameters() for x in nodes]
 
         all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
@@ -270,7 +281,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_records(cls, records: list[dict]) -> list["BaseNode"]:
+    def merge_records(cls, records: list[dict]) -> list[Self]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
@@ -282,7 +293,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Args:
             records (list[dict[str, Any]]): a list of dictionaries of node properties
         """
-
         nodes = [cls(**x) for x in records]
 
         return cls.merge_nodes(nodes)
@@ -298,9 +308,10 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         Args:
             df (pd.DataFrame): A pandas dataframe of node properties
+            deduplicate (bool): If True, deduplicate the dataframe before merging.
+                Defaults to True.
 
         """
-
         if df.empty is True:
             return pd.Series(dtype=object)
 
@@ -312,9 +323,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         if deduplicate is True:
             # we don't wan't to waste time attempting to merge identical records
-            unique_df = input_df.drop_duplicates(
-                subset="unique_identifier", ignore_index=True
-            ).copy()
+            unique_df = input_df.drop_duplicates(subset="unique_identifier", ignore_index=True).copy()
         else:
             unique_df = input_df
 
@@ -327,18 +336,14 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # now we need to get the mapping from unique id to primary property
         # so that we can return the data in the same shape it was received
         input_df.insert(0, "ontolocy_merging_order", range(0, len(input_df)))
-        output_df = input_df.merge(
-            unique_df, how="outer", on="unique_identifier", suffixes=(None, "_y")
-        )
+        output_df = input_df.merge(unique_df, how="outer", on="unique_identifier", suffixes=(None, "_y"))
 
-        ordered_nodes = output_df.sort_values(
-            "ontolocy_merging_order", ignore_index=True
-        ).generated_nodes.copy()
+        ordered_nodes = output_df.sort_values("ontolocy_merging_order", ignore_index=True).generated_nodes.copy()
 
         return ordered_nodes
 
     @classmethod
-    def match(cls, pp: str) -> Optional["BaseNode"]:
+    def match(cls, pp: str) -> Optional[Self]:
         """MATCH a single node of this type with the given primary property.
 
         Args:
@@ -347,7 +352,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             Optional[B]: If the node exists, return it as an instance.
         """
-
         cypher = f"""
         MATCH (n:{cls.__primarylabel__})
         WHERE n.{cls.__primaryproperty__} = $pp
@@ -358,9 +362,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        result = gc.evaluate_query(
-            cypher, params, node_classes={cls.__primarylabel__: cls}
-        )
+        result = gc.evaluate_query(cypher, params, node_classes={cls.__primarylabel__: cls})
 
         if result.nodes:
             return result.nodes[0]
@@ -378,7 +380,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Args:
             pp (str): Primary property value to match on.
         """
-
         label = cls.__primarylabel__
 
         if label is None:
@@ -392,9 +393,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         gc.delete_nodes(label, pp_key, [pp_value])
 
     @classmethod
-    def match_nodes(
-        cls, limit: Optional[int] = None, skip: Optional[int] = None
-    ) -> list["BaseNode"]:
+    def match_nodes(cls, limit: Optional[int] = None, skip: Optional[int] = None) -> list[Self]:
         """Get nodes of this type from the database.
 
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
@@ -406,7 +405,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             Optional[list[B]]: A list of node instances.
         """
-
         gc = GraphConnection()
         result = gc.match_nodes(cls, limit, skip)
 
@@ -424,29 +422,45 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         skip: Optional[int] = None,
         distinct: bool = False,
     ) -> NeontologyResult:
+        """Get related nodes based on relationships of this node.
+
+        Args:
+            relationship_types (list, optional): List of relationship types to match on.
+                Defaults to [].
+            relationship_properties (dict, optional): Dictionary of relationship properties to match on.
+                Defaults to None.
+            target_label (str, optional): Label of the target node to match.
+                Defaults to None, which matches any label.
+            outgoing (bool, optional): If True, match outgoing relationships.
+                Defaults to True.
+            incoming (bool, optional): If True, match incoming relationships.
+                Defaults to False.
+            depth (tuple, optional): A tuple of (min_depth, max_depth) to limit the depth of relationships.
+                Defaults to None, which matches any depth.
+            limit (int, optional): Maximum number of results to return. Defaults to None.
+            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
+            distinct (bool, optional): If True, return distinct results. Defaults to False.
+
+        Returns:
+            NeontologyResult: A result object containing the nodes and relationships found.
+
+        Raises:
+            ValueError: If neither outgoing nor incoming is specified.
+        """
         if target_label:
             target = f"o:{gql_identifier_adapter.validate_strings(target_label)}"
         else:
             target = "o"
 
         if relationship_types:
-            rel_type_match = "r:" + "|".join(
-                [gql_identifier_adapter.validate_strings(x) for x in relationship_types]
-            )
+            rel_type_match = "r:" + "|".join([gql_identifier_adapter.validate_strings(x) for x in relationship_types])
 
         else:
             rel_type_match = "r"
 
         if relationship_properties:
             rel_prop_match = (
-                "{"
-                + ", ".join(
-                    [
-                        f"{gql_identifier_adapter.validate_strings(x)}: ${x}"
-                        for x in relationship_properties
-                    ]
-                )
-                + "}"
+                "{" + ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: ${x}" for x in relationship_properties]) + "}"
             )
 
             pass_on_params = dict(relationship_properties)
@@ -504,6 +518,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     @classmethod
     @related_property
     def get_count(cls):
+        """Get the count of nodes of this type in the graph."""
         return f"MATCH (n:{cls.__primarylabel__}) RETURN COUNT(DISTINCT n)"
 
     def _prep_dump_dict(self, dumped_model: dict) -> dict:
@@ -511,32 +526,58 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         return dumped_model
 
-    def neontology_dump(
-        self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs
-    ) -> dict:
-        dumped_model = self.model_dump(
-            exclude_none=exclude_none, exclude=exclude, **kwargs
-        )
+    def neontology_dump(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs) -> dict:
+        """Dump the model as a dictionary which can be reimported.
+
+        Args:
+            exclude (set, optional): A set of fields to exclude from the dump.
+                Defaults to None.
+            exclude_none (bool, optional): If True, exclude fields with None values.
+                Defaults to True.
+            **kwargs: Additional keyword arguments to pass to the model_dump method.
+
+        Returns:
+            dict: A dictionary representation of the model.
+        """
+        dumped_model = self.model_dump(exclude_none=exclude_none, exclude=exclude, **kwargs)
 
         return self._prep_dump_dict(dumped_model)
 
-    def neontology_dump_json(
-        self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs
-    ) -> str:
+    def neontology_dump_json(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs) -> str:
+        """Dump the model as a JSON string which can be reimported.
+
+        Args:
+            exclude (set, optional): A set of fields to exclude from the dump.
+                Defaults to None.
+            exclude_none (bool, optional): If True, exclude fields with None values.
+                Defaults to True.
+            **kwargs: Additional keyword arguments to pass to the model_dump_json method.
+
+        Returns:
+            str: A JSON string representation of the model.
+        """
         # pydantic converts values to be json serializable, make use of this first
-        original_json = self.model_dump_json(
-            exclude_none=exclude_none, exclude=exclude, **kwargs
-        )
+        original_json = self.model_dump_json(exclude_none=exclude_none, exclude=exclude, **kwargs)
         model_dict = json.loads(original_json)
         model_dict["LABEL"] = self.__primarylabel__
         return json.dumps(self._prep_dump_dict(model_dict))
 
     @classmethod
     def neontology_schema(cls, include_outgoing_rels: bool = True) -> NodeSchema:
+        """Generate a schema for this node class.
+
+        Args:
+            include_outgoing_rels (bool, optional): If True, include outgoing relationships in the schema.
+                Defaults to True.
+
+        Returns:
+            NodeSchema: A schema object representing the node class.
+
+        Raises:
+            ValueError: If the node class does not have a primary label defined.
+        """
         if not cls.__primarylabel__:
-            raise ValueError(
-                "Node does not have a primary label defined for generating schema."
-            )
+            raise ValueError("Node does not have a primary label defined for generating schema.")
 
         schema_dict: dict = {}
         schema_dict["label"] = cls.__primarylabel__
@@ -546,9 +587,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         model_properties: list = []
 
         for field_name, field_props in cls.model_fields.items():
-            field_type = extract_type_mapping(
-                field_props.annotation, show_optional=True
-            )
+            field_type = extract_type_mapping(field_props.annotation, show_optional=True)
 
             node_property = SchemaProperty(
                 type_annotation=field_type,
@@ -578,9 +617,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             for rel in outgoing_rels:
                 rel_class = all_rel_types[rel].relationship_class
 
-                rel_schema = rel_class.neontology_schema(
-                    source_labels=[schema_dict["label"]]
-                )
+                rel_schema = rel_class.neontology_schema(source_labels=[schema_dict["label"]])
 
                 schema_dict["outgoing_relationships"].append(rel_schema)
 

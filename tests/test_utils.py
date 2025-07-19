@@ -55,10 +55,7 @@ def test_get_rels_by_type_subclasses():
 
     assert set(rels_by_type.keys()) == {"MY_REL_TYPE1", "MY_REL_TYPE2"}
 
-    assert (
-        rels_by_type["MY_REL_TYPE1"].all_source_classes[0].__primarylabel__
-        == "MyNodeType1"
-    )
+    assert rels_by_type["MY_REL_TYPE1"].all_source_classes[0].__primarylabel__ == "MyNodeType1"
 
 
 def test_no_primary_label_get_node_types():

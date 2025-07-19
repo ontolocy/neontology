@@ -66,15 +66,11 @@ def get_graph_config(request, tmp_path_factory) -> tuple:
 
     # build config using environment variables
     for key, value in graph_config_vars.items():
-        if value == "TMP FILE":
-            file_path = tmp_path_factory.mktemp("graph_db") / f"{key}.pytest"
-            graph_config[key] = file_path
 
-            logger.info(f"Graph DB at {file_path}")
-
-        else:
-            graph_config[key] = os.getenv(value)
-            assert graph_config[key] is not None
+        graph_config[key] = os.getenv(value)
+        assert (
+            graph_config[key] is not None
+        ), f"Environment variable {value} is not set."
 
     graph_engine = request.param["graph_engine"]
 
@@ -103,9 +99,9 @@ def graph_db(request, tmp_path_factory, get_graph_config):
 
     node_count = gc.evaluate_query_single(cypher)
 
-    assert node_count == 0, (
-        f"Looks like there are {node_count} nodes in the database, it should be empty."
-    )
+    assert (
+        node_count == 0
+    ), f"Looks like there are {node_count} nodes in the database, it should be empty."
 
     yield gc
 
@@ -119,6 +115,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(scope="function")
 def use_graph(graph_db):
+    """Fixture to use the graph database in tests."""
     yield graph_db
 
     # at the end of every individual test function, we want to empty the database

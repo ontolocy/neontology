@@ -1,5 +1,6 @@
-# type: ignore
+import json
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, ClassVar, Optional
 from uuid import UUID, uuid4
 
@@ -53,7 +54,6 @@ class PracticeNodeDated(BaseNode):
         to be set equal to merged.
         Otherwise they will be a tiny amount of time different.
         """
-
         # if the created value has been manually set, don't override it
         if value is None:
             return values.data["test_merged"]
@@ -110,10 +110,7 @@ def test_create(use_graph):
 
 
 def test_create_if_exists(use_graph):
-    """
-    Neontology does not check if a node already exists, it is for the user to enforce this at the database level.
-    """
-
+    """Neontology does not check if a node already exists, it is for the user to enforce this at the database level."""
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -180,8 +177,12 @@ def test_none_primary_label():
         __primarylabel__: ClassVar[Optional[str]] = None
         pp: str
 
-    with pytest.raises(NotImplementedError):
-        SpecialPracticeNode(pp="Test Node")
+    with pytest.warns(
+        UserWarning,
+        match="Primary Label should contain only alphanumeric characters and underscores",
+    ):
+        with pytest.raises(NotImplementedError):
+            SpecialPracticeNode(pp="Test Node")
 
 
 def test_create_multilabel(use_graph):
@@ -355,11 +356,9 @@ def test_create_multiple_defined_label(use_graph):
 
 
 def test_creation_datetime(use_graph):
-    """
-    Check we can manually define the created datetime, and then check we can
+    """Check we can manually define the created datetime, and then check we can
     query for it using neo4j DateTime type.
     """
-
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
     bn = PracticeNodeDated(pp="Test Node", test_created=my_datetime)
@@ -800,11 +799,24 @@ def test_merge_empty_df():
     assert isinstance(result, pd.Series)
 
 
+class SampleEnum(Enum):
+    VALUE1 = "value1"
+    VALUE2 = "value2"
+    VALUE3 = "value3"
+
+
 class AugmentedPerson(BaseNode):
     __primaryproperty__: ClassVar[GQLIdentifier] = "name"
     __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
 
     name: str
+    optional_enum: Optional[SampleEnum] = Field(
+        default_factory=lambda: SampleEnum.VALUE1
+    )
+
+    @field_serializer("optional_enum")
+    def serialize_enum(self, value: Optional[SampleEnum]) -> Optional[str]:
+        return value.value if value is not None else None
 
     @related_nodes
     def followers(self):
@@ -849,6 +861,21 @@ def test_node_schema():
     assert schema.properties[0].name == "name"
     assert schema.properties[0].required is True
     assert schema.outgoing_relationships[0].name == "AUGMENTED_PERSON_FOLLOWS"
+
+
+def test_node_schema_json():
+
+    schema_json = AugmentedPerson.neontology_schema().model_dump_json()
+
+    schema_dict = json.loads(schema_json)
+
+    assert schema_dict["properties"][1]["type_annotation"]["core_type"] == "SampleEnum"
+
+    assert schema_dict["properties"][1]["type_annotation"]["enum_values"] == [
+        "value1",
+        "value2",
+        "value3",
+    ]
 
 
 def test_node_schema_md():
