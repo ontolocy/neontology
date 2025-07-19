@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.1.2
+
+### Changed
+
+- Removed deprecation validation error related to the use of 'created' and 'merged' fields
+
 ## v2.1.1
 
 ### Changed
