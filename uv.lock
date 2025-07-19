@@ -337,7 +337,7 @@ wheels = [
 
 [[package]]
 name = "neontology"
-version = "2.1.1"
+version = "2.1.3"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
@@ -349,7 +349,7 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "coverage" },
     { name = "mkdocs" },
@@ -359,37 +359,27 @@ dev = [
     { name = "ruff" },
     { name = "types-pyyaml" },
 ]
-docs = [
-    { name = "mkdocs" },
-]
-lint = [
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-test = [
-    { name = "coverage" },
-    { name = "pytest" },
-    { name = "pytest-benchmark" },
-    { name = "pytest-cov" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "coverage", marker = "extra == 'test'", specifier = ">=7.0,<8" },
     { name = "jinja2", specifier = ">=3.0,<4" },
-    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.0,<2" },
     { name = "neo4j", specifier = ">=5.0,<6" },
-    { name = "neontology", extras = ["test", "lint", "docs"], marker = "extra == 'dev'" },
     { name = "pandas", specifier = ">=2.0,<3" },
     { name = "pydantic", specifier = ">=2.7,<3" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0,<9" },
-    { name = "pytest-benchmark", marker = "extra == 'test'", specifier = ">=4.0,<5" },
-    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=3.0,<5" },
     { name = "python-dotenv", specifier = ">=1.0,<2" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
-    { name = "ruff", marker = "extra == 'lint'", specifier = ">=0.1.0,<1" },
-    { name = "types-pyyaml", marker = "extra == 'lint'", specifier = ">=6.0,<7" },
     { name = "typing-extensions", specifier = ">=4.0,<5" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "coverage", specifier = ">=7.0,<8" },
+    { name = "mkdocs", specifier = ">=1.0,<2" },
+    { name = "pytest", specifier = ">=8.1,<9" },
+    { name = "pytest-benchmark", specifier = ">=4.0,<5" },
+    { name = "pytest-cov", specifier = ">=3.0,<5" },
+    { name = "ruff", specifier = ">=0.1.0,<1" },
+    { name = "types-pyyaml", specifier = ">=6.0,<7" },
 ]
 
 [[package]]
