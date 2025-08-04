@@ -70,7 +70,9 @@ class GraphEngineBase:
             item_type = type(value[0])
             for item in value:
                 if isinstance(item, item_type) is False:
-                    raise TypeError("For neo4j, all items in a list must be of the same type.")
+                    raise TypeError(
+                        "For neo4j, all items in a list must be of the same type."
+                    )
 
             return [cls._export_type_converter(x) for x in value]
 
@@ -169,7 +171,9 @@ class GraphEngineBase:
         """
         raise NotImplementedError
 
-    def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
+    def create_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.
 
         Args:
@@ -200,7 +204,9 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
+    def merge_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
         """Merge nodes with specified labels and property.
 
         Args:
@@ -276,7 +282,12 @@ class GraphEngineBase:
                 to set on the relationship.
         """
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}" for x in merge_on_props])
+        merge_props = ", ".join(
+            [
+                f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}"
+                for x in merge_on_props
+            ]
+        )
 
         cypher = f"""
         UNWIND $rel_list AS rel
@@ -305,15 +316,14 @@ class GraphEngineBase:
 
         Args:
             node_class (type[BaseNodeT]): The type (primary label) of nodes to match on.
-            filters (dict, optional): Dictionary of filters using Django-like syntax.
-                    Examples:
-                    - {"name": "exact_value"} → exact match (case-sensitive)
-                    - {"name__icontains": "part"} → case-insensitive contains
-                    - {"name__exact": "Value"} → exact match (case-sensitive)
-                    - {"name__iexact": "value"} → exact match (case-insensitive)
-                    - {"quantity__gt": 100} → greater than
-                    - {"date__lt": some_date} → less than
-                    Defaults to None.
+            filters (dict, optional): Dictionary of filters using Django-like syntax:
+                - {"name": "exact_value"} → exact match (case-sensitive)
+                - {"name__icontains": "part"} → case-insensitive contains
+                - {"name__exact": "Value"} → exact match (case-sensitive)
+                - {"name__iexact": "value"} → exact match (case-insensitive)
+                - {"quantity__gt": 100} → greater than
+                - {"date__lt": some_date} → less than
+                Defaults to None.
             limit (int, optional): Maximum number of results to return. Defaults to None.
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
@@ -356,7 +366,11 @@ class GraphEngineBase:
                 elif lookup_type == "in":
                     clause = f"n.{field_name} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                    clause = (
+                        f"n.{field_name} IS NULL"
+                        if value
+                        else f"n.{field_name} IS NOT NULL"
+                    )
                 else:
                     clause = f"n.{field_name} = ${param_name}"
 
@@ -448,6 +462,8 @@ class GraphEngineConfig(BaseModel):
             if not data.get(field):
                 value = os.getenv(env_var)
                 if value is None:
-                    raise ValueError(f"No value provided for {field} field and no {env_var} environment variable set.")
+                    raise ValueError(
+                        f"No value provided for {field} field and no {env_var} environment variable set."
+                    )
                 data[field] = value
         return data

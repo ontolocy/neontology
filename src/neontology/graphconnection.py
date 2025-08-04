@@ -188,25 +188,24 @@ class GraphConnection(object):
     ) -> list[BaseNodeT]:
         """Match nodes in the graph database with optional filtering.
         Calls the underlying engine's match_nodes method to retrieve nodes.
+
         Args:
             node_class (type[BaseNode]): The class of the node to match.
-            filters (dict, optional): Dictionary of filters using Django-like syntax.
-                    Examples:
-                    - {"name": "exact_value"} → exact match (case-sensitive)
-                    - {"name__icontains": "part"} → case-insensitive contains
-                    - {"name__exact": "Value"} → exact match (case-sensitive)
-                    - {"name__iexact": "value"} → exact match (case-insensitive)
-                    - {"quantity__gt": 100} → greater than
-                    - {"date__lt": some_date} → less than
-                    Defaults to None.
+            filters (dict, optional): Dictionary of filters using Django-like syntax:
+                - {"name": "exact_value"} → exact match (case-sensitive)
+                - {"name__icontains": "part"} → case-insensitive contains
+                - {"name__exact": "Value"} → exact match (case-sensitive)
+                - {"name__iexact": "value"} → exact match (case-insensitive)
+                - {"quantity__gt": 100} → greater than
+                - {"date__lt": some_date} → less than
+                Defaults to None.
             limit (Optional[int]): Maximum number of nodes to return.
             skip (Optional[int]): Number of nodes to skip.
+
         Returns:
             list[BaseNode]: List of matched nodes.
         """
-        return self.engine.match_nodes(
-            node_class, limit=limit, skip=skip, filters=filters
-        )
+        return self.engine.match_nodes(node_class, limit=limit, skip=skip, filters=filters)
 
     def match_relationships(
         self,
