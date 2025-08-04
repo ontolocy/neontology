@@ -393,21 +393,32 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         gc.delete_nodes(label, pp_key, [pp_value])
 
     @classmethod
-    def match_nodes(cls, limit: Optional[int] = None, skip: Optional[int] = None) -> list[Self]:
-        """Get nodes of this type from the database.
-
+    def match_nodes(
+        cls,
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+        filters: Optional[dict] = None,
+    ) -> list[Self]:
+        """Get nodes of this type from the database with optional filtering.
         Run a MATCH cypher query to retrieve any Nodes with the label of this class.
 
         Args:
+            filters (dict, optional): Dictionary of filters using Django-like syntax:
+                - {"name": "exact_value"} → exact match (case-sensitive)
+                - {"name__icontains": "part"} → case-insensitive contains
+                - {"name__exact": "Value"} → exact match (case-sensitive)
+                - {"name__iexact": "value"} → exact match (case-insensitive)
+                - {"quantity__gt": 100} → greater than
+                - {"date__lt": some_date} → less than
+                Defaults to None.
             limit (int, optional): Maximum number of results to return. Defaults to None.
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
 
         Returns:
-            Optional[list[B]]: A list of node instances.
+            list[Self]: A list of node instances matching the criteria.
         """
         gc = GraphConnection()
-        result = gc.match_nodes(cls, limit, skip)
-
+        result = gc.match_nodes(cls, limit=limit, skip=skip, filters=filters)
         return result
 
     def get_related(
