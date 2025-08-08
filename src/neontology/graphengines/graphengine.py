@@ -70,7 +70,9 @@ class GraphEngineBase:
             item_type = type(value[0])
             for item in value:
                 if isinstance(item, item_type) is False:
-                    raise TypeError("For neo4j, all items in a list must be of the same type.")
+                    raise TypeError(
+                        "For neo4j, all items in a list must be of the same type."
+                    )
 
             return [cls._export_type_converter(x) for x in value]
 
@@ -169,7 +171,9 @@ class GraphEngineBase:
         """
         raise NotImplementedError
 
-    def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
+    def create_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.
 
         Args:
@@ -200,7 +204,9 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
+    def merge_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
         """Merge nodes with specified labels and property.
 
         Args:
@@ -276,7 +282,12 @@ class GraphEngineBase:
                 to set on the relationship.
         """
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}" for x in merge_on_props])
+        merge_props = ", ".join(
+            [
+                f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}"
+                for x in merge_on_props
+            ]
+        )
 
         cypher = f"""
         UNWIND $rel_list AS rel
@@ -294,42 +305,102 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
-    def match_nodes(
-        self,
-        node_class: type[BaseNodeT],
-        limit: Optional[int] = None,
-        skip: Optional[int] = None,
-    ) -> list[BaseNodeT]:
-        """Get nodes of this type from the database.
-
-        Run a MATCH cypher query to retrieve any Nodes with the label of this class.
+    def _filters_to_where_clause(self, filters: dict | None = None) -> tuple[str, dict]:
+        """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
-            node_class (type[BaseNodeT]): the type (primary label) of nodes to match on.
-            limit (int, optional): Maximum number of results to return. Defaults to None.
-            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
+            filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
+                                by '__' and a lookup type (e.g., 'exact', 'contains'). The value is
+                                the filter value. If None, returns an empty WHERE clause.
 
         Returns:
-            Optional[list[B]]: A list of node instances.
+            tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
         """
-        cypher = f"""
-        MATCH(n:{node_class.__primarylabel__})
-        RETURN n
-        """
-
         params = {}
+        where_clauses = []
+        if filters:
+            for key, value in filters.items():
+                if "__" in key:
+                    field_name, lookup_type = key.split("__")
+                else:
+                    field_name, lookup_type = key, "exact"
+                param_name = f"filter_{field_name}_{lookup_type}"
+                params[param_name] = value
+                if lookup_type == "exact":
+                    clause = f"n.{field_name} = ${param_name}"
+                elif lookup_type == "iexact":
+                    clause = f"toLower(n.{field_name}) = toLower(${param_name})"
+                elif lookup_type == "contains":
+                    clause = f"n.{field_name} CONTAINS ${param_name}"
+                elif lookup_type == "icontains":
+                    clause = f"toLower(n.{field_name}) CONTAINS toLower(${param_name})"
+                elif lookup_type == "startswith":
+                    clause = f"n.{field_name} STARTS WITH ${param_name}"
+                elif lookup_type == "istartswith":
+                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                elif lookup_type in ("gt", "lt", "gte", "lte"):
+                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
+                    clause = f"n.{field_name} {operator} ${param_name}"
+                elif lookup_type == "in":
+                    clause = f"n.{field_name} IN ${param_name}"
+                elif lookup_type == "isnull":
+                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                else:
+                    clause = f"n.{field_name} = ${param_name}"
+                where_clauses.append(clause)
+        where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        return where_clause, params
 
-        if skip:
-            cypher += " SKIP $skip "
-            params["skip"] = int_adapter.validate_python(skip)
+    def match_nodes(
+        self,
+        node_class: type,
+        limit: int | None = None,
+        skip: int | None = None,
+        filters: dict | None = None,
+    ) -> list:
+        """Match nodes based on the given node class, limit, skip, and filters.
 
-        if limit:
-            cypher += " LIMIT $limit "
-            params["limit"] = int_adapter.validate_python(limit)
+        Args:
+            node_class (type): The class of the nodes to match.
+            limit (int | None): The maximum number of nodes to return. If None, all matching nodes are returned.
+            skip (int | None): The number of nodes to skip before collecting the result set. If None, no nodes are skipped.
+            filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
 
+        Returns:
+            list: A list of nodes that match the given criteria.
+        """
+        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        where_clause, params = self._filters_to_where_clause(filters)
+        cypher += where_clause
+        cypher += " RETURN n"
+        if skip is not None:
+            cypher += " SKIP $skip"
+            params["skip"] = skip
+        if limit is not None:
+            cypher += " LIMIT $limit"
+            params["limit"] = limit
         result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
-
         return result.nodes
+
+    def get_count(
+        self,
+        node_class: type,
+        filters: dict | None = None,
+    ) -> int:
+        """Get the count of nodes based on the given node class and filters.
+
+        Args:
+            node_class (type): The class of the nodes to count.
+            filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
+
+        Returns:
+            int: The count of nodes that match the given criteria.
+        """
+        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        where_clause, params = self._filters_to_where_clause(filters)
+        cypher += where_clause
+        cypher += " RETURN COUNT(DISTINCT n)"
+        return self.evaluate_query_single(cypher, params)
 
     def match_relationships(
         self,
@@ -399,6 +470,8 @@ class GraphEngineConfig(BaseModel):
             if not data.get(field):
                 value = os.getenv(env_var)
                 if value is None:
-                    raise ValueError(f"No value provided for {field} field and no {env_var} environment variable set.")
+                    raise ValueError(
+                        f"No value provided for {field} field and no {env_var} environment variable set."
+                    )
                 data[field] = value
         return data
