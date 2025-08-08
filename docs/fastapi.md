@@ -211,6 +211,22 @@ TeamNode.match_nodes(filters={
 })
 ```
 
+### Getting the count of teams with optional filtering
+
+You can retrieve the total count of teams, optionally filtered based on certain criteria. This is useful for retrieving statistics or counts of teams that meet specific conditions. The `get_count` method is used for this purpose and supports the same Django-like filter syntax as described in the filtering section above. Here are examples of how you can use it:
+
+To get the total count of all teams without any filters:
+```python
+TeamNode.get_count()
+```
+
+To get the count of all teams with a specific slogan:
+```python
+TeamNode.get_count(filters={"slogan": "Better than the rest!"})
+```
+
+For other filter criteria, refer to the examples provided in the filtering section. This flexibility allows you to efficiently count teams based on complex criteria, making it useful for analytics and reporting purposes.
+
 ### Pagination
 
 You can also paginate results using `limit` and `skip` parameters:

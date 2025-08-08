@@ -305,45 +305,27 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
-    def match_nodes(
-        self,
-        node_class: type[BaseNodeT],
-        limit: Optional[int] = None,
-        skip: Optional[int] = None,
-        filters: Optional[dict] = None,
-    ) -> list[BaseNodeT]:
-        """Get nodes of this type from the database with optional filtering.
+    def _filters_to_where_clause(self, filters: dict | None = None) -> tuple[str, dict]:
+        """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
-            node_class (type[BaseNodeT]): The type (primary label) of nodes to match on.
-            filters (dict, optional): Dictionary of filters using Django-like syntax:
-                - {"name": "exact_value"} → exact match (case-sensitive)
-                - {"name__icontains": "part"} → case-insensitive contains
-                - {"name__exact": "Value"} → exact match (case-sensitive)
-                - {"name__iexact": "value"} → exact match (case-insensitive)
-                - {"quantity__gt": 100} → greater than
-                - {"date__lt": some_date} → less than
-                Defaults to None.
-            limit (int, optional): Maximum number of results to return. Defaults to None.
-            skip (int, optional): Skip through this many results (for pagination). Defaults to None.
+            filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
+                                by '__' and a lookup type (e.g., 'exact', 'contains'). The value is
+                                the filter value. If None, returns an empty WHERE clause.
 
         Returns:
-            list[BaseNodeT]: A list of node instances matching the criteria.
+            tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
         """
-        cypher = f"MATCH (n:{node_class.__primarylabel__})"
         params = {}
-
+        where_clauses = []
         if filters:
-            where_clauses = []
             for key, value in filters.items():
                 if "__" in key:
                     field_name, lookup_type = key.split("__")
                 else:
                     field_name, lookup_type = key, "exact"
-
                 param_name = f"filter_{field_name}_{lookup_type}"
                 params[param_name] = value
-
                 if lookup_type == "exact":
                     clause = f"n.{field_name} = ${param_name}"
                 elif lookup_type == "iexact":
@@ -355,44 +337,70 @@ class GraphEngineBase:
                 elif lookup_type == "startswith":
                     clause = f"n.{field_name} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = (
-                        f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
-                    )
+                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
-                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[
-                        lookup_type
-                    ]
+                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
                     clause = f"n.{field_name} {operator} ${param_name}"
                 elif lookup_type == "in":
                     clause = f"n.{field_name} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = (
-                        f"n.{field_name} IS NULL"
-                        if value
-                        else f"n.{field_name} IS NOT NULL"
-                    )
+                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
                 else:
                     clause = f"n.{field_name} = ${param_name}"
-
                 where_clauses.append(clause)
+        where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        return where_clause, params
 
-            if where_clauses:
-                cypher += " WHERE " + " AND ".join(where_clauses)
+    def match_nodes(
+        self,
+        node_class: type,
+        limit: int | None = None,
+        skip: int | None = None,
+        filters: dict | None = None,
+    ) -> list:
+        """Match nodes based on the given node class, limit, skip, and filters.
 
+        Args:
+            node_class (type): The class of the nodes to match.
+            limit (int | None): The maximum number of nodes to return. If None, all matching nodes are returned.
+            skip (int | None): The number of nodes to skip before collecting the result set. If None, no nodes are skipped.
+            filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
+
+        Returns:
+            list: A list of nodes that match the given criteria.
+        """
+        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        where_clause, params = self._filters_to_where_clause(filters)
+        cypher += where_clause
         cypher += " RETURN n"
-
         if skip is not None:
             cypher += " SKIP $skip"
-            params["skip"] = int_adapter.validate_python(skip)
-
+            params["skip"] = skip
         if limit is not None:
             cypher += " LIMIT $limit"
-            params["limit"] = int_adapter.validate_python(limit)
-
-        result = self.evaluate_query(
-            cypher, params, node_classes={node_class.__primarylabel__: node_class}
-        )
+            params["limit"] = limit
+        result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
         return result.nodes
+
+    def get_count(
+        self,
+        node_class: type,
+        filters: dict | None = None,
+    ) -> int:
+        """Get the count of nodes based on the given node class and filters.
+
+        Args:
+            node_class (type): The class of the nodes to count.
+            filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
+
+        Returns:
+            int: The count of nodes that match the given criteria.
+        """
+        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        where_clause, params = self._filters_to_where_clause(filters)
+        cypher += where_clause
+        cypher += " RETURN COUNT(DISTINCT n)"
+        return self.evaluate_query_single(cypher, params)
 
     def match_relationships(
         self,

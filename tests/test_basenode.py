@@ -1225,7 +1225,8 @@ def test_get_count(use_graph):
     Person2.merge_df(people_df, deduplicate=False)
 
     assert Person2.get_count() == 4
-
+    assert Person2.get_count(filters={"age__gt": 60}) == 3
+    assert Person2.get_count(filters={"name__contains": "et"}) == 1
 
 def test_get_count_none(use_graph):
     assert Person2.get_count() == 0

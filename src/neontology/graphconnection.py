@@ -207,6 +207,22 @@ class GraphConnection(object):
         """
         return self.engine.match_nodes(node_class, limit=limit, skip=skip, filters=filters)
 
+    def get_count(
+        self,
+        node_class: type,
+        filters: dict | None = None,
+    ) -> int:
+        """Get the count of nodes of a specific type in the graph database with optional filtering.
+
+        Args:
+            node_class (type): The class of the node to count.
+            filters (dict | None): Dictionary of filters using Django-like syntax.
+
+        Returns:
+            int: Count of matched nodes.
+        """
+        return self.engine.get_count(node_class, filters=filters)
+
     def match_relationships(
         self,
         relationship_class: type[BaseRelationshipT],
