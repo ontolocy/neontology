@@ -7,7 +7,7 @@ import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graphengines import MemgraphConfig, Neo4jConfig
+from neontology.graphengines import MemgraphConfig, Neo4jConfig, NetworkxConfig
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,13 @@ def reset_constraints():
             },
             id="memgraph-engine",
         ),
+        pytest.param(
+            {
+                "graph_config_vars": {},
+                "graph_engine": "NETWORKX",
+            },
+            id="networkx-engine",
+        ),
     ],
 )
 def get_graph_config(request, tmp_path_factory) -> tuple:
@@ -58,6 +65,7 @@ def get_graph_config(request, tmp_path_factory) -> tuple:
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
+        "NETWORKX": NetworkxConfig,
     }
 
     graph_config_vars = request.param["graph_config_vars"]
@@ -99,8 +107,10 @@ def graph_db(request, tmp_path_factory, get_graph_config):
 
     node_count = gc.evaluate_query_single(cypher)
 
+    # most backends will return 0
+    # Grand will return an empty list
     assert (
-        node_count == 0
+        not node_count
     ), f"Looks like there are {node_count} nodes in the database, it should be empty."
 
     yield gc
@@ -114,7 +124,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="function")
-def use_graph(graph_db):
+def use_graph(request, graph_db):
     """Fixture to use the graph database in tests."""
     yield graph_db
 
@@ -124,10 +134,15 @@ def use_graph(graph_db):
     MATCH (n) DETACH DELETE n;
     """
 
-    try:
-        graph_db.evaluate_query_single(cypher)
-    except RuntimeError:
-        pass
+    if "networkx-engine" not in request.node.callspec.id:
+        try:
+            graph_db.evaluate_query_single(cypher)
+        except RuntimeError:
+            pass
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        # grand cypher doesn't support DETACH DELETE
+        graph_db.engine.driver.clear()
 
     # not all engines will implement constraints, so we don't always have to reset them
 

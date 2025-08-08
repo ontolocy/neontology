@@ -342,7 +342,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             int: The count of distinct relationships of the specified type.
         """
         gc = GraphConnection()
-        cypher = f"MATCH (n)-[r:{cls.__relationshiptype__}]->(o) RETURN COUNT(DISTINCT r)"
+        cypher = f"MATCH (n)-[r:{cls.__relationshiptype__}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
         return result
 

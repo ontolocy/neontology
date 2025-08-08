@@ -52,6 +52,12 @@ Repository = "https://github.com/ontolocy/neontology"
 Documentation = "https://neontology.readthedocs.io/"
 "Bug Tracker" = "https://github.com/ontolocy/neontology/issues"
 
+[project.optional-dependencies]
+grand = [
+    "grand-cypher>=0.13.0",
+    "networkx>=3.2.1",
+]
+
 # Tool configurations (keeping your existing ones + removing flake8)
 [tool.pytest.ini_options]
 markers = [

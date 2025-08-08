@@ -50,7 +50,7 @@ def test_import_multiple_files(use_graph, tmp_path_factory):
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -80,7 +80,7 @@ def test_import_single_file_md(use_graph, tmp_path_factory):
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -160,7 +160,7 @@ def test_import_multiple_files_json(use_graph, tmp_path_factory):
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -187,7 +187,7 @@ def test_import_single_file_json(use_graph, tmp_path_factory):
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -225,7 +225,7 @@ def test_import_multiple_files_yaml(use_graph, tmp_path_factory):
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
@@ -256,7 +256,7 @@ description: "This is my second node!"
 
     cypher = """
     MATCH (n:ExampleFileImportLabel)
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
