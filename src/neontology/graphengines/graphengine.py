@@ -353,7 +353,7 @@ class GraphEngineBase:
 
         cypher = f"""
         MATCH (n)-[r:{relationship_class.__relationshiptype__}]->(o)
-        RETURN DISTINCT n, r, o
+        RETURN n, r, o
         """
 
         params = {}
@@ -384,7 +384,7 @@ class GraphEngineConfig(BaseModel):
 
     engine: ClassVar[type[GraphEngineBase]]
 
-    env_fields: ClassVar[dict[str, str]]
+    env_fields: ClassVar[dict[str, str]] = {}
 
     @model_validator(mode="before")
     @classmethod

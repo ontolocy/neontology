@@ -61,9 +61,7 @@ class CommonModel(BaseModel):
 
         return selected_props
 
-    def _get_prop_values(
-        self, props: list[str], exclude: set[str] = set()
-    ) -> dict[str, Any]:
+    def _get_prop_values(self, props: list[str], exclude: set[str] = set()) -> dict[str, Any]:
         """Get a dictionary of property values for the given properties.
 
         Args:
@@ -89,9 +87,7 @@ class CommonModel(BaseModel):
         Returns:
             dict: a dictionary export of this model instance
         """
-        pydantic_export_dict = self.model_dump(
-            exclude_none=False, exclude=exclude, by_alias=True, **kwargs
-        )
+        pydantic_export_dict = self.model_dump(exclude_none=False, exclude=exclude, by_alias=True, **kwargs)
 
         # return pydantic_export_dict
 

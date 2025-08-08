@@ -91,8 +91,6 @@ Target Label(s): {{ outgoing_rel.target_labels |join(', ') }}
 
 def extract_type_mapping(annotation: Any, show_optional: bool = True) -> NeontologyAnnotationData:
     """Extract type information from a type annotation."""
-    print(annotation)
-
     if isinstance(annotation, type):
         if issubclass(annotation, enum.Enum):
             enum_values = [e.value for e in annotation]
@@ -124,7 +122,6 @@ def extract_type_mapping(annotation: Any, show_optional: bool = True) -> Neontol
                         representation = f"Optional[{extract_type_mapping(entry).representation}]"
                         extracted_entry = extract_type_mapping(entry)
                         core_type = extracted_entry.core_type
-                        print(f"Extracted optional type: {representation}, core type: {core_type}")
                         return NeontologyAnnotationData(
                             optional=True,
                             representation=representation,

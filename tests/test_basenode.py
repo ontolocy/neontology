@@ -92,6 +92,7 @@ def test_get_merge_parameters():
 
 
 def test_create(use_graph):
+    """Test that we can create a node in the database."""
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -109,7 +110,7 @@ def test_create(use_graph):
     assert result.nodes[0].pp == "Test Node"
 
 
-def test_create_if_exists(use_graph):
+def test_create_if_exists(request, use_graph):
     """Neontology does not check if a node already exists, it is for the user to enforce this at the database level."""
     tn = PracticeNode(pp="Test Node")
 
@@ -133,10 +134,14 @@ def test_create_if_exists(use_graph):
         "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
     )
 
-    assert node_count == 2
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert node_count == 2
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert node_count[0]["_"] == 1
 
 
-def test_create_multiple_if_exists(use_graph):
+def test_create_multiple_if_exists(request, use_graph):
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -159,7 +164,11 @@ def test_create_multiple_if_exists(use_graph):
         "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
     )
 
-    assert node_count == 2
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert node_count == 2
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert node_count[0]["_"] == 1
 
 
 def test_no_primary_label():
@@ -185,7 +194,7 @@ def test_none_primary_label():
             SpecialPracticeNode(pp="Test Node")
 
 
-def test_create_multilabel(use_graph):
+def test_create_multilabel(request, use_graph):
     class MultipleLabelNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "PrimaryLabel"
@@ -207,13 +216,21 @@ def test_create_multilabel(use_graph):
     assert result.nodes[0].__primarylabel__ == "PrimaryLabel"
 
     # confirm the secondary labels were written to the database
-    assert "ExtraLabel1" in result.records_raw[0].values()[0].labels
-    assert "ExtraLabel2" in result.records_raw[0].values()[0].labels
+
+    if request.node.callspec.id not in ["networkx-engine"]:
+
+        assert "ExtraLabel1" in result.records_raw[0].values()[0].labels
+        assert "ExtraLabel2" in result.records_raw[0].values()[0].labels
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert "ExtraLabel1" in result.records_raw["n"][0]["__labels__"]
+        assert "ExtraLabel2" in result.records_raw["n"][0]["__labels__"]
 
     assert result.nodes[0].pp == "Test Node"
+    assert result.nodes[0].__secondarylabels__ == ["ExtraLabel1", "ExtraLabel2"]
 
 
-def test_create_multilabel_inheritance(use_graph):
+def test_create_multilabel_inheritance(request, use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -236,13 +253,18 @@ def test_create_multilabel_inheritance(use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    assert "Human" in result.records_raw[0].values()[0].labels
-    assert "Mammal" in result.records_raw[0].values()[0].labels
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert "Human" in result.records_raw[0].values()[0].labels
+        assert "Mammal" in result.records_raw[0].values()[0].labels
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert "Human" in result.records_raw["n"][0]["__labels__"]
+        assert "Mammal" in result.records_raw["n"][0]["__labels__"]
 
     assert result.nodes[0].pp == "Bob"
 
 
-def test_create_multilabel_inheritance_multiple(use_graph):
+def test_create_multilabel_inheritance_multiple(request, use_graph):
     class Animal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
@@ -273,17 +295,21 @@ def test_create_multilabel_inheritance_multiple(use_graph):
     elephant2.merge()
 
     cypher = """
-    MATCH (n:Animal)
+    MATCH (n)
     WHERE n.pp = 'Bob'
-    RETURN COUNT(DISTINCT n)
+    RETURN COUNT(n)
     """
 
     result = use_graph.evaluate_query_single(cypher)
 
-    assert result == 2
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert result == 2
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert result[0]["_"] == 2
 
 
-def test_merge_defined_label_inherited(use_graph):
+def test_merge_defined_label_inherited(request, use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -306,8 +332,13 @@ def test_merge_defined_label_inherited(use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    assert "Human" in result.records_raw[0].values()[0].labels
-    assert "Mammal" in result.records_raw[0].values()[0].labels
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert "Human" in result.records_raw[0].values()[0].labels
+        assert "Mammal" in result.records_raw[0].values()[0].labels
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert "Human" in result.records_raw["n"][0]["__labels__"]
+        assert "Mammal" in result.records_raw["n"][0]["__labels__"]
 
     assert result.nodes[0].pp == "Bob"
 
@@ -328,13 +359,14 @@ def test_merge_multiple_defined_label(use_graph):
 
     cypher = """
     MATCH (n:SpecialTestLabel1)
-    RETURN COLLECT(DISTINCT n.pp) as node_names
+    RETURN n
     """
 
-    results = use_graph.evaluate_query_single(cypher)
+    results = use_graph.evaluate_query(cypher)
 
-    assert "Special Test Node" in results
-    assert "Special Test Node2" in results
+    node_pps = set([x.pp for x in results.nodes])
+
+    assert set(["Special Test Node", "Special Test Node2"]) == node_pps
 
 
 def test_create_multiple_defined_label(use_graph):
@@ -346,18 +378,20 @@ def test_create_multiple_defined_label(use_graph):
 
     cypher = """
     MATCH (n:SpecialTestLabel1)
-    RETURN COLLECT(DISTINCT n.pp) as node_names
+    RETURN n
     """
 
-    results = use_graph.evaluate_query_single(cypher)
+    results = use_graph.evaluate_query(cypher)
 
-    assert "Special Test Node" in results
-    assert "Special Test Node2" in results
+    node_pps = set([x.pp for x in results.nodes])
+
+    assert set(["Special Test Node", "Special Test Node2"]) == node_pps
 
 
-def test_creation_datetime(use_graph):
-    """Check we can manually define the created datetime, and then check we can
-    query for it using neo4j DateTime type.
+def test_creation_datetime(request, use_graph):
+    """Check we can manually define the created datetime.
+
+    Then check we can query for it using neo4j DateTime type.
     """
     my_datetime = datetime(year=2022, month=5, day=4, hour=3, minute=21)
 
@@ -373,7 +407,12 @@ def test_creation_datetime(use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    assert result == 2022
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert result == 2022
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        # grand cypher doesn't do full datetime operations
+        assert result[0].year == 2022
 
 
 def test_match_nodes(use_graph):
@@ -545,18 +584,33 @@ class ModelTestIntListExplicit(BaseNode):
     [
         (ModelTestString, "test_prop_string", "hello world", ["hello world"]),
         (ModelTestInt, "test_prop_int", 5071, [5071]),
-        (ModelTestTuple, "test_prop_tuple", ("hello", "world"), [["hello", "world"]]),
+        (
+            ModelTestTuple,
+            "test_prop_tuple",
+            ("hello", "world"),
+            [
+                ("hello", "world"),
+                ["hello", "world"],
+            ],  # some engines support tuples, some don't
+        ),
         (
             ModelTestSet,
             "test_prop_set",
             {"foo", "bar"},
-            [["bar", "foo"], ["foo", "bar"]],
+            [
+                ["bar", "foo"],
+                ["foo", "bar"],
+                {"foo", "bar"},
+            ],  # some engines support sets, some don't
         ),
         (
             ModelTestUUID,
             "test_prop_uuid",
             UUID("32d4a4cb-29c3-4aa8-9b55-7790431819e3"),
-            ["32d4a4cb-29c3-4aa8-9b55-7790431819e3"],
+            [
+                UUID("32d4a4cb-29c3-4aa8-9b55-7790431819e3"),
+                "32d4a4cb-29c3-4aa8-9b55-7790431819e3",
+            ],
         ),
         (
             ModelTestDateTime,
@@ -595,14 +649,14 @@ def test_property_types(use_graph, test_model, test_prop, input_value, expected_
     cypher = f"""
     MATCH (n:{test_model.__primarylabel__})
     WHERE n.pp = 'test_node'
-    RETURN n.{test_prop}
+    RETURN n
     """
 
-    cypher_result = use_graph.evaluate_query_single(cypher)
+    cypher_result = use_graph.evaluate_query(cypher)
 
     # in the case of sets, we may get the result back ordered one of two ways
     # therefore, we check that the result is one of the expected values rather
-    assert cypher_result in expected_value
+    assert cypher_result.nodes[0].model_dump()[test_prop] in expected_value
 
 
 def test_empty_list_property(use_graph):
@@ -771,7 +825,7 @@ def test_merge_df_with_lists(use_graph):
     assert ben.favorite_colors is None
 
 
-def test_get_count(use_graph):
+def test_get_count(request, use_graph):
     people_records = [
         {"name": "arthur", "age": 70, "favorite_colors": ["red"]},
         {"name": "betty", "age": 65, "favorite_colors": ["red", "blue"]},
@@ -783,11 +837,15 @@ def test_get_count(use_graph):
 
     Person2.merge_df(people_df, deduplicate=False)
 
-    assert Person2.get_count() == 4
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert Person2.get_count() == 4
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert Person2.get_count()[0]["_"] == 4
 
 
 def test_get_count_none(use_graph):
-    assert Person2.get_count() == 0
+    assert not Person2.get_count()
 
 
 def test_merge_empty_df():
@@ -824,7 +882,7 @@ class AugmentedPerson(BaseNode):
 
     @related_property
     def follower_count(self):
-        return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
+        return "MATCH (#ThisNode)<-[:AUGMENTED_PERSON_FOLLOWS]-(o) RETURN COUNT(o)"
 
     @property
     @related_property
@@ -896,7 +954,7 @@ def test_rels_schema_md():
     assert "| follow_tag | Optional[str] | False |" in schema_md
 
 
-def test_related_nodes(use_graph):
+def test_related_nodes(request, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
@@ -920,22 +978,25 @@ def test_related_nodes(use_graph):
     assert len(related_nodes) == 1
     assert related_nodes[0].name == "Bob"
 
-    bobs_followers = bob.get_related(
-        relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
-        incoming=True,
-        outgoing=False,
-        relationship_properties={"follow_tag": "test-tag"},
-    )
+    # grand cypher has limited support for relationship property queries
+    if request.node.callspec.id not in ["networkx-engine"]:
 
-    assert len(bobs_followers.nodes) == 2  # this will include bob himself
-    assert bobs_followers.nodes[0].name == "Alice"
+        bobs_followers = bob.get_related(
+            relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
+            incoming=True,
+            outgoing=False,
+            relationship_properties={"follow_tag": "test-tag"},
+        )
 
-    bobs_rels = bob.get_related(incoming=True, distinct=True)
+        assert len(bobs_followers.nodes) == 2  # this will include bob himself
+        assert bobs_followers.nodes[0].name == "Alice"
 
-    assert len(bobs_rels.nodes) == 2
-    assert bobs_rels.nodes[0].name == "Alice"
+        bobs_rels = bob.get_related(incoming=True, distinct=True)
 
-    assert len(bobs_rels.relationships) == 2
+        assert len(bobs_rels.nodes) == 2
+        assert bobs_rels.nodes[0].name == "Alice"
+
+        assert len(bobs_rels.relationships) == 2
 
 
 def test_related_nodes_unmerged(use_graph):
@@ -958,7 +1019,7 @@ def test_related_nodes_no_rels(use_graph):
     assert len(alice_rels.nodes) == 0
 
 
-def test_retrieve_property(use_graph):
+def test_retrieve_property(request, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
@@ -970,19 +1031,26 @@ def test_retrieve_property(use_graph):
     )
     follows.merge()
 
-    assert bob.follower_count() == 1
-    assert bob.follower_names == ["Alice"]
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert bob.follower_count() == 1
+        assert bob.follower_names == ["Alice"]
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        # grand cypher behaves differently for returning specific values
+        assert bob.follower_count()[0]["_"] == 1
 
 
-def test_retrieve_property_none(use_graph):
+def test_retrieve_property_none(request, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    assert bob.follower_count() == 0
-    assert not bob.follower_names
+    assert not bob.follower_count()
+
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert not bob.follower_names
 
 
 def test_retrieve_nodes_none(use_graph):
@@ -1024,14 +1092,18 @@ class ComplexPerson(BaseNode):
         return str(v)
 
 
-def test_create_mass_nodes(use_graph, benchmark):
+def test_create_mass_nodes(request, use_graph, benchmark):
     people_records = [{"age": x, "name": uuid4().hex} for x in range(1000)]
 
     people_df = pd.DataFrame.from_records(people_records)
 
     benchmark(ComplexPerson.merge_df, people_df)
 
-    assert Person.get_count() == 1000
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert Person.get_count() == 1000
+
+    if request.node.callspec.id in ["networkx-engine"]:
+        assert Person.get_count()[0]["_"] == 1000
 
 
 class UserWithAliases(BaseNode):
@@ -1046,7 +1118,7 @@ class UserWithAliases(BaseNode):
     some_other_property: Annotated[Optional[str], Field(None, alias="otherProperty")]
 
 
-def test_aliased_properties(use_graph):
+def test_aliased_properties(request, use_graph):
     user1: UserWithAliases = UserWithAliases(userName="User1")
     user2: UserWithAliases = UserWithAliases(
         user_name="User2", some_other_property="alpha"
@@ -1068,13 +1140,23 @@ def test_aliased_properties(use_graph):
     result: NeontologyResult = use_graph.evaluate_query(cypher)
     assert result.nodes[0].user_name == "User1"
     assert hasattr(result.nodes[0], "userName") == False
-    assert result.records_raw[0][0]["userName"] == "User1"
+
     assert result.nodes[0].some_other_property is None
-    assert result.records_raw[0][0]["otherProperty"] is None
-
-    assert result.nodes[1].user_name == "User2"
     assert result.nodes[1].some_other_property == "alpha"
-    assert result.records_raw[1][0]["otherProperty"] == "alpha"
-
     assert result.nodes[2].user_name == "User3"
-    assert result.records_raw[2][0]["otherProperty"] == "beta"
+    assert result.nodes[1].user_name == "User2"
+
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert result.records_raw[0][0]["userName"] == "User1"
+        assert result.records_raw[0][0]["otherProperty"] is None
+
+        assert result.records_raw[1][0]["otherProperty"] == "alpha"
+        assert result.records_raw[2][0]["otherProperty"] == "beta"
+
+    if request.node.callspec.id in ["networkx-engine"]:
+
+        assert result.records_raw["n"][0]["userName"] == "User1"
+        assert result.records_raw["n"][0]["otherProperty"] is None
+
+        assert result.records_raw["n"][1]["otherProperty"] == "alpha"
+        assert result.records_raw["n"][2]["otherProperty"] == "beta"

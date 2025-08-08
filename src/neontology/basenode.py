@@ -519,7 +519,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     @related_property
     def get_count(cls):
         """Get the count of nodes of this type in the graph."""
-        return f"MATCH (n:{cls.__primarylabel__}) RETURN COUNT(DISTINCT n)"
+        return f"MATCH (n:{cls.__primarylabel__}) RETURN COUNT(n)"
 
     def _prep_dump_dict(self, dumped_model: dict) -> dict:
         dumped_model["LABEL"] = self.__primarylabel__

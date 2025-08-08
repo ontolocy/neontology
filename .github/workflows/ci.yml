@@ -48,7 +48,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --extra dev
-      - name: Test with pytest
+      - name: Test default engines with pytest
         env:
           TEST_NEO4J_URI: bolt://localhost:7687
           TEST_NEO4J_USERNAME: neo4j
@@ -57,4 +57,10 @@ jobs:
           TEST_MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
-          uv run pytest -x --benchmark-skip
+          uv run pytest -x --benchmark-skip -k "not networkx-engine"
+      - name: Install networkx dependencies
+        run: |
+          uv sync --extra grand
+      - name: Test network x pytest
+        run: |
+          uv run pytest -x --benchmark-skip -k "networkx-engine"
