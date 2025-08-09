@@ -305,7 +305,9 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
-    def _filters_to_where_clause(self, filters: dict | None = None) -> tuple[str, dict]:
+    def _filters_to_where_clause(
+        self, filters: Optional[dict] = None
+    ) -> tuple[str, dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -362,9 +364,9 @@ class GraphEngineBase:
     def match_nodes(
         self,
         node_class: type,
-        limit: int | None = None,
-        skip: int | None = None,
-        filters: dict | None = None,
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+        filters: Optional[dict] = None,
     ) -> list:
         """Match nodes based on the given node class, limit, skip, and filters.
 
@@ -395,7 +397,7 @@ class GraphEngineBase:
     def get_count(
         self,
         node_class: type,
-        filters: dict | None = None,
+        filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes based on the given node class and filters.
 

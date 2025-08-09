@@ -75,7 +75,9 @@ class GraphConnection(object):
             self.engine: GraphEngineBase = self._instance.engine
 
         if self.engine.verify_connection() is False:
-            raise RuntimeError("Error: connection not established. Have you run init_neontology?")
+            raise RuntimeError(
+                "Error: connection not established. Have you run init_neontology?"
+            )
 
     @classmethod
     def change_engine(
@@ -93,7 +95,9 @@ class GraphConnection(object):
             RuntimeError: If Neontology has not been initialized yet.
         """
         if not cls._instance:
-            raise RuntimeError("Error: Can't change the engine without initializing Neontology first.")
+            raise RuntimeError(
+                "Error: Can't change the engine without initializing Neontology first."
+            )
 
         cls._instance.engine.close_connection()
         cls._instance.engine = config.engine(config)
@@ -145,9 +149,13 @@ class GraphConnection(object):
         if not relationship_classes:
             relationship_classes = self.global_rels
 
-        return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes)
+        return self.engine.evaluate_query(
+            cypher, params, node_classes, relationship_classes
+        )
 
-    def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
+    def create_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list[BaseNodeT]:
         """Create nodes in the graph database.
 
         Calls the underlying engine's create_nodes method to create new nodes.
@@ -163,7 +171,9 @@ class GraphConnection(object):
         """
         return self.engine.create_nodes(labels, pp_key, properties, node_class)
 
-    def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list["BaseNodeT"]:
+    def merge_nodes(
+        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
+    ) -> list["BaseNodeT"]:
         """Merge nodes in the graph database.
 
         Calls the underlying engine's merge_nodes method to create or update nodes.
@@ -205,12 +215,14 @@ class GraphConnection(object):
         Returns:
             list[BaseNode]: List of matched nodes.
         """
-        return self.engine.match_nodes(node_class, limit=limit, skip=skip, filters=filters)
+        return self.engine.match_nodes(
+            node_class, limit=limit, skip=skip, filters=filters
+        )
 
     def get_count(
         self,
         node_class: type,
-        filters: dict | None = None,
+        filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes of a specific type in the graph database with optional filtering.
 
@@ -298,7 +310,11 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
         "MEMGRAPH": MemgraphConfig,
     }
 
-    if "neo4j_uri" in kwargs or "neo4j_username" in kwargs or "neo4j_password" in kwargs:
+    if (
+        "neo4j_uri" in kwargs
+        or "neo4j_username" in kwargs
+        or "neo4j_password" in kwargs
+    ):
         warn(
             (
                 "Neo4j keyword arguments in init_neontology are being deprecated "
@@ -325,11 +341,15 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
         graph_engine = os.getenv("NEONTOLOGY_ENGINE")
 
         if graph_engine:
-            logger.info(f"No GraphConfig provided, using defaults based on specified engine: {graph_engine}.")
+            logger.info(
+                f"No GraphConfig provided, using defaults based on specified engine: {graph_engine}."
+            )
             config = graph_engines[graph_engine]()
 
         else:
-            logger.info("No GraphConfig provided and no Graph Engine specified, using Neo4j.")
+            logger.info(
+                "No GraphConfig provided and no Graph Engine specified, using Neo4j."
+            )
             config = Neo4jConfig()
 
     GraphConnection(config)

@@ -264,7 +264,9 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _filters_to_where_clause(self, filters: dict | None = None) -> tuple[str, dict]:
+    def _filters_to_where_clause(
+        self, filters: Optional[dict] = None
+    ) -> tuple[str, dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -639,7 +641,7 @@ class NetworkxEngine(GraphEngineBase):
     def get_count(
         self,
         node_class: type,
-        filters: dict | None = None,
+        filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes based on the given node class and filters.
 
