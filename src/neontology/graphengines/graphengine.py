@@ -337,14 +337,22 @@ class GraphEngineBase:
                 elif lookup_type == "startswith":
                     clause = f"n.{field_name} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    clause = (
+                        f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    )
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
-                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
+                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[
+                        lookup_type
+                    ]
                     clause = f"n.{field_name} {operator} ${param_name}"
                 elif lookup_type == "in":
                     clause = f"n.{field_name} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                    clause = (
+                        f"n.{field_name} IS NULL"
+                        if value
+                        else f"n.{field_name} IS NOT NULL"
+                    )
                 else:
                     clause = f"n.{field_name} = ${param_name}"
                 where_clauses.append(clause)
@@ -379,7 +387,9 @@ class GraphEngineBase:
         if limit is not None:
             cypher += " LIMIT $limit"
             params["limit"] = limit
-        result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
+        result = self.evaluate_query(
+            cypher, params, node_classes={node_class.__primarylabel__: node_class}
+        )
         return result.nodes
 
     def get_count(

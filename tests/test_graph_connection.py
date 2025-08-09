@@ -210,8 +210,6 @@ def test_evaluate_query_nodes_records_simple(use_graph):
     gc = GraphConnection()
     result = gc.evaluate_query(cypher)
 
-    print(result)
-
     assert result.records[0]["nodes"]["n"].pp == "foo"
     assert result.records[1]["nodes"]["n"].pp == "bar"
 
@@ -239,11 +237,11 @@ def test_undefined_label(request, use_graph):
 
     gc = GraphConnection()
 
-    result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
-    result = gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Bar'})")
+    result = gc.evaluate_query_single("CREATE (tn1:WeirdTestNode {name: 'Foo'})")
+    result = gc.evaluate_query_single("CREATE (tn1:WeirdTestNode {name: 'Bar'})")
 
     match_cypher = """
-    MATCH (n:TestNode)
+    MATCH (n:WeirdTestNode)
     RETURN n
     """
 
@@ -296,7 +294,7 @@ def test_warn_on_unexpected_secondary_labels(request, use_graph):
     # create a node which looks like a practice node but has additional labels
 
     create_cypher = """
-    CREATE (tn1:PracticeNodeGC:TestNode {pp: "Foo"})
+    CREATE (tn1:PracticeNodeGC:WeirdTestNode {pp: "Foo"})
     """
 
     result = gc.evaluate_query_single(create_cypher)
@@ -309,7 +307,7 @@ def test_warn_on_unexpected_secondary_labels(request, use_graph):
     # check we raise a warning
 
     with pytest.warns(
-        UserWarning, match="Unexpected secondary labels returned: {'TestNode'}"
+        UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"
     ):
         result = gc.evaluate_query(match_cypher)
 

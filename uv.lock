@@ -404,6 +404,13 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "grand-cypher", version = "0.13.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "grand-cypher", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+    { name = "networkx", version = "3.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "networkx", version = "3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
 grand = [
     { name = "grand-cypher", version = "0.13.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "grand-cypher", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -428,6 +435,7 @@ requires-dist = [
     { name = "grand-cypher", marker = "extra == 'grand'", specifier = ">=0.13.0" },
     { name = "jinja2", specifier = ">=3.0,<4" },
     { name = "neo4j", specifier = ">=5.0,<6" },
+    { name = "neontology", extras = ["grand"], marker = "extra == 'all'" },
     { name = "networkx", marker = "extra == 'grand'", specifier = ">=3.2.1" },
     { name = "pandas", specifier = ">=2.0,<3" },
     { name = "pydantic", specifier = ">=2.7,<3" },
