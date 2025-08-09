@@ -5,7 +5,7 @@ import os
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 from warnings import warn
 
-from .graphengines import MemgraphConfig, Neo4jConfig, NetworkxConfig
+from .graphengines import MemgraphConfig, Neo4jConfig
 from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
 from .result import NeontologyResult
 
@@ -308,8 +308,15 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
-        "NETWORKX": NetworkxConfig,
     }
+
+    try:
+        from .graphengines import NetworkxConfig
+
+        graph_engines["NETWORKX"] = NetworkxConfig
+
+    except ImportError:
+        pass
 
     if (
         "neo4j_uri" in kwargs
