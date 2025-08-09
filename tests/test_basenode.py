@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, ClassVar, Optional
+from typing import ClassVar, Optional
 from uuid import UUID, uuid4
 
 import pandas as pd
@@ -2169,15 +2169,15 @@ def test_create_mass_nodes(use_graph, benchmark):
 
 class UserWithAliases(BaseNode):
     __primaryproperty__: ClassVar[str] = "userName"
-    __primarylabel__: ClassVar[str] = "User"
+    __primarylabel__: ClassVar[str] = "AliasedUser"
     model_config = ConfigDict(
         validate_by_name=True,
         validate_by_alias=True,
         populate_by_name=True,  # allow population by name and alias
         extra="ignore",  # allow data to be passed in to aliased fields
     )
-    user_name: Annotated[str, Field(alias="userName")]
-    some_other_property: Annotated[Optional[str], Field(None, alias="otherProperty")]
+    user_name: str = Field(alias="userName")
+    some_other_property: Optional[str] = Field(None, alias="otherProperty")
 
 
 def test_aliased_properties(request, use_graph):
@@ -2194,7 +2194,7 @@ def test_aliased_properties(request, use_graph):
     user3.merge()
 
     cypher = """
-    MATCH (n:User)
+    MATCH (n:AliasedUser)
     RETURN n
     ORDER BY n.userName ASC
     """
