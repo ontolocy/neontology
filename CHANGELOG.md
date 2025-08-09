@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.2.0
+
+### Features
+
+- Support for filtering on `match_nodes` and `get_count` (thanks to @BiBzz)
+- Experimental support for `NetworkxEngine` on Python v3.10+
+
+### Dependencies and Support
+
+- Addition of optional `[grand]` dependency group for `NetworkxEngine`
+- Addition of `[all]` dependency group
+
 ## v2.1.3
 
 ### Changed

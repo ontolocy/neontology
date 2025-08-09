@@ -70,11 +70,11 @@ async def startup_event():
     NEO4J_PASSWORD="<your password>"
 
     config = Neo4jConfig(
-        uri=NEO4J_URI, 
+        uri=NEO4J_URI,
         username=NEO4J_USERNAME,
         password=NEO4J_PASSWORD
     )
-    init_neontology(config)  
+    init_neontology(config)
 
 
 @app.get("/")
@@ -119,23 +119,123 @@ Now visit `http://127.0.0.1:8000/docs` again where you should see our `POST` ent
 
 Here we'll add some more routes to get the teams that have been created.
 
-`/teams/` will provide a list of all the created teams.
+### Getting all teams
 
-`/teams/<teamname>` will let us access information about a specific team.
+`/teams/` will provide a list of all the created teams.
 
 ```python
 @app.get("/teams/")
 async def get_teams() -> list[TeamNode]:
-
     return TeamNode.match_nodes()
+```
 
+### Getting a team based on its primary property
 
+`/teams/<teamname>` will let us access information about a specific team.
+
+```python
 @app.get("/teams/{pp}")
 async def get_team(pp: str) -> Optional[TeamNode]:
 
     return TeamNode.match(pp)
-
 ```
+
+### Getting teams based on filtering
+
+You can also retrieve teams based on various filter criteria. The `match_nodes` method supports a wide range of filter options using a Django-like syntax. Here are some examples of how you can use filtering:
+
+#### Basic filtering
+
+To get all teams with a specific slogan:
+
+```python
+TeamNode.match_nodes(filters={"slogan": "Better than the rest!"})
+```
+
+#### String-based filters
+
+- `icontains`: Case-insensitive contains
+  ```python
+  TeamNode.match_nodes(filters={"teamname__icontains": "team"})
+  ```
+- `contains`: Case-sensitive contains
+  ```python
+  TeamNode.match_nodes(filters={"teamname__contains": "Team"})
+  ```
+- `iexact`: Case-insensitive exact match
+  ```python
+  TeamNode.match_nodes(filters={"teamname__iexact": "team a"})
+  ```
+- `startswith`: Case-sensitive startswith
+  ```python
+  TeamNode.match_nodes(filters={"teamname__startswith": "Tea"})
+  ```
+- `istartswith`: Case-insensitive startswith
+  ```python
+  TeamNode.match_nodes(filters={"teamname__istartswith": "tea"})
+  ```
+
+#### Numeric filters
+
+For numeric fields (if any were present), you could use:
+
+- `gt`: Greater than
+- `lt`: Less than
+- `gte`: Greater than or equal to
+- `lte`: Less than or equal to
+
+#### Boolean filters
+
+For boolean fields, you can simply use the field name with the desired boolean value:
+
+```python
+TeamNode.match_nodes(filters={"is_active": True})
+```
+
+#### Null checks
+
+To filter based on null values:
+
+```python
+TeamNode.match_nodes(filters={"slogan__isnull": True})  # Teams with no slogan
+```
+
+#### Combining filters
+
+You can combine multiple filters to create more complex queries:
+
+```python
+TeamNode.match_nodes(filters={
+    "slogan__icontains": "better",
+    "teamname__startswith": "A"
+})
+```
+
+### Getting the count of teams with optional filtering
+
+You can retrieve the total count of teams, optionally filtered based on certain criteria. This is useful for retrieving statistics or counts of teams that meet specific conditions. The `get_count` method is used for this purpose and supports the same Django-like filter syntax as described in the filtering section above. Here are examples of how you can use it:
+
+To get the total count of all teams without any filters:
+```python
+TeamNode.get_count()
+```
+
+To get the count of all teams with a specific slogan:
+```python
+TeamNode.get_count(filters={"slogan": "Better than the rest!"})
+```
+
+For other filter criteria, refer to the examples provided in the filtering section. This flexibility allows you to efficiently count teams based on complex criteria, making it useful for analytics and reporting purposes.
+
+### Pagination
+
+You can also paginate results using `limit` and `skip` parameters:
+
+```python
+TeamNode.match_nodes(limit=10, skip=20)  # Get 10 teams, skipping the first 20
+```
+
+These filtering capabilities provide a powerful way to query your data with flexibility and precision.
 
 You can now browse the API to create teams and get info about them.
 

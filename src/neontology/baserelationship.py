@@ -22,7 +22,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 
-    _merge_on: list[str] = PrivateAttr()  # what relationship properties should we merge on
+    _merge_on: list[str] = (
+        PrivateAttr()
+    )  # what relationship properties should we merge on
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -31,7 +33,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph or even instantiated
         if self.__relationshiptype__ is None:
-            raise NotImplementedError("Relationships to be used in the graph must define a relationship type.")
+            raise NotImplementedError(
+                "Relationships to be used in the graph must define a relationship type."
+            )
 
     @classmethod
     def _set_prop_usage(cls) -> None:
@@ -83,7 +87,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
         return cls.__relationshiptype__
 
-    def _get_merge_parameters(self, source_prop: str, target_prop: str) -> dict[str, Any]:
+    def _get_merge_parameters(
+        self, source_prop: str, target_prop: str
+    ) -> dict[str, Any]:
         """Get the parameters to use for merging this relationship.
 
         This method retrieves the properties of the source and target nodes,
@@ -128,19 +134,25 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         target_label = self.target.__primarylabel__
 
         if not source_label or not target_label:
-            raise ValueError("Source and target Nodes must have a defined primary label for creating a relationship.")
+            raise ValueError(
+                "Source and target Nodes must have a defined primary label for creating a relationship."
+            )
 
         source_prop = self.source.__primaryproperty__
         target_prop = self.target.__primaryproperty__
 
-        rel_props = self._get_merge_parameters(source_prop=source_prop, target_prop=target_prop)
+        rel_props = self._get_merge_parameters(
+            source_prop=source_prop, target_prop=target_prop
+        )
 
         merge_on_props = self._merge_on
 
         rel_type = self.get_relationship_type()
 
         if not rel_type:
-            raise ValueError("Realtionship must have a defined relationship type for creating a relationship.")
+            raise ValueError(
+                "Realtionship must have a defined relationship type for creating a relationship."
+            )
 
         gc = GraphConnection()
 
@@ -183,7 +195,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         # sources and targets could have different primary labels
         # to operate efficiently, we group like source and targets for batch creation of relationships
-        grouped_rels = itertools.groupby(rels, lambda x: (x.source.__class__, x.target.__class__))
+        grouped_rels = itertools.groupby(
+            rels, lambda x: (x.source.__class__, x.target.__class__)
+        )
 
         for node_clases, common_rels in grouped_rels:
             src_class = node_clases[0]
@@ -199,14 +213,20 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                 target_prop = tgt_class.__primaryproperty__
 
             if not source_label or not target_label:
-                raise ValueError("Source and target Nodes must have a defined primary label to create a relationship.")
+                raise ValueError(
+                    "Source and target Nodes must have a defined primary label to create a relationship."
+                )
 
             rel_type = cls.get_relationship_type()
 
             if not rel_type:
-                raise ValueError("Relationship must have a defined relationship type for creating a relationship.")
+                raise ValueError(
+                    "Relationship must have a defined relationship type for creating a relationship."
+                )
 
-            rel_list: list[dict[str, Any]] = [x._get_merge_parameters(source_prop, target_prop) for x in common_rels]
+            rel_list: list[dict[str, Any]] = [
+                x._get_merge_parameters(source_prop, target_prop) for x in common_rels
+            ]
 
             gc = GraphConnection()
 
@@ -265,8 +285,12 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         for record in records:
             hydrated = dict(record)
 
-            hydrated["source"] = source_type.model_construct(**{source_prop: record["source"]})
-            hydrated["target"] = target_type.model_construct(**{target_prop: record["target"]})
+            hydrated["source"] = source_type.model_construct(
+                **{source_prop: record["source"]}
+            )
+            hydrated["target"] = target_type.model_construct(
+                **{target_prop: record["target"]}
+            )
 
             hydrated_list.append(cls(**hydrated))
 
@@ -311,7 +335,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             )
 
     @classmethod
-    def match_relationships(cls, limit: Optional[int] = None, skip: Optional[int] = None) -> list["BaseRelationship"]:
+    def match_relationships(
+        cls, limit: Optional[int] = None, skip: Optional[int] = None
+    ) -> list["BaseRelationship"]:
         """Match relationships of this type in the graph.
 
         Constructs a Cypher query to match relationships of the specified type in the graph database.
@@ -342,11 +368,13 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             int: The count of distinct relationships of the specified type.
         """
         gc = GraphConnection()
-        cypher = f"MATCH (n)-[r:{cls.__relationshiptype__}]->(o) RETURN COUNT(DISTINCT r)"
+        cypher = f"MATCH (n)-[r:{cls.__relationshiptype__}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
         return result
 
-    def _prep_dump_dict(self, dumped_model: dict, exclude_node_props: bool = True) -> dict:
+    def _prep_dump_dict(
+        self, dumped_model: dict, exclude_node_props: bool = True
+    ) -> dict:
         """Prepare the dumped model dictionary for Neontology.
 
         This method modifies the dumped model dictionary to include additional metadata
@@ -400,7 +428,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         Returns:
             dict: A dictionary representation of the relationship.
         """
-        dumped_model = self.model_dump(exclude_none=exclude_none, exclude=exclude, **kwargs)
+        dumped_model = self.model_dump(
+            exclude_none=exclude_none, exclude=exclude, **kwargs
+        )
 
         return self._prep_dump_dict(dumped_model, exclude_node_props)
 
@@ -429,7 +459,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             str: A JSON string representation of the relationship.
         """
         # pydantic converts values to be json serializable, make use of this first
-        original_json = self.model_dump_json(exclude_none=exclude_none, exclude=exclude, **kwargs)
+        original_json = self.model_dump_json(
+            exclude_none=exclude_none, exclude=exclude, **kwargs
+        )
         model_dict = json.loads(original_json)
 
         return json.dumps(self._prep_dump_dict(model_dict, exclude_node_props))
@@ -459,7 +491,9 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             if field_name in ["source", "target"]:
                 continue
 
-            field_type = extract_type_mapping(field_props.annotation, show_optional=True)
+            field_type = extract_type_mapping(
+                field_props.annotation, show_optional=True
+            )
 
             required_field = field_props.is_required()
 
