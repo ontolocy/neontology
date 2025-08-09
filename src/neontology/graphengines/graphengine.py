@@ -307,7 +307,7 @@ class GraphEngineBase:
 
     def _filters_to_where_clause(
         self, filters: Optional[dict] = None
-    ) -> tuple[str, dict]:
+    ) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -320,6 +320,7 @@ class GraphEngineBase:
         """
         params = {}
         where_clauses = []
+        where_clause = None
         if filters:
             for key, value in filters.items():
                 if "__" in key:
@@ -358,9 +359,13 @@ class GraphEngineBase:
                     )
 
                 else:
-                    clause = f"n.{field_name} = ${param_name}"
+                    raise ValueError(f"Invalid filter: {lookup_type}")
+
                 where_clauses.append(clause)
-        where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            where_clause = (
+                " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            )
+
         return where_clause, params
 
     def match_nodes(
@@ -383,7 +388,8 @@ class GraphEngineBase:
         """
         cypher = f"MATCH (n:{node_class.__primarylabel__})"
         where_clause, params = self._filters_to_where_clause(filters)
-        cypher += where_clause
+        if where_clause:
+            cypher += where_clause
         cypher += " RETURN n"
         if skip is not None:
             cypher += " SKIP $skip"
@@ -414,7 +420,8 @@ class GraphEngineBase:
         """
         cypher = f"MATCH (n:{node_class.__primarylabel__})"
         where_clause, params = self._filters_to_where_clause(filters)
-        cypher += where_clause
+        if where_clause:
+            cypher += where_clause
         cypher += " RETURN COUNT(DISTINCT n)"
         return self.evaluate_query_single(cypher, params)
 

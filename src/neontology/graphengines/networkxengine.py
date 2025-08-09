@@ -654,7 +654,8 @@ class NetworkxEngine(GraphEngineBase):
         """
         cypher = f"MATCH (n:{node_class.__primarylabel__})"
         where_clause, params = self._filters_to_where_clause(filters)
-        cypher += where_clause
+        if where_clause:
+            cypher += where_clause
         cypher += " RETURN COUNT(n)"
 
         result = self.evaluate_query_single(cypher, params)
