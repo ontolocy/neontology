@@ -140,7 +140,7 @@ def use_graph(request, graph_db):
         except RuntimeError:
             pass
 
-    if request.node.callspec.id in ["networkx-engine"]:
+    if "networkx-engine" in request.node.callspec.id:
         # grand cypher doesn't support DETACH DELETE
         graph_db.engine.driver.clear()
 

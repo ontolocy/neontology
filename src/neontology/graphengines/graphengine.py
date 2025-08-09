@@ -305,7 +305,9 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
-    def _filters_to_where_clause(self, filters: dict | None = None) -> tuple[str, dict]:
+    def _filters_to_where_clause(
+        self, filters: Optional[dict] = None
+    ) -> tuple[str, dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -337,14 +339,24 @@ class GraphEngineBase:
                 elif lookup_type == "startswith":
                     clause = f"n.{field_name} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    clause = (
+                        f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    )
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
-                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
+                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[
+                        lookup_type
+                    ]
+
                     clause = f"n.{field_name} {operator} ${param_name}"
                 elif lookup_type == "in":
                     clause = f"n.{field_name} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                    clause = (
+                        f"n.{field_name} IS NULL"
+                        if value
+                        else f"n.{field_name} IS NOT NULL"
+                    )
+
                 else:
                     clause = f"n.{field_name} = ${param_name}"
                 where_clauses.append(clause)
@@ -354,9 +366,9 @@ class GraphEngineBase:
     def match_nodes(
         self,
         node_class: type,
-        limit: int | None = None,
-        skip: int | None = None,
-        filters: dict | None = None,
+        limit: Optional[int] = None,
+        skip: Optional[int] = None,
+        filters: Optional[dict] = None,
     ) -> list:
         """Match nodes based on the given node class, limit, skip, and filters.
 
@@ -379,13 +391,17 @@ class GraphEngineBase:
         if limit is not None:
             cypher += " LIMIT $limit"
             params["limit"] = limit
-        result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
+
+        result = self.evaluate_query(
+            cypher, params, node_classes={node_class.__primarylabel__: node_class}
+        )
+
         return result.nodes
 
     def get_count(
         self,
         node_class: type,
-        filters: dict | None = None,
+        filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes based on the given node class and filters.
 

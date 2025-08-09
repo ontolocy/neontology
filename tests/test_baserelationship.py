@@ -385,6 +385,7 @@ def test_merge_df_alt_prop(request, use_graph):
         assert result == "New Rel 4"
 
     if request.node.callspec.id in ["networkx-engine"]:
+        print(result)
         assert result[0][(0, "TEST_NEW_RELATIONSHIP_TYPE2")] == "New Rel 4"
 
 
@@ -430,12 +431,7 @@ def test_create_mass_rels(request, use_graph, benchmark):
 
     PracticeNode.merge_df(records_df)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert PracticeNode.get_count() == 1000
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        people = PracticeNode.get_count()
-        assert people[0]["_"] == 1000
+    assert PracticeNode.get_count() == 1000
 
     people_rels = [
         {"source": practice_records[x]["pp"], "target": practice_records[x + 1]["pp"]}

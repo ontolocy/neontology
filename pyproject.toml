@@ -58,6 +58,10 @@ grand = [
     "networkx>=3.2.1",
 ]
 
+all = [
+    "neontology[grand]"
+]
+
 # Tool configurations (keeping your existing ones + removing flake8)
 [tool.pytest.ini_options]
 markers = [
