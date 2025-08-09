@@ -13,7 +13,11 @@ The easiest way to start is to pass a GraphConfig object to init_neontology to s
 
 If you don't explicitly provide a GraphConfig, neontology will default to Neo4j and look for environment variables for configuration.
 
-You can also use the NEONTOLOGY_ENGINE environment variable to set the graph engine (`NEO4J` or `MEMGRAPH`) to use, which will then look for the respective configuration environment variables.
+You can also use the NEONTOLOGY_ENGINE environment variable to set the graph engine to use, which will then look for the respective configuration environment variables:
+
+* `NEO4J`
+* `MEMGRAPH`
+* `NETWORKX`
 
 ### Neo4j
 
@@ -49,6 +53,32 @@ init_neontology(config)
 
 gc = GraphConnection()
 gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
+```
+
+### NetworkX
+
+Neontology has experimental support for NetworkX as a backend - storing your graph in memory rather than an external database. This is enabled by [grand-cypher](https://github.com/aplbrain/grand-cypher).
+
+This allows you to build property graphs and query them using cypher / graph query language (GQL).
+
+Working with the `NetworkxEngine` requires additional dependencies and works with Python v3.10 and above:
+
+```bash
+pip install neontology[grand]
+```
+
+Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend - case insensitive filters, datetime functionality, 'merge-on' properties for relationships.
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import NetworkxConfig
+
+config = NetworkxConfig()
+
+init_neontology(config)
+
+gc = GraphConnection()
+gc.evaluate_query("MATCH (n) RETURN n")
 ```
 
 ## Graph Engines and Graph Connections
