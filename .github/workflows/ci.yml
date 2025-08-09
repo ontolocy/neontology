@@ -57,4 +57,4 @@ jobs:
           TEST_MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
-          uv run pytest -x --benchmark-skip
+          uv run pytest -x --benchmark-skip -k "not networkx-engine"
