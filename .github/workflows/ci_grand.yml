@@ -27,7 +27,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          uv sync --extra dev --extra grand
+          uv sync --extra grand
       - name: Test networkx engine with pytest
         run: |
           uv run pytest -x --benchmark-skip -k "networkx-engine"

@@ -47,7 +47,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          uv sync --extra dev --extra grand
+          uv sync
       - name: Test default engines with pytest
         env:
           TEST_NEO4J_URI: bolt://localhost:7687
