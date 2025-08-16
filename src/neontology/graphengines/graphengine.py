@@ -70,9 +70,7 @@ class GraphEngineBase:
             item_type = type(value[0])
             for item in value:
                 if isinstance(item, item_type) is False:
-                    raise TypeError(
-                        "For neo4j, all items in a list must be of the same type."
-                    )
+                    raise TypeError("For neo4j, all items in a list must be of the same type.")
 
             return [cls._export_type_converter(x) for x in value]
 
@@ -171,9 +169,7 @@ class GraphEngineBase:
         """
         raise NotImplementedError
 
-    def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
-    ) -> list[BaseNodeT]:
+    def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.
 
         Args:
@@ -204,9 +200,7 @@ class GraphEngineBase:
 
         return results.nodes
 
-    def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
-    ) -> list[BaseNodeT]:
+    def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Merge nodes with specified labels and property.
 
         Args:
@@ -282,12 +276,7 @@ class GraphEngineBase:
                 to set on the relationship.
         """
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join(
-            [
-                f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}"
-                for x in merge_on_props
-            ]
-        )
+        merge_props = ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}" for x in merge_on_props])
 
         cypher = f"""
         UNWIND $rel_list AS rel
@@ -305,9 +294,7 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
-    def _filters_to_where_clause(
-        self, filters: Optional[dict] = None
-    ) -> tuple[Optional[str], dict]:
+    def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -340,31 +327,21 @@ class GraphEngineBase:
                 elif lookup_type == "startswith":
                     clause = f"n.{field_name} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = (
-                        f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
-                    )
+                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
-                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[
-                        lookup_type
-                    ]
+                    operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
 
                     clause = f"n.{field_name} {operator} ${param_name}"
                 elif lookup_type == "in":
                     clause = f"n.{field_name} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = (
-                        f"n.{field_name} IS NULL"
-                        if value
-                        else f"n.{field_name} IS NOT NULL"
-                    )
+                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
 
                 else:
                     raise ValueError(f"Invalid filter: {lookup_type}")
 
                 where_clauses.append(clause)
-            where_clause = (
-                " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-            )
+            where_clause = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
         return where_clause, params
 
@@ -398,9 +375,7 @@ class GraphEngineBase:
             cypher += " LIMIT $limit"
             params["limit"] = limit
 
-        result = self.evaluate_query(
-            cypher, params, node_classes={node_class.__primarylabel__: node_class}
-        )
+        result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
 
         return result.nodes
 
@@ -493,8 +468,6 @@ class GraphEngineConfig(BaseModel):
             if not data.get(field):
                 value = os.getenv(env_var)
                 if value is None:
-                    raise ValueError(
-                        f"No value provided for {field} field and no {env_var} environment variable set."
-                    )
+                    raise ValueError(f"No value provided for {field} field and no {env_var} environment variable set.")
                 data[field] = value
         return data
