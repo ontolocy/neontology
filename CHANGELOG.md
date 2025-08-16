@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.1
+
+### Fixed
+
+- Updated handling of relationship merging in NetworkxEngine to prevent duplicate relationships and to support 'merge_on' properties.
+
 ## v2.2.0
 
 ### Features

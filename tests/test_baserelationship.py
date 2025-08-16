@@ -120,7 +120,7 @@ class RelMergeOnMatchTest(PracticeRelationship):
     my_prop: str
 
 
-def test_merge_relationship_merge_on_match(request, use_graph):
+def test_merge_relationship_merge_on_match(use_graph):
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -134,26 +134,17 @@ def test_merge_relationship_merge_on_match(request, use_graph):
         my_prop="Foo",
     )
 
-    if request.node.callspec.id in ["networkx-engine"]:
-        with pytest.raises(NotImplementedError):
-
-            br.merge()
-
-        pytest.skip(
-            "NetworkxEngine does not yet support merging relationships on properties."
-        )
-
-    else:
-        br.merge()
+    br.merge()
 
     cypher = """
     MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_MATCH]->(tgt:PracticeNode {pp: 'Target Node'})
-    RETURN r.my_prop
+    RETURN src,r,tgt
     """
 
-    result = use_graph.evaluate_query_single(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result == "Foo"
+    assert len(result.relationships) == 1
+    assert result.relationships[0].my_prop == "Foo"
 
     br2 = RelMergeOnMatchTest(
         source=source_node,
@@ -163,9 +154,10 @@ def test_merge_relationship_merge_on_match(request, use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate_query_single(cypher)
+    result2 = use_graph.evaluate_query(cypher)
 
-    assert result2 == "Bar"
+    assert len(result2.relationships) == 1
+    assert result2.relationships[0].my_prop == "Bar"
 
 
 class RelMergeOnCreateTest(PracticeRelationship):
@@ -174,7 +166,7 @@ class RelMergeOnCreateTest(PracticeRelationship):
     my_prop: str
 
 
-def test_merge_relationship_merge_on_create(request, use_graph):
+def test_merge_relationship_merge_on_create(use_graph):
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -188,25 +180,17 @@ def test_merge_relationship_merge_on_create(request, use_graph):
         my_prop="Foo",
     )
 
-    if request.node.callspec.id in ["networkx-engine"]:
-        with pytest.raises(NotImplementedError):
-
-            br.merge()
-
-        pytest.skip(
-            "NetworkxEngine does not yet support merging relationships on properties."
-        )
-
     br.merge()
 
     cypher = """
     MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_CREATE]->(tgt:PracticeNode {pp: 'Target Node'})
-    RETURN COLLECT(r.my_prop)
+    RETURN src,r,tgt
     """
 
-    result = use_graph.evaluate_query_single(cypher)
+    result = use_graph.evaluate_query(cypher)
 
-    assert result == ["Foo"]
+    assert len(result.relationships) == 1
+    assert result.relationships[0].my_prop == "Foo"
 
     br2 = RelMergeOnCreateTest(
         source=source_node,
@@ -216,9 +200,10 @@ def test_merge_relationship_merge_on_create(request, use_graph):
     )
     br2.merge()
 
-    result2 = use_graph.evaluate_query_single(cypher)
+    result2 = use_graph.evaluate_query(cypher)
 
-    assert set(result2) == {"Foo", "Bar"}
+    assert len(result2.relationships) == 2
+    assert set([x.my_prop for x in result2.relationships]) == {"Foo", "Bar"}
 
 
 def test_default_relationship_type():
@@ -385,7 +370,6 @@ def test_merge_df_alt_prop(request, use_graph):
         assert result == "New Rel 4"
 
     if request.node.callspec.id in ["networkx-engine"]:
-        print(result)
         assert result[0][(0, "TEST_NEW_RELATIONSHIP_TYPE2")] == "New Rel 4"
 
 

@@ -59,16 +59,12 @@ def substitute_cypher(query, params):
     template_query = re.sub(r"\$(\w+)", r"${\1}", query)
 
     # Escape all parameter values
-    escaped_params = {
-        escape_cypher_identifier(k): escape_cypher_string(v) for k, v in params.items()
-    }
+    escaped_params = {escape_cypher_identifier(k): escape_cypher_string(v) for k, v in params.items()}
 
     return Template(template_query).substitute(escaped_params).replace("'", '"')
 
 
-def grand_node_to_neontology_node(
-    grand_node: dict, node_classes: dict[str, type[BaseNodeT]]
-) -> Optional[BaseNodeT]:
+def grand_node_to_neontology_node(grand_node: dict, node_classes: dict[str, type[BaseNodeT]]) -> Optional[BaseNodeT]:
     """Convert a GrandCypher node to a Neontology node.
 
     Args:
@@ -135,21 +131,16 @@ def grand_relationship_to_neontology_relationship(
         rel_dict = {
             k: v
             for k, v in grand_relationship.items()
-            if k
-            not in ["__neograndrel__", "__sourcepp__", "__targetpp__", "__labels__"]
+            if k not in ["__neograndrel__", "__sourcepp__", "__targetpp__", "__labels__"]
         }
 
-        return relationship_classes[rel_type].relationship_class(
-            source=source_node, target=target_node, **rel_dict
-        )
+        return relationship_classes[rel_type].relationship_class(source=source_node, target=target_node, **rel_dict)
 
     warnings.warn(f"Relationship type {rel_type} does not match any known classes.")
     return None
 
 
-def grand_cypher_to_neontology_records(
-    records: dict, node_classes: dict, relationship_classes: dict
-):
+def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relationship_classes: dict):
     """Convert GrandCypher records to Neontology records.
 
     Args:
@@ -174,9 +165,7 @@ def grand_cypher_to_neontology_records(
                 node = grand_node_to_neontology_node(entry, node_classes)
 
                 if node:
-                    all_nodes[
-                        generate_node_id(node.get_pp(), node.__primarylabel__)
-                    ] = node
+                    all_nodes[generate_node_id(node.get_pp(), node.__primarylabel__)] = node
 
                 if len(new_records) == idx:
                     new_records.append({"nodes": {}, "relationships": {}, "paths": {}})
@@ -185,38 +174,44 @@ def grand_cypher_to_neontology_records(
 
     for key, entries in records.items():
         for idx, entry in enumerate(entries):
-            # handle relationships
-            if 0 in entry and entry[0]["__neograndrel__"] is True:
-                source_node = all_nodes.get(entry[0]["__sourcepp__"])
-                target_node = all_nodes.get(entry[0]["__targetpp__"])
+            # process relationships
+            if isinstance(entry, dict):
+                for subentry in entry.values():
+                    if isinstance(subentry, dict):
+                        source_node = all_nodes.get(subentry["__sourcepp__"])
+                        target_node = all_nodes.get(subentry["__targetpp__"])
 
-                rel_type = list(entry[0]["__labels__"])[0]
+                        rel_type = list(subentry["__labels__"])[0]
 
-                if not source_node or not target_node:
-                    warnings.warn(
-                        (
-                            f"{rel_type} relationship type query did not include nodes."
-                            " To get neontology relationships, return source and target "
-                            "nodes as part of result."
-                        )
-                    )
-                    rel = None
+                        if not source_node or not target_node:
+                            warnings.warn(
+                                (
+                                    f"{rel_type} relationship type query did not include nodes."
+                                    " To get neontology relationships, return source and target "
+                                    "nodes as part of result."
+                                )
+                            )
+                            rel = None
 
-                else:
-                    rel = grand_relationship_to_neontology_relationship(
-                        entry[0], source_node, target_node, relationship_classes
-                    )
+                        else:
+                            rel = grand_relationship_to_neontology_relationship(
+                                subentry, source_node, target_node, relationship_classes
+                            )
 
-                if rel:
-                    all_rels.append(rel)
+                        if rel:
+                            all_rels.append(rel)
 
-                try:
-                    new_records[idx]["relationships"][key.value] = rel
+                        try:
+                            new_records[idx]["relationships"][key.value] = rel
 
-                except IndexError:
-                    new_records.append(
-                        {"nodes": {}, "relationships": {key.value: rel}, "paths": {}}
-                    )
+                        except IndexError:
+                            new_records.append(
+                                {
+                                    "nodes": {},
+                                    "relationships": {key.value: rel},
+                                    "paths": {},
+                                }
+                            )
 
             # handle paths
             elif isinstance(entry, list):
@@ -230,9 +225,7 @@ def grand_cypher_to_neontology_records(
                         target_node = all_nodes.get(path_rel_record["__targetpp__"])
 
                         if not source_node or not target_node:
-                            warnings.warn(
-                                f"Source or target node not found for '{key.value}'"
-                            )
+                            warnings.warn(f"Source or target node not found for '{key.value}'")
                             path_rel = None
 
                         else:
@@ -264,9 +257,7 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _filters_to_where_clause(
-        self, filters: Optional[dict] = None
-    ) -> tuple[str, dict]:
+    def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
@@ -290,23 +281,18 @@ class NetworkxEngine(GraphEngineBase):
         ]
 
         if filters:
-
-            for key, value in filters.items():
+            for key in filters.keys():
                 if "__" in key:
                     _, lookup_type = key.split("__")
                 else:
                     _, lookup_type = key, "exact"
 
                 if lookup_type not in supported_filters:
-                    raise NotImplementedError(
-                        f"{lookup_type} filter is not implemented for NetworkX engine."
-                    )
+                    raise NotImplementedError(f"{lookup_type} filter is not implemented for NetworkX engine.")
 
         return super()._filters_to_where_clause(filters)
 
-    def _swap_prop(
-        self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str
-    ):
+    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str):
         """Swap a property in a list of dictionaries.
 
         Args:
@@ -326,9 +312,7 @@ class NetworkxEngine(GraphEngineBase):
                     this_node = data
 
             if not this_node:
-                warnings.warn(
-                    f"Source node with property {prop_to_update}={entry[props_key]} not found."
-                )
+                warnings.warn(f"Source node with property {prop_to_update}={entry[props_key]} not found.")
                 continue
 
             # get the actual node id
@@ -353,9 +337,7 @@ class NetworkxEngine(GraphEngineBase):
         """Close the connection to the backend."""
         pass
 
-    def create_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
-    ) -> list[BaseNodeT]:
+    def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.
 
         Args:
@@ -397,9 +379,7 @@ class NetworkxEngine(GraphEngineBase):
 
         return results
 
-    def merge_nodes(
-        self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]
-    ) -> list[BaseNodeT]:
+    def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Merge nodes with specified labels and property.
 
         Args:
@@ -417,26 +397,17 @@ class NetworkxEngine(GraphEngineBase):
 
         # NetworkX doesn't natively merge, so we handle new and existing nodes separately
         create_records = {
-            x["pp"]: x
-            for x in properties
-            if not self.driver.has_node(
-                generate_node_id(x["pp"], node_class.__primarylabel__)
-            )
+            x["pp"]: x for x in properties if not self.driver.has_node(generate_node_id(x["pp"], node_class.__primarylabel__))
         }
 
         create_results = self.create_nodes(
             labels=labels,
             pp_key=pp_key,
-            properties=[
-                {"pp": pp, "props": {**v["always_set"], **v["set_on_create"]}}
-                for pp, v in create_records.items()
-            ],
+            properties=[{"pp": pp, "props": {**v["always_set"], **v["set_on_create"]}} for pp, v in create_records.items()],
             node_class=node_class,
         )
 
-        merge_pps = list(
-            set([x["pp"] for x in properties]) - set(create_records.keys())
-        )
+        merge_pps = list(set([x["pp"] for x in properties]) - set(create_records.keys()))
 
         existing_node_records = {
             x: self.driver.nodes[generate_node_id(x, node_class.__primarylabel__)]
@@ -456,9 +427,7 @@ class NetworkxEngine(GraphEngineBase):
                 # and update them in for the new merge_props
                 existing_node = existing_node_records[entry["pp"]]
                 create_props = entry.get("set_on_create", {}).keys()
-                new_set_on_create = {
-                    k: existing_node[k] for k in create_props if k in existing_node
-                }
+                new_set_on_create = {k: existing_node[k] for k in create_props if k in existing_node}
 
                 entry["previously_set_on_create"] = new_set_on_create
                 merge_props.append(entry)
@@ -506,6 +475,21 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver.remove_nodes_from([generate_node_id(x, label) for x in pp_values])
 
+    def _existing_edges(self, node1, node2, **attributes):
+        """Find matching edges in the graph."""
+        if self.driver.has_edge(node1, node2):
+            edge_dict = self.driver.get_edge_data(node1, node2)
+
+            keys_to_delete = []
+
+            for key, edge_data in edge_dict.items():
+                if all(edge_data.get(attr) == value for attr, value in attributes.items()):
+                    keys_to_delete.append(key)
+
+            return keys_to_delete
+        else:
+            return None
+
     def merge_relationships(
         self,
         source_label: str,
@@ -531,11 +515,6 @@ class NetworkxEngine(GraphEngineBase):
         """
         from ..utils import get_node_types
 
-        if merge_on_props:
-            raise NotImplementedError(
-                f"NetworkX does not currently support merging relationships on properties (received: {merge_on_props})."
-            )
-
         all_types = get_node_types()
 
         source_type = all_types[source_label]
@@ -557,22 +536,43 @@ class NetworkxEngine(GraphEngineBase):
                 target_type.__primaryproperty__,
             )
 
-        edge_records = [
-            (
-                generate_node_id(x["source_prop"], source_label),
-                generate_node_id(x["target_prop"], target_label),
+        edge_records = []
+
+        for x in rel_props:
+            all_props = {**x["always_set"], **x["set_on_match"], **x["set_on_create"]}
+
+            source_id = generate_node_id(x["source_prop"], source_label)
+            target_id = generate_node_id(x["target_prop"], target_label)
+
+            merge_attributes = {"__labels__": {gql_identifier_adapter.validate_strings(rel_type)}}
+
+            # if there are props to merge on, pull them out too
+
+            for merge_on_prop in merge_on_props:
+                if all_props.get(merge_on_prop):
+                    merge_attributes[merge_on_prop] = all_props[merge_on_prop]
+
+            # now check if there is already a relationship which meets that criteria
+            existing_edges = self._existing_edges(source_id, target_id, **merge_attributes)
+
+            if existing_edges is not None:
+                # if the edge already exists, we need to delete it
+                for key in existing_edges:
+                    self.driver.remove_edge(source_id, target_id, key=key)
+
+            new_record = (
+                source_id,
+                target_id,
                 {
-                    **x["always_set"],
-                    **x["set_on_match"],
-                    **x["set_on_create"],
+                    **all_props,
                     "__labels__": {gql_identifier_adapter.validate_strings(rel_type)},
                     "__neograndrel__": True,
                     "__sourcepp__": generate_node_id(x["source_prop"], source_label),
                     "__targetpp__": generate_node_id(x["target_prop"], target_label),
                 },
             )
-            for x in rel_props
-        ]
+
+            edge_records.append(new_record)
 
         self.driver.add_edges_from(edge_records)
 
@@ -615,9 +615,7 @@ class NetworkxEngine(GraphEngineBase):
             paths=paths,
         )
 
-    def evaluate_query_single(
-        self, cypher: LiteralString, params: dict = {}
-    ) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: LiteralString, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
@@ -661,7 +659,6 @@ class NetworkxEngine(GraphEngineBase):
         result = self.evaluate_query_single(cypher, params)
 
         if result:
-
             return result[0]["_"]
 
         else:
