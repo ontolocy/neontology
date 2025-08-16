@@ -95,6 +95,11 @@ def test_merge_relationship(request, use_graph):
         )
 
 
+class SubclassNode(PracticeNode):
+    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
+    myprop: str
+
+
 def test_match_relationship(use_graph):
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
@@ -113,6 +118,41 @@ def test_match_relationship(use_graph):
 
     assert rels[0].practice_rel_prop == "TESTING MATCH RELATIONSHIP"
 
+@pytest.mark.filterwarnings("ignore:Unexpected primary labels returned:UserWarning")
+def test_match_relationship_subclass(use_graph):
+    person_node = PracticeNode(pp="Source Node")
+    person_node.create()
+
+    other_person_node = PracticeNode(pp="Target Node")
+    other_person_node.create()
+
+    employee_node = SubclassNode(pp="Subclass Target Node", myprop="Sub")
+    employee_node.create()
+
+    br = PracticeRelationship(
+        source=person_node,
+        target=other_person_node,
+        practice_rel_prop="TESTING MATCH RELATIONSHIP",
+    )
+    br.merge()
+
+    sr = PracticeToSubclassOnlyRelationship(
+        source=person_node,
+        target=employee_node,
+        practice_rel_prop="TESTING MATCH SUB NODE RELATIONSHIP",
+    )
+    sr.merge()
+
+    rels = PracticeRelationship.match_relationships()
+
+    # should be 2 Practice Relationships (1 of PracticeNode target, 1 of SubclassNode target)
+    assert len(rels) == 2
+    assert rels[0].practice_rel_prop == "TESTING MATCH RELATIONSHIP"
+
+    # should be only 1 Secondary Relationship
+    rels_secondary = PracticeToSubclassOnlyRelationship.match_relationships()
+    assert len(rels_secondary) == 1
+    assert rels_secondary[0].practice_rel_prop == "TESTING MATCH SUB NODE RELATIONSHIP"
 
 class RelMergeOnMatchTest(PracticeRelationship):
     __relationshiptype__: ClassVar[Optional[str]] = "TEST_REL_MERGE_ON_MATCH"
@@ -254,6 +294,12 @@ class NewRelType(BaseRelationship):
     new_rel_prop: str
 
 
+class PracticeToSubclassOnlyRelationship(PracticeRelationship):
+    """Same as PracticeRelationship, but PracticeNode->SubClassNode instead of PracticeNode->PracticeNode"""
+
+    target: SubclassNode
+
+
 def test_merge_relationships_defined_types(use_graph):
     node1 = PracticeNode(pp="Source Node")
     node1.create()
@@ -296,11 +342,6 @@ def test_get_count(use_graph):
 
 def test_get_count_none(use_graph):
     assert not NewRelType.get_count()
-
-
-class SubclassNode(PracticeNode):
-    __primarylabel__: ClassVar[Optional[str]] = "SubclassNode"
-    myprop: str
 
 
 class NewRelType2(BaseRelationship):

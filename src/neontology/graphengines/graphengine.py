@@ -435,8 +435,10 @@ class GraphEngineBase:
             cypher += " LIMIT $limit "
             params["limit"] = int_adapter.validate_python(limit)
 
-        rel_types = get_rels_by_type()
-        node_classes = get_node_types()
+        rel_types = get_rels_by_type(relationship_class)
+        node_classes = get_node_types(relationship_class.model_fields["source"].annotation)
+        if relationship_class.model_fields["source"].annotation != relationship_class.model_fields["target"].annotation:
+            node_classes.update(get_node_types(relationship_class.model_fields["target"].annotation))
 
         result = self.evaluate_query(
             cypher,
