@@ -105,6 +105,15 @@ rel = FollowsRel(source=bob,target=alice)
 rel.merge()
 ```
 
+## Deleting the relationship
+
+We can also delete a relationship between the two nodes.
+
+```python
+rel = FollowsRel(source=bob,target=alice)
+rel.delete()
+```
+
 ## Populating Neo4j with pandas data
 
 Often we might have data in a pandas dataframe which we want to push to Neo4j according to the model which we have defined.
