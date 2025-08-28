@@ -294,6 +294,37 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
+    def delete_relationships(
+        self,
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        rel_props: list[dict],
+    ) -> None:
+        """Delete relationships between nodes in the database.
+        Args:
+            source_label (str): The label of the source node.
+            target_label (str): The label of the target node.
+            source_prop (str): The property of the source node to match on.
+            target_prop (str): The property of the target node to match on.
+            rel_type (str): The type of relationship to delete.
+            rel_props (list[dict]): A list of dictionaries representing each relationship to be deleted.
+                Each dictionary should contain keys for `source_prop` and `target_prop`.
+        """
+        cypher = f"""
+        UNWIND $rel_list AS rel
+        MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
+        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
+        MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
+        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
+        MATCH (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)}]->(target)
+        DELETE r
+        """
+        params = {"rel_list": rel_props}
+        self.evaluate_query_single(cypher, params)
+
     def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 

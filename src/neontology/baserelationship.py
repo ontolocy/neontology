@@ -154,6 +154,35 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             [rel_props],
         )
 
+    def delete(self) -> None:
+        """Delete this relationship from the database."""
+        source_label = self.source.__primarylabel__
+        target_label = self.target.__primarylabel__
+        if not source_label or not target_label:
+            raise ValueError("Source and target Nodes must have a defined primary label for deleting a relationship.")
+
+        source_prop = self.source.__primaryproperty__
+        target_prop = self.target.__primaryproperty__
+
+        rel_props = {
+            "source_prop": getattr(self.source, source_prop),
+            "target_prop": getattr(self.target, target_prop),
+        }
+
+        rel_type = self.get_relationship_type()
+        if not rel_type:
+            raise ValueError("Relationship must have a defined relationship type for deletion.")
+
+        gc = GraphConnection()
+        gc.delete_relationships(
+            source_label,
+            target_label,
+            source_prop,
+            target_prop,
+            rel_type,
+            [rel_props],
+        )
+
     @classmethod
     def merge_relationships(
         cls: type[R],

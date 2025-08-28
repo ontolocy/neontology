@@ -294,6 +294,119 @@ def test_get_count(use_graph):
     assert len(NewRelType.match_relationships()) == 2
 
 
+def test_delete_relationship(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+    target_node = PracticeNode(pp="Target Node")
+    target_node.create()
+
+    br = PracticeRelationship(
+        source=source_node,
+        target=target_node,
+        practice_rel_prop="Default Practice Relationship Property",
+    )
+    br.merge()
+
+    cypher_check = """
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN COUNT(r)
+    """
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 1
+
+    br.delete()
+
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 0
+
+
+def test_delete_multiple_relationships(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+    target_node1 = PracticeNode(pp="Target Node 1")
+    target_node1.create()
+    target_node2 = PracticeNode(pp="Target Node 2")
+    target_node2.create()
+
+    rel1 = PracticeRelationship(
+        source=source_node,
+        target=target_node1,
+        practice_rel_prop="Relationship 1",
+    )
+    rel1.merge()
+    rel2 = PracticeRelationship(
+        source=source_node,
+        target=target_node2,
+        practice_rel_prop="Relationship 2",
+    )
+    rel2.merge()
+
+    cypher_check = """
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:PRACTICE_RELATIONSHIP]->(tgt:PracticeNode)
+    RETURN COUNT(r)
+    """
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 2
+
+    rel1.delete()
+
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 1
+
+    rel2.delete()
+
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 0
+
+
+def test_delete_relationship_with_custom_type(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+    target_node = PracticeNode(pp="Target Node")
+    target_node.create()
+
+    custom_rel = NewRelType(
+        source=source_node,
+        target=target_node,
+        new_rel_prop="Custom Relationship",
+    )
+    custom_rel.merge()
+
+    cypher_check = """
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN COUNT(r)
+    """
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 1
+
+    custom_rel.delete()
+
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 0
+
+
+def test_delete_nonexistent_relationship(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    source_node.create()
+    target_node = PracticeNode(pp="Target Node")
+    target_node.create()
+
+    br = PracticeRelationship(
+        source=source_node,
+        target=target_node,
+        practice_rel_prop="Nonexistent Relationship",
+    )
+
+    br.delete()
+
+    cypher_check = """
+    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:PRACTICE_RELATIONSHIP]->(tgt:PracticeNode {pp: 'Target Node'})
+    RETURN COUNT(r)
+    """
+    result = use_graph.evaluate_query_single(cypher_check)
+    assert result == 0
+
+
 def test_get_count_none(use_graph):
     assert not NewRelType.get_count()
 

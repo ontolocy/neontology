@@ -287,6 +287,36 @@ class GraphConnection(object):
             rel_props,
         )
 
+    def delete_relationships(
+        self,
+        source_label: str,
+        target_label: str,
+        source_prop: str,
+        target_prop: str,
+        rel_type: str,
+        rel_props: list[dict],
+    ) -> None:
+        """Delete relationships between nodes in the graph database.
+        Calls the underlying engine's delete_relationships method to remove relationships.
+
+        Args:
+            source_label (str): The label of the source node.
+            target_label (str): The label of the target node.
+            source_prop (str): The property of the source node to match on.
+            target_prop (str): The property of the target node to match on.
+            rel_type (str): The type of relationship to delete.
+            rel_props (list[dict]): A list of dictionaries representing each relationship to be deleted.
+                Each dictionary should contain keys for `source_prop` and `target_prop`.
+        """
+        self.engine.delete_relationships(
+            source_label,
+            target_label,
+            source_prop,
+            target_prop,
+            rel_type,
+            rel_props,
+        )
+
     def close(self) -> None:
         """Close the connection to the graph database."""
         self.engine.close_connection()
