@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.2
+
+### Fixed
+
+- Fixed bug where using ForwardRef type annotations for source/target types on a relationship cause errors. Note that ForwardRefs must be resolved before using the relationship (for creation or querying).
+
 ## v2.2.1
 
 ### Fixed

@@ -110,6 +110,7 @@ def neo4j_relationship_to_neontology_rel(
             (
                 f"Could not find a class for {rel_type} relationship type."
                 " Did you define the class before initializing Neontology?"
+                " Are source and target node classes valid and resolved?"
             )
         )
         return None

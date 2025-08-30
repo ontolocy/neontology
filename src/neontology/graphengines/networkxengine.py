@@ -136,7 +136,11 @@ def grand_relationship_to_neontology_relationship(
 
         return relationship_classes[rel_type].relationship_class(source=source_node, target=target_node, **rel_dict)
 
-    warnings.warn(f"Relationship type {rel_type} does not match any known classes.")
+    warnings.warn(
+        f"Relationship type {rel_type} does not match any known classes."
+        " Did you define the class before initializing Neontology?"
+        " Are source and target node classes valid and resolved?"
+    )
     return None
 
 
