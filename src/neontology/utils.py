@@ -62,6 +62,21 @@ def generate_relationship_type_data(
     )
 
 
+def _validate_relationship_nodes(rel_class: type[BaseRelationship]) -> bool:
+    """Validate that a relationship class has valid source and target node classes defined.
+
+    This handles cases where the relationship class is defined but the source or target are ForwardRefs
+        which may be resolved later.
+    """
+    defined_source_class = rel_class.model_fields["source"].annotation
+    defined_target_class = rel_class.model_fields["target"].annotation
+
+    if not isinstance(defined_source_class, type) or not isinstance(defined_target_class, type):
+        return False
+
+    return True
+
+
 def get_rels_by_type(
     base_type: type[BaseRelationship] = BaseRelationship,
 ) -> dict[str, RelationshipTypeData]:
@@ -71,7 +86,7 @@ def get_rels_by_type(
     """
     rel_types: dict = defaultdict(dict)
 
-    if getattr(base_type, "__relationshiptype__", None):
+    if getattr(base_type, "__relationshiptype__", None) and _validate_relationship_nodes(base_type):
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type)
 
     for rel_subclass in base_type.__subclasses__():
@@ -79,7 +94,7 @@ def get_rels_by_type(
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph
 
-        if getattr(rel_subclass, "__relationshiptype__", None):
+        if getattr(rel_subclass, "__relationshiptype__", None) and _validate_relationship_nodes(rel_subclass):
             rel_types[rel_subclass.__relationshiptype__] = generate_relationship_type_data(rel_subclass)
 
         rel_types.update(get_rels_by_type(rel_subclass))
