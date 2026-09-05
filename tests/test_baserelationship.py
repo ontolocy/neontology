@@ -45,9 +45,7 @@ def test_rel_schema():
     assert schema.relationship_type == "PRACTICE_RELATIONSHIP"
     assert schema.source_labels == ["PracticeNode"]
 
-    practice_rel_prop = [x for x in schema.properties if x.name == "practice_rel_prop"][
-        0
-    ]
+    practice_rel_prop = [x for x in schema.properties if x.name == "practice_rel_prop"][0]
 
     assert practice_rel_prop.type_annotation.representation == "str"
 
@@ -311,9 +309,7 @@ def test_merge_df(request, use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.merge()
 
-    rel_records = [
-        {"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 3"}
-    ]
+    rel_records = [{"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 3"}]
 
     df = pd.DataFrame.from_records(rel_records)
 
@@ -373,9 +369,7 @@ def test_merge_records(request, use_graph):
     target_node = PracticeNode(pp="Target Node")
     target_node.merge()
 
-    records = [
-        {"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 5"}
-    ]
+    records = [{"source": "Source Node", "target": "Target Node", "new_rel_prop": "New Rel 5"}]
 
     NewRelType2.merge_records(records)
 
@@ -398,10 +392,7 @@ def test_create_mass_rels(request, use_graph, benchmark):
 
     assert PracticeNode.get_count() == 1000
 
-    people_rels = [
-        {"source": practice_records[x]["pp"], "target": practice_records[x + 1]["pp"]}
-        for x in range(999)
-    ]
+    people_rels = [{"source": practice_records[x]["pp"], "target": practice_records[x + 1]["pp"]} for x in range(999)]
 
     rels_df = pd.DataFrame.from_records(people_rels)
 
@@ -409,9 +400,7 @@ def test_create_mass_rels(request, use_graph, benchmark):
         PracticeRelationship.merge_df(input_df)
 
         if request.node.callspec.id not in ["networkx-engine"]:
-            result = use_graph.evaluate_query_single(
-                "MATCH (n)-[r]->(o) RETURN COUNT(r)"
-            )
+            result = use_graph.evaluate_query_single("MATCH (n)-[r]->(o) RETURN COUNT(r)")
             assert result == 999
 
             use_graph.evaluate_query_single("MATCH (n)-[r]->(o) DELETE r")

@@ -20,9 +20,7 @@ class PracticeRelationshipGC(BaseRelationship):
     __relationshiptype__: ClassVar[Optional[str]] = "PRACTICE_RELATIONSHIP_GC"
 
 
-create_test_node_table_cypher = (
-    "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
-)
+create_test_node_table_cypher = "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
 
 
 def test_evaluate_query_single(request, use_graph):
@@ -231,7 +229,6 @@ def test_evaluate_query_params(use_graph):
 
 
 def test_undefined_label(request, use_graph):
-
     if request.node.callspec.id in ["networkx-engine"]:
         pytest.skip("Grand Cypher doesn't support graph mutations.")
 
@@ -259,7 +256,6 @@ class SpecialTestNodeGC(BaseNode):
 
 
 def test_multiple_primary_labels(request, use_graph):
-
     if request.node.callspec.id in ["networkx-engine"]:
         pytest.skip("Grand Cypher doesn't support graph mutations.")
 
@@ -309,9 +305,7 @@ def test_warn_on_unexpected_secondary_labels(request, use_graph):
 
     # check we raise a warning
 
-    with pytest.warns(
-        UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"
-    ):
+    with pytest.warns(UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"):
         result = gc.evaluate_query(match_cypher)
 
     # we should still capture as records and nodes
@@ -412,18 +406,14 @@ class ComplexPracticeRelationshipGC(BaseRelationship):
 
 def test_evaluate_query_node_links(request, use_graph):
     if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip(
-            "NetworkX backend doesn't support merge_on operations for relationships."
-        )
+        pytest.skip("NetworkX backend doesn't support merge_on operations for relationships.")
 
     foo = ComplexPracticeNodeGC(pp="foo", a_list=[1, 2, 3])
     bar = ComplexPracticeNodeGC(pp="bar")
     baz = ComplexPracticeNodeGC(pp="baz", a_list=[])
     rel1 = ComplexPracticeRelationshipGC(source=foo, target=bar, b_list=[4, 5, 6])
     rel2 = ComplexPracticeRelationshipGC(source=bar, target=baz)
-    rel3 = ComplexPracticeRelationshipGC(
-        source=baz, target=foo, b_list=["hello", "world"], number=9
-    )
+    rel3 = ComplexPracticeRelationshipGC(source=baz, target=foo, b_list=["hello", "world"], number=9)
     rel4 = ComplexPracticeRelationshipGC(source=baz, target=foo)
 
     foo.merge()

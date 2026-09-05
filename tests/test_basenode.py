@@ -42,14 +42,10 @@ class PracticeNodeDated(BaseNode):
     )
 
     # created property will only be set 'on create' - when the node is first created
-    test_created: Optional[datetime] = Field(
-        default=None, validate_default=True, json_schema_extra={"set_on_create": True}
-    )
+    test_created: Optional[datetime] = Field(default=None, validate_default=True, json_schema_extra={"set_on_create": True})
 
     @field_validator("test_created")
-    def set_test_created_to_merged(
-        cls, value: Optional[datetime], values: ValidationInfo
-    ) -> datetime:
+    def set_test_created_to_merged(cls, value: Optional[datetime], values: ValidationInfo) -> datetime:
         """When the node is first created, we want the created value
         to be set equal to merged.
         Otherwise they will be a tiny amount of time different.
@@ -130,9 +126,7 @@ def test_create_if_exists(request, use_graph):
 
     tn.create()
 
-    node_count = use_graph.evaluate_query_single(
-        "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
-    )
+    node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
     if request.node.callspec.id not in ["networkx-engine"]:
         assert node_count == 2
@@ -162,9 +156,7 @@ def test_create_multiple_if_exists(request, use_graph):
 
     PracticeNode.create_nodes([tn])
 
-    node_count = use_graph.evaluate_query_single(
-        "MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)"
-    )
+    node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
     if request.node.callspec.id not in ["networkx-engine"]:
         assert node_count == 2
@@ -222,7 +214,6 @@ def test_create_multilabel(request, use_graph):
     # confirm the secondary labels were written to the database
 
     if request.node.callspec.id not in ["networkx-engine"]:
-
         assert "ExtraLabel1" in result.records_raw[0].values()[0].labels
         assert "ExtraLabel2" in result.records_raw[0].values()[0].labels
 
@@ -505,9 +496,7 @@ def test_match_nodes_with_string_filters(request, use_graph):
         code: str
 
     nodes = [
-        TestNode(
-            id="1", name="Aspartame", description="Sweetener product", code="E951"
-        ),
+        TestNode(id="1", name="Aspartame", description="Sweetener product", code="E951"),
         TestNode(id="2", name="Sucrose", description="Natural sweetener", code="E473"),
         TestNode(
             id="3",
@@ -515,9 +504,7 @@ def test_match_nodes_with_string_filters(request, use_graph):
             description="Artificial sweetener",
             code="E951",
         ),
-        TestNode(
-            id="4", name="Stevia", description="Plant-based sweetener", code="E960"
-        ),
+        TestNode(id="4", name="Stevia", description="Plant-based sweetener", code="E960"),
     ]
     TestNode.merge_nodes(nodes)
 
@@ -527,7 +514,6 @@ def test_match_nodes_with_string_filters(request, use_graph):
     assert results[0].id == "1"
 
     if request.node.callspec.id not in ["networkx-engine"]:
-
         # Test icontains
         results = TestNode.match_nodes(filters={"name__icontains": "aspart"})
         assert len(results) == 2
@@ -550,9 +536,7 @@ def test_match_nodes_with_string_filters(request, use_graph):
 
     elif request.node.callspec.id == "networkx-engine":
         with pytest.raises(NotImplementedError):
-            results = TestNode.match_nodes(
-                filters={"name__iexact": "aspartame synthetic"}
-            )
+            results = TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
 
     # Test startswith and istartswith
 
@@ -567,9 +551,7 @@ def test_match_nodes_with_string_filters(request, use_graph):
 
     elif request.node.callspec.id == "networkx-engine":
         with pytest.raises(NotImplementedError):
-            results = TestNode.match_nodes(
-                filters={"description__istartswith": "plant"}
-            )
+            results = TestNode.match_nodes(filters={"description__istartswith": "plant"})
 
 
 def test_match_nodes_with_numeric_filters(use_graph):
@@ -602,9 +584,7 @@ def test_match_nodes_with_numeric_filters(use_graph):
     assert sorted([x.id for x in results]) == ["1", "3"]
 
     # Test combination of numeric filters
-    results = Product.match_nodes(
-        filters={"price__gt": 5, "price__lt": 15, "rating__gte": 4.6}
-    )
+    results = Product.match_nodes(filters={"price__gt": 5, "price__lt": 15, "rating__gte": 4.6})
     assert len(results) == 1
     assert results[0].id == "4"
 
@@ -671,7 +651,6 @@ def test_match_nodes_with_boolean_filter(use_graph):
 def test_match_nodes_with_datetime_filter(request, use_graph):
     """Test filtering on datetime fields."""
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support datetime comparison.")
 
     class Event(BaseNode):
@@ -701,9 +680,7 @@ def test_match_nodes_with_datetime_filter(request, use_graph):
     assert sorted([x.id for x in results]) == ["1", "2", "4"]
 
     # Test between dates
-    results = Event.match_nodes(
-        filters={"start_date__gte": date2, "end_date__lte": date3}
-    )
+    results = Event.match_nodes(filters={"start_date__gte": date2, "end_date__lte": date3})
     assert len(results) == 1
     assert sorted([x.id for x in results]) == ["2"]
 
@@ -778,7 +755,6 @@ def test_match_nodes_with_combined_filters(request, use_graph):
     assert results[0].id == "2"
 
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support case insensitive matching.")
 
     # Test another combination
@@ -796,7 +772,6 @@ def test_match_nodes_with_combined_filters(request, use_graph):
 def test_match_nodes_with_pagination_and_filters_icontains(request, use_graph):
     """Test combination of filters with pagination parameters."""
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support case insensitive matching.")
     # Create test nodes
     nodes = [PracticeNode(pp=f"Test Node {i}") for i in range(1, 11)]
@@ -807,9 +782,7 @@ def test_match_nodes_with_pagination_and_filters_icontains(request, use_graph):
     assert len(results) == 3
 
     # Test with filter, skip and limit
-    results = PracticeNode.match_nodes(
-        filters={"pp__icontains": "test node"}, limit=2, skip=2
-    )
+    results = PracticeNode.match_nodes(filters={"pp__icontains": "test node"}, limit=2, skip=2)
     assert len(results) == 2
     assert all("Test Node" in x.pp for x in results)
 
@@ -825,9 +798,7 @@ def test_match_nodes_with_pagination_and_filters_contains(use_graph):
     assert len(results) == 3
 
     # Test with filter, skip and limit
-    results = PracticeNode.match_nodes(
-        filters={"pp__contains": "Test Node"}, limit=2, skip=2
-    )
+    results = PracticeNode.match_nodes(filters={"pp__contains": "Test Node"}, limit=2, skip=2)
     assert len(results) == 2
     assert all("Test Node" in x.pp for x in results)
 
@@ -896,7 +867,6 @@ def test_match_nodes_with_enum_filter(use_graph):
 def test_match_nodes_with_list_filters(request, use_graph):
     """Test filtering on list fields."""
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support list types.")
 
     class Product(BaseNode):
@@ -910,9 +880,7 @@ def test_match_nodes_with_list_filters(request, use_graph):
     products = [
         Product(id="1", name="Product 1", tags=["tag1", "tag2"], categories=["cat1"]),
         Product(id="2", name="Product 2", tags=["tag2", "tag3"], categories=["cat2"]),
-        Product(
-            id="3", name="Product 3", tags=["tag1", "tag3"], categories=["cat1", "cat2"]
-        ),
+        Product(id="3", name="Product 3", tags=["tag1", "tag3"], categories=["cat1", "cat2"]),
     ]
     Product.merge_nodes(products)
 
@@ -934,7 +902,6 @@ def test_match_nodes_with_list_filters(request, use_graph):
 def test_match_nodes_with_unsupported_filter(request, use_graph):
     """Test handling of unsupported filter types."""
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support undefined filters.")
 
     class TestNode(BaseNode):
@@ -970,7 +937,6 @@ def test_match_nodes_with_empty_filters(use_graph):
 def test_match_nodes_with_complex_types(request, use_graph):
     """Test filtering on complex types like UUID, datetime, etc."""
     if request.node.callspec.id in ["networkx-engine"]:
-
         pytest.skip("NetworkxEngine does not support complex types.")
 
     class TestNode(BaseNode):
@@ -1241,9 +1207,7 @@ def test_set_on_match(use_graph):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "TestModel2"
         pp: str = "test_node"
-        only_set_on_match: Optional[str] = Field(
-            json_schema_extra={"set_on_match": True}, default=None
-        )
+        only_set_on_match: Optional[str] = Field(json_schema_extra={"set_on_match": True}, default=None)
         normal_field: str
 
     test_node = TestModel(only_set_on_match="Foo", normal_field="Bar", pp="test_node")
@@ -1303,9 +1267,7 @@ def test_set_on_create(use_graph):
 
 class Person(BaseNode):
     __primaryproperty__: ClassVar[str] = "identifier"
-    __primarylabel__: ClassVar[str] = (
-        "PersonLabel1"  # optionally specify the label to use
-    )
+    __primarylabel__: ClassVar[str] = "PersonLabel1"  # optionally specify the label to use
 
     name: str
     age: int
@@ -1348,9 +1310,7 @@ def test_merge_df_with_duplicates(use_graph):
 
 class Person2(BaseNode):
     __primaryproperty__: ClassVar[str] = "name"
-    __primarylabel__: ClassVar[str] = (
-        "PersonLabel2"  # optionally specify the label to use
-    )
+    __primarylabel__: ClassVar[str] = "PersonLabel2"  # optionally specify the label to use
 
     name: str
     age: int
@@ -1423,9 +1383,7 @@ class AugmentedPerson(BaseNode):
     __primarylabel__: ClassVar[GQLIdentifier] = "AugmentedPerson"
 
     name: str
-    optional_enum: Optional[SampleEnum] = Field(
-        default_factory=lambda: SampleEnum.VALUE1
-    )
+    optional_enum: Optional[SampleEnum] = Field(default_factory=lambda: SampleEnum.VALUE1)
 
     @field_serializer("optional_enum")
     def serialize_enum(self, value: Optional[SampleEnum]) -> Optional[str]:
@@ -1476,7 +1434,6 @@ def test_node_schema():
 
 
 def test_node_schema_json():
-
     schema_json = AugmentedPerson.neontology_schema().model_dump_json()
 
     schema_dict = json.loads(schema_json)
@@ -1515,14 +1472,10 @@ def test_related_nodes(request, use_graph):
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    follows = AugmentedPersonRelationship(
-        source=alice, target=bob, follow_tag="test-tag"
-    )
+    follows = AugmentedPersonRelationship(source=alice, target=bob, follow_tag="test-tag")
     follows.merge()
 
-    follows2 = AugmentedPersonRelationship(
-        source=bob, target=alice, follow_tag="second-tag"
-    )
+    follows2 = AugmentedPersonRelationship(source=bob, target=alice, follow_tag="second-tag")
     follows2.merge()
 
     alice_rels = alice.get_related()
@@ -1534,7 +1487,6 @@ def test_related_nodes(request, use_graph):
 
     # grand cypher has limited support for relationship property queries
     if request.node.callspec.id not in ["networkx-engine"]:
-
         bobs_followers = bob.get_related(
             relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
             incoming=True,
@@ -1580,9 +1532,7 @@ def test_retrieve_property(request, use_graph):
     bob = AugmentedPerson(name="Bob")
     bob.merge()
 
-    follows = AugmentedPersonRelationship(
-        source=alice, target=bob, follow_tag="test-tag"
-    )
+    follows = AugmentedPersonRelationship(source=alice, target=bob, follow_tag="test-tag")
     follows.merge()
 
     assert bob.follower_count() == 1
@@ -1619,9 +1569,7 @@ def test_retrieve_nodes_none(use_graph):
 
 class ComplexPerson(BaseNode):
     __primaryproperty__: ClassVar[str] = "identifier"
-    __primarylabel__: ClassVar[str] = (
-        "PersonLabel1"  # optionally specify the label to use
-    )
+    __primarylabel__: ClassVar[str] = "PersonLabel1"  # optionally specify the label to use
 
     name: str = Field(default_factory=uuid4)
     age: int
@@ -1669,9 +1617,7 @@ class UserWithAliases(BaseNode):
 
 def test_aliased_properties(request, use_graph):
     user1: UserWithAliases = UserWithAliases(userName="User1")
-    user2: UserWithAliases = UserWithAliases(
-        user_name="User2", some_other_property="alpha"
-    )
+    user2: UserWithAliases = UserWithAliases(user_name="User2", some_other_property="alpha")
     user3: UserWithAliases = UserWithAliases(userName="User3", otherProperty="beta")
     assert user1.user_name == "User1"
     assert user3.some_other_property == "beta"
@@ -1703,7 +1649,6 @@ def test_aliased_properties(request, use_graph):
         assert result.records_raw[2][0]["otherProperty"] == "beta"
 
     if request.node.callspec.id in ["networkx-engine"]:
-
         assert result.records_raw["n"][0]["userName"] == "User1"
         assert result.records_raw["n"][0]["otherProperty"] is None
 
