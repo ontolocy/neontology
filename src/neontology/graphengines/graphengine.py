@@ -9,6 +9,7 @@ from pydantic import BaseModel, model_validator
 
 from ..gql import gql_identifier_adapter, int_adapter
 from ..result import NeontologyResult
+from .capabilities import Capability
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
@@ -19,6 +20,10 @@ BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
 
 
 class GraphEngineBase:
+    # engines declare what they support - an omission means unsupported, so a
+    # capability added to the vocabulary is never silently claimed
+    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset(Capability)
+
     _supported_types: ClassVar[Any] = (
         list,
         bool,
@@ -40,6 +45,25 @@ class GraphEngineBase:
             config (Optional[dict]): GraphEngine configuration
         """
         pass
+
+    @classmethod
+    def supports(cls, capability: Capability) -> bool:
+        """Report whether this engine supports a given capability.
+
+        Args:
+            capability (Capability): the capability to check.
+
+        Returns:
+            bool: True if this engine supports it.
+
+        Raises:
+            TypeError: if given something that is not a Capability, so that a typo
+                is an error rather than a silently unsupported feature.
+        """
+        if not isinstance(capability, Capability):
+            raise TypeError(f"Expected a Capability, got {capability!r}")
+
+        return capability in cls.supported_capabilities
 
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:

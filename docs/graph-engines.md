@@ -67,7 +67,29 @@ Working with the `NetworkxEngine` requires additional dependencies and works wit
 pip install neontology[grand]
 ```
 
-Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend - case insensitive filters, datetime functionality, 'merge-on' properties for relationships.
+Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend - case insensitive filters and datetime functionality.
+
+### Engine capability matrix
+
+Where an engine cannot offer something, it is named as a capability and declared on the
+engine itself. The table below is generated from those declarations and checked by a
+test, so it cannot drift - see `Capability` in `neontology.graphengines.capabilities`
+for what each one means.
+
+<!-- BEGIN CAPABILITY MATRIX -->
+| Capability | Neo4j | Memgraph | NetworkX |
+| --- | --- | --- | --- |
+| `graph_mutations` | Yes | Yes | No |
+| `return_star` | Yes | Yes | No |
+| `duplicate_create` | Yes | Yes | No |
+| `case_insensitive_filters` | Yes | Yes | No |
+| `datetime_filters` | Yes | Yes | No |
+| `datetime_functions` | Yes | Yes | No |
+| `list_property_filters` | Yes | Yes | No |
+| `complex_property_types` | Yes | Yes | No |
+| `collected_values` | Yes | Yes | No |
+| `relationship_property_queries` | Yes | Yes | No |
+<!-- END CAPABILITY MATRIX -->
 
 ```python
 from neontology import GraphConnection, init_neontology
@@ -137,19 +159,16 @@ Note that auto constrain features only use a model's primary label (not secondar
 
 [Memgraph](https://memgraph.com/) is a Neo4j compatible database.
 
-In addition to configuring explicitly as above, you can also use the following environment variables and just `init_neontology(graph_engine=MemgraphEngine)`:
+In addition to configuring explicitly as above, you can also use the following environment variables and just `init_neontology(MemgraphConfig())`:
 
 * `MEMGRAPH_URI`
-* `MEMGRAPH_USER`
+* `MEMGRAPH_USERNAME`
 * `MEMGRAPH_PASSWORD`
 
 ```python
-from neontology import init_neontology
-from neontology.graph_engines import MemgraphEngine
+from neontology import init_neontology, MemgraphConfig
 
-init_neontology(
-    engine=MemgraphConfig()
-)
+init_neontology(MemgraphConfig())
 ```
 
 ### Memgraph Driver

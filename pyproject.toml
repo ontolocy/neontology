@@ -4,22 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neontology"
-version = "2.2.2"
+version = "3.0.0"
 authors = [
     {name = "Ontolocy"},
 ]
 description = "A Python package for modelling data in a Neo4j graph database with Pydantic and Pandas."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
     "Intended Audience :: Developers",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -65,7 +65,8 @@ all = [
 # Tool configurations (keeping your existing ones + removing flake8)
 [tool.pytest.ini_options]
 markers = [
-    "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')"
+    "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')",
+    "requires_capability: engine capabilities a test needs; xfails on engines lacking them",
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]
@@ -76,6 +77,11 @@ line-length = 128
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "D"]
 ignore = ["D100", "D101", "D104", "D107"]
+
+[tool.ruff.lint.per-file-ignores]
+# tests are linted for real problems (unused imports, undefined names, style)
+# but not for docstrings - a test's name is its documentation
+"tests/**" = ["D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

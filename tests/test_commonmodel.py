@@ -90,9 +90,7 @@ def test_engine_dict(field_type, python_value, neo4j_values, use_graph):
     assert test_prop_result in neo4j_values
 
 
-@pytest.mark.parametrize(
-    "field_type,python_value", [(dict, {"foo": "bar"}), (list, [123, "foo"])]
-)
+@pytest.mark.parametrize("field_type,python_value", [(dict, {"foo": "bar"}), (list, [123, "foo"])])
 def test_engine_dict_bad_types(field_type, python_value, use_graph):
     class TestModel(PracticeModel):
         test_prop: field_type

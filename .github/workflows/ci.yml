@@ -10,13 +10,13 @@ on:
       - main
 
 jobs:
-  build:
+  run-tests:
     runs-on: ubuntu-latest
 
     services:
       neo4j:
         # Docker Hub Image
-        image: neo4j:5-community
+        image: neo4j:2026-community
         # ports to expose
         ports:
           - 7687:7687
@@ -37,10 +37,10 @@ jobs:
       fail-fast: true
       max-parallel: 2
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.13t"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -57,4 +57,31 @@ jobs:
           TEST_MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
-          uv run pytest -x --benchmark-skip -k "not networkx-engine"
+          uv run pytest -x --benchmark-disable
+
+  minimal-install:
+    # neontology must work without the optional [grand] extra. No other job
+    # exercises that - they all install it - so a stray top-level import of
+    # networkx would break `pip install neontology` while CI stayed green.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install dev dependencies but no extras
+        run: |
+          uv sync
+      - name: Confirm the optional dependency really is absent
+        # if grand ever moves into the dev group this fails loudly, rather than
+        # the job quietly stopping testing what it exists to test
+        run: |
+          uv run python -c "import importlib.util, sys; sys.exit('networkx is installed - this job must run without the [grand] extra') if importlib.util.find_spec('networkx') else print('grand absent, as required')"
+      - name: Confirm neontology imports without it
+        run: |
+          uv run python -c "import neontology; neontology.BaseNode; print('neontology imports without grand')"
+      - name: Test with pytest
+        run: |
+          uv run pytest -m "not uses_graph" --benchmark-disable

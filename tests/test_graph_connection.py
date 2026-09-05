@@ -6,6 +6,7 @@ from pydantic import Field
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphconnection import GraphConnection
+from neontology.graphengines.capabilities import Capability
 
 
 class PracticeNodeGC(BaseNode):
@@ -20,14 +21,11 @@ class PracticeRelationshipGC(BaseRelationship):
     __relationshiptype__: ClassVar[Optional[str]] = "PRACTICE_RELATIONSHIP_GC"
 
 
-create_test_node_table_cypher = (
-    "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
-)
+create_test_node_table_cypher = "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
 
 
-def test_evaluate_query_single(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_evaluate_query_single(use_graph):
     gc = GraphConnection()
 
     create_cypher = """
@@ -40,9 +38,8 @@ def test_evaluate_query_single(request, use_graph):
     assert result == "Foo Bar"
 
 
-def test_evaluate_query_single_node(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_evaluate_query_single_node(use_graph):
     gc = GraphConnection()
 
     create_cypher = """
@@ -55,9 +52,8 @@ def test_evaluate_query_single_node(request, use_graph):
     assert dict(result)["name"] == "Foo Bar"
 
 
-def test_evaluate_query_single_multiple(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_evaluate_query_single_multiple(use_graph):
     gc = GraphConnection()
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
@@ -72,9 +68,8 @@ def test_evaluate_query_single_multiple(request, use_graph):
         gc.evaluate_query_single(match_cypher)
 
 
-def test_evaluate_query_single_collected(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_evaluate_query_single_collected(use_graph):
     gc = GraphConnection()
 
     gc.evaluate_query_single("CREATE (tn1:TestNode {name: 'Foo'})")
@@ -230,11 +225,8 @@ def test_evaluate_query_params(use_graph):
     assert result.nodes[0].pp == "bar"
 
 
-def test_undefined_label(request, use_graph):
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
-
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_undefined_label(use_graph):
     gc = GraphConnection()
 
     result = gc.evaluate_query_single("CREATE (tn1:WeirdTestNode {name: 'Foo'})")
@@ -258,11 +250,8 @@ class SpecialTestNodeGC(BaseNode):
     pp: str
 
 
-def test_multiple_primary_labels(request, use_graph):
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
-
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_multiple_primary_labels(use_graph):
     gc = GraphConnection()
 
     create_cypher = """
@@ -278,7 +267,10 @@ def test_multiple_primary_labels(request, use_graph):
 
     with pytest.warns(
         UserWarning,
-        match=r"Unexpected primary labels returned: {('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}",
+        match=(
+            r"Unexpected primary labels returned: "
+            r"{('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}"
+        ),
     ):
         result = gc.evaluate_query(match_cypher)
 
@@ -286,9 +278,8 @@ def test_multiple_primary_labels(request, use_graph):
     assert len(result.nodes) == 0
 
 
-def test_warn_on_unexpected_secondary_labels(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("Grand Cypher doesn't support graph mutations.")
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+def test_warn_on_unexpected_secondary_labels(use_graph):
     gc = GraphConnection()
 
     # create a node which looks like a practice node but has additional labels
@@ -306,9 +297,7 @@ def test_warn_on_unexpected_secondary_labels(request, use_graph):
 
     # check we raise a warning
 
-    with pytest.warns(
-        UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"
-    ):
+    with pytest.warns(UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"):
         result = gc.evaluate_query(match_cypher)
 
     # we should still capture as records and nodes
@@ -407,20 +396,14 @@ class ComplexPracticeRelationshipGC(BaseRelationship):
     number: int = Field(default=42, json_schema_extra={"merge_on": True})
 
 
-def test_evaluate_query_node_links(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip(
-            "NetworkX backend doesn't support merge_on operations for relationships."
-        )
-
+@pytest.mark.requires_capability(Capability.RETURN_STAR)
+def test_evaluate_query_node_links(use_graph):
     foo = ComplexPracticeNodeGC(pp="foo", a_list=[1, 2, 3])
     bar = ComplexPracticeNodeGC(pp="bar")
     baz = ComplexPracticeNodeGC(pp="baz", a_list=[])
     rel1 = ComplexPracticeRelationshipGC(source=foo, target=bar, b_list=[4, 5, 6])
     rel2 = ComplexPracticeRelationshipGC(source=bar, target=baz)
-    rel3 = ComplexPracticeRelationshipGC(
-        source=baz, target=foo, b_list=["hello", "world"], number=9
-    )
+    rel3 = ComplexPracticeRelationshipGC(source=baz, target=foo, b_list=["hello", "world"], number=9)
     rel4 = ComplexPracticeRelationshipGC(source=baz, target=foo)
 
     foo.merge()

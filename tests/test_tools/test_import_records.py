@@ -5,6 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from neontology import BaseNode, BaseRelationship
+from neontology.graphengines.capabilities import Capability
 from neontology.tools.import_records import import_records
 
 logger = logging.getLogger(__name__)
@@ -60,9 +61,7 @@ records_raw = {
 def test_export_import(use_graph):
     archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
     betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
-    bobalicerel = FollowsImportRel(
-        source=archy, target=betty, import_follows_prop_1="testing"
-    )
+    bobalicerel = FollowsImportRel(source=archy, target=betty, import_follows_prop_1="testing")
 
     import_data = {
         "nodes": [archy.neontology_dump(), betty.neontology_dump()],
@@ -75,14 +74,12 @@ def test_export_import(use_graph):
     assert len(FollowsImportRel.match_relationships()) == 1
 
 
-def test_dump_and_import(request, use_graph):
+def test_dump_and_import(use_graph):
     archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
     archy.merge()
     betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
     betty.merge()
-    bobalicerel = FollowsImportRel(
-        source=archy, target=betty, import_follows_prop_1="testing"
-    )
+    bobalicerel = FollowsImportRel(source=archy, target=betty, import_follows_prop_1="testing")
     bobalicerel.merge()
 
     assert len(PersonImportNode.match_nodes()) == 2
@@ -92,12 +89,12 @@ def test_dump_and_import(request, use_graph):
 
     import_data = results.neontology_dump()
 
-    if "networkx-engine" in request.node.callspec.id:
-        # grand cypher doesn't support DETACH DELETE
-        use_graph.engine.driver.clear()
+    if use_graph.engine.supports(Capability.GRAPH_MUTATIONS):
+        use_graph.evaluate_query_single("MATCH (n) DETACH DELETE n")
 
     else:
-        use_graph.evaluate_query_single("MATCH (n) DETACH DELETE n")
+        # without GRAPH_MUTATIONS there is no DETACH DELETE
+        use_graph.engine.driver.clear()
 
     assert len(PersonImportNode.match_nodes()) == 0
     assert len(FollowsImportRel.match_relationships()) == 0
