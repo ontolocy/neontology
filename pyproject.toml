@@ -77,5 +77,10 @@ line-length = 128
 select = ["E", "F", "I", "W", "D"]
 ignore = ["D100", "D101", "D104", "D107"]
 
+[tool.ruff.lint.per-file-ignores]
+# tests are linted for real problems (unused imports, undefined names, style)
+# but not for docstrings - a test's name is its documentation
+"tests/**" = ["D"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"

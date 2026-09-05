@@ -278,7 +278,10 @@ def test_multiple_primary_labels(request, use_graph):
 
     with pytest.warns(
         UserWarning,
-        match=r"Unexpected primary labels returned: {('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}",
+        match=(
+            r"Unexpected primary labels returned: "
+            r"{('SpecialTestNodeGC'|'PracticeNodeGC'), ('SpecialTestNodeGC'|'PracticeNodeGC')}"
+        ),
     ):
         result = gc.evaluate_query(match_cypher)
 

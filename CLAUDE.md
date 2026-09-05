@@ -23,8 +23,8 @@ uv run pytest --benchmark-skip          # skip the pytest-benchmark tests
 uv run pytest tests/test_basenode.py::test_name -k 'neo4j-engine'   # single test
 uv run pytest --cov=src/neontology
 
-uv run ruff check src
-uv run ruff format --check --diff src
+uv run ruff check src tests
+uv run ruff format --check --diff src tests
 
 uv run mkdocs serve
 ```
@@ -69,6 +69,6 @@ Cypher is built with parameters for values. Anything interpolated into the query
 
 ## Conventions
 
-- Ruff with `line-length = 128` and pydocstyle (google convention) — docstrings are required on public functions/methods (`D100`, `D101`, `D104`, `D107` are ignored). Lint/format target is `src` only.
+- Ruff with `line-length = 128` and pydocstyle (google convention) — docstrings are required on public functions/methods (`D100`, `D101`, `D104`, `D107` are ignored). Lint `src` and `tests`; `tests/**` ignores the `D` rules via `per-file-ignores`, so test functions don't need docstrings.
 - `requires-python = ">=3.10"`: `X | Y` unions and `ParamSpec` are available from the stdlib, but `Self` still needs `typing_extensions` (stdlib only from 3.11). Existing modules use `Optional`/`Union` and `from __future__ import annotations` from the 3.9 era — match the surrounding file rather than converting it piecemeal.
 - New user-facing behaviour normally needs a `docs/` update and a `CHANGELOG.md` entry under the next version.
