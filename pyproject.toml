@@ -65,7 +65,8 @@ all = [
 # Tool configurations (keeping your existing ones + removing flake8)
 [tool.pytest.ini_options]
 markers = [
-    "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')"
+    "uses_graph: marks tests that require access to neo4j (deselect with '-m \"not uses_graph\"')",
+    "requires_capability: engine capabilities a test needs; xfails on engines lacking them",
 ]
 testpaths = ["tests"]
 pythonpath = ["src"]

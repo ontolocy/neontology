@@ -21,6 +21,7 @@ from neontology import (
     related_nodes,
     related_property,
 )
+from neontology.graphengines.capabilities import Capability
 from neontology.result import NeontologyResult
 
 
@@ -106,7 +107,7 @@ def test_create(use_graph):
     assert result.nodes[0].pp == "Test Node"
 
 
-def test_create_if_exists(request, use_graph):
+def test_create_if_exists(engine, use_graph):
     """Neontology does not check if a node already exists, it is for the user to enforce this at the database level."""
     tn = PracticeNode(pp="Test Node")
 
@@ -128,13 +129,11 @@ def test_create_if_exists(request, use_graph):
 
     node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert node_count == 2
+    # engines without DUPLICATE_CREATE identify nodes by (primary property,
+    # label), so the second create overwrote the first
+    expected = 2 if engine.supports(Capability.DUPLICATE_CREATE) else 1
 
-    # networkx identifies nodes by (primary property, label), so a second
-    # create overwrites rather than duplicating
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert node_count == 1
+    assert node_count == expected
 
 
 def test_create_multiple_if_exists(request, use_graph):
@@ -484,7 +483,7 @@ def test_match_nodes_with_filters_basic(use_graph):
     assert len(results) == 4
 
 
-def test_match_nodes_with_string_filters(request, use_graph):
+def test_match_nodes_with_string_filters(engine, use_graph):
     """Test various string filter operations."""
 
     class TestNode(BaseNode):
@@ -513,13 +512,12 @@ def test_match_nodes_with_string_filters(request, use_graph):
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        # Test icontains
+    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
         results = TestNode.match_nodes(filters={"name__icontains": "aspart"})
         assert len(results) == 2
         assert sorted([x.id for x in results]) == ["1", "3"]
 
-    elif request.node.callspec.id == "networkx-engine":
+    else:
         with pytest.raises(NotImplementedError):
             TestNode.match_nodes(filters={"name__icontains": "aspart"})
 
@@ -528,15 +526,14 @@ def test_match_nodes_with_string_filters(request, use_graph):
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        # Test iexact
+    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
         results = TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
         assert len(results) == 1
         assert results[0].id == "3"
 
-    elif request.node.callspec.id == "networkx-engine":
+    else:
         with pytest.raises(NotImplementedError):
-            results = TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
+            TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
 
     # Test startswith and istartswith
 
@@ -544,14 +541,14 @@ def test_match_nodes_with_string_filters(request, use_graph):
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if request.node.callspec.id not in ["networkx-engine"]:
+    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
         results = TestNode.match_nodes(filters={"description__istartswith": "plant"})
         assert len(results) == 1
         assert results[0].id == "4"
 
-    elif request.node.callspec.id == "networkx-engine":
+    else:
         with pytest.raises(NotImplementedError):
-            results = TestNode.match_nodes(filters={"description__istartswith": "plant"})
+            TestNode.match_nodes(filters={"description__istartswith": "plant"})
 
 
 def test_match_nodes_with_numeric_filters(use_graph):

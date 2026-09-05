@@ -9,6 +9,7 @@ from typing_extensions import LiteralString
 
 from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
+from .capabilities import Capability
 from .graphengine import GraphEngineBase, GraphEngineConfig
 
 if TYPE_CHECKING:
@@ -279,6 +280,12 @@ def _unwrap_grand_value(value: Any) -> Any:
 
 
 class NetworkxEngine(GraphEngineBase):
+    # The Capability vocabulary names exactly the places this engine diverges
+    # from Neo4j/Memgraph, so it supports none of them - grand-cypher is a query
+    # language over an in-memory NetworkX graph, with no mutation clauses and a
+    # reduced expression language. Everything not named there works normally.
+    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
+
     def __init__(self, config: "NetworkxConfig") -> None:
         """Initialise connection to the engine.
 

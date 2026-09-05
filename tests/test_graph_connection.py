@@ -6,6 +6,7 @@ from pydantic import Field
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphconnection import GraphConnection
+from neontology.graphengines.capabilities import Capability
 
 
 class PracticeNodeGC(BaseNode):
@@ -404,10 +405,8 @@ class ComplexPracticeRelationshipGC(BaseRelationship):
     number: int = Field(default=42, json_schema_extra={"merge_on": True})
 
 
-def test_evaluate_query_node_links(request, use_graph):
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkX backend doesn't support merge_on operations for relationships.")
-
+@pytest.mark.requires_capability(Capability.RETURN_STAR)
+def test_evaluate_query_node_links(use_graph):
     foo = ComplexPracticeNodeGC(pp="foo", a_list=[1, 2, 3])
     bar = ComplexPracticeNodeGC(pp="bar")
     baz = ComplexPracticeNodeGC(pp="baz", a_list=[])

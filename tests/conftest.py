@@ -111,11 +111,70 @@ def graph_db(request, tmp_path_factory, get_graph_config):
     yield gc
 
 
+def _engine_for_item(item):
+    """Return the engine class a parametrised test item will run against."""
+    callspec = getattr(item, "callspec", None)
+
+    if callspec is None:
+        return None
+
+    param = callspec.params.get("get_graph_config")
+
+    if not param:
+        return None
+
+    graph_engines = {
+        "NEO4J": Neo4jConfig,
+        "MEMGRAPH": MemgraphConfig,
+        "NETWORKX": NetworkxConfig,
+    }
+
+    config_class = graph_engines.get(param["graph_engine"])
+
+    return config_class.engine if config_class else None
+
+
 def pytest_collection_modifyitems(config, items):
-    """Automatically mark tests which use the graph with the 'uses_graph' markers"""
+    """Mark tests which use the graph, and xfail those needing an unsupported capability.
+
+    Capabilities an engine lacks are declared on the engine itself, so tests say what
+    they need rather than naming engines. `xfail(strict=True)` rather than skip means a
+    capability that starts working fails the build instead of passing unnoticed.
+    """
     for item in items:
         if "use_graph" in item.fixturenames:
             item.add_marker("uses_graph")
+
+        marker = item.get_closest_marker("requires_capability")
+
+        if marker is None:
+            continue
+
+        engine = _engine_for_item(item)
+
+        if engine is None:
+            continue
+
+        missing = [c for c in marker.args if not engine.supports(c)]
+
+        if missing:
+            names = ", ".join(c.value for c in missing)
+            item.add_marker(
+                pytest.mark.xfail(
+                    strict=True,
+                    reason=f"{engine.__name__} does not support: {names}",
+                )
+            )
+
+
+@pytest.fixture(scope="function")
+def engine(get_graph_config):
+    """The engine class under test, for asking what it supports.
+
+    Use `engine.supports(Capability.X)` in a test body rather than comparing engine
+    names, so a divergence is stated by capability and declared in one place.
+    """
+    return get_graph_config.engine
 
 
 @pytest.fixture(scope="function")
