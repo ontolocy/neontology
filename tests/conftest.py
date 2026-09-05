@@ -91,11 +91,21 @@ def reset_constraints():
 
 
 @pytest.fixture(scope="session", params=ENGINE_PARAMS)
-def get_graph_config(request) -> object:
+def engine_id(request) -> str:
+    """The id of the engine under test.
+
+    This is the parametrisation point. Fixtures needing only the engine class derive
+    from it directly, so they do not require database credentials to be configured.
+    """
+    return request.param
+
+
+@pytest.fixture(scope="session")
+def get_graph_config(engine_id) -> object:
     """Build the config for the engine under test, from the ENGINES table."""
     load_dotenv()
 
-    entry = ENGINES_BY_ID[request.param]
+    entry = ENGINES_BY_ID[engine_id]
 
     graph_config = {}
 
@@ -143,7 +153,7 @@ def _engine_for_item(item):
     if callspec is None:
         return None
 
-    engine_id = callspec.params.get("get_graph_config")
+    engine_id = callspec.params.get("engine_id")
 
     entry = ENGINES_BY_ID.get(engine_id)
 
@@ -187,13 +197,16 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(scope="function")
-def engine(get_graph_config):
+def engine(engine_id):
     """The engine class under test, for asking what it supports.
 
     Use `engine.supports(Capability.X)` in a test body rather than comparing engine
     names, so a divergence is stated by capability and declared in one place.
+
+    Derived from engine_id rather than the config, so tests that only ask what an
+    engine supports do not require database credentials.
     """
-    return get_graph_config.engine
+    return ENGINES_BY_ID[engine_id]["config"].engine
 
 
 @pytest.fixture(scope="function")
