@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -12,13 +12,25 @@ class CommonModel(BaseModel):
         arbitrary_types_allowed=True,
     )
 
+    _prop_usage_set: ClassVar[bool] = False
+
     _set_on_match: list[str] = PrivateAttr()
     _set_on_create: list[str] = PrivateAttr()
     _always_set: list[str] = PrivateAttr()
 
     def __init__(self, **data: dict):
         super().__init__(**data)
-        self._set_prop_usage()
+
+        # Property usage is derived from the model definition, so it is the same for
+        # every instance of a class. Computing it per instance meant generating the
+        # pydantic JSON schema on every instantiation, which dominated bulk operations.
+        # "_prop_usage_set" is looked up in __dict__ rather than with getattr so each
+        # subclass computes its own rather than inheriting a parent's answer.
+        cls = type(self)
+
+        if not cls.__dict__.get("_prop_usage_set"):
+            cls._set_prop_usage()
+            cls._prop_usage_set = True
 
     @classmethod
     def _set_prop_usage(cls) -> None:

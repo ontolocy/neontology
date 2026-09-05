@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import Optional
+from typing import ClassVar, Optional
 from uuid import UUID
 
 import pytest
 from pydantic import Field
 
+from neontology import BaseNode, BaseRelationship
 from neontology.commonmodel import CommonModel
 
 
@@ -99,3 +100,70 @@ def test_engine_dict_bad_types(field_type, python_value, use_graph):
 
     with pytest.raises(TypeError):
         testmodel._engine_dict()
+
+
+class TestPropertyUsageCaching:
+    """Property usage is computed once per class, so subclasses must not inherit it.
+
+    The buckets are derived from the model definition and identical for every instance,
+    so they are cached on the class - computing them per instance generated the pydantic
+    JSON schema on every instantiation. The risk of caching is a subclass silently
+    reusing its parent's answer.
+    """
+
+    def test_subclass_computes_its_own_buckets(self):
+        class CacheParent(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[Optional[str]] = "PropCacheParent"
+
+            pp: str
+            only_on_match: Optional[str] = Field(default=None, json_schema_extra={"set_on_match": True})
+
+        class CacheChild(CacheParent):
+            __primarylabel__: ClassVar[Optional[str]] = "PropCacheChild"
+
+            extra_on_create: Optional[str] = Field(default=None, json_schema_extra={"set_on_create": True})
+
+        # instantiate the parent first, so its cache is populated before the child is built
+        CacheParent(pp="parent")
+
+        assert CacheParent._set_on_match == ["only_on_match"]
+        assert CacheParent._set_on_create == []
+
+        CacheChild(pp="child")
+
+        assert CacheChild._set_on_create == ["extra_on_create"]
+        assert CacheChild._set_on_match == ["only_on_match"]
+
+        # the child must not have written its buckets onto the parent
+        assert CacheParent._set_on_create == []
+
+    def test_relationship_subclass_computes_its_own_merge_on(self):
+        class CacheRelNode(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[Optional[str]] = "PropCacheRelNode"
+
+            pp: str
+
+        class CacheRelParent(BaseRelationship):
+            __relationshiptype__: ClassVar[Optional[str]] = "PROP_CACHE_PARENT"
+
+            source: CacheRelNode
+            target: CacheRelNode
+
+        class CacheRelChild(CacheRelParent):
+            __relationshiptype__: ClassVar[Optional[str]] = "PROP_CACHE_CHILD"
+
+            merge_key: Optional[str] = Field(default=None, json_schema_extra={"merge_on": True})
+
+        source = CacheRelNode(pp="a")
+        target = CacheRelNode(pp="b")
+
+        CacheRelParent(source=source, target=target)
+
+        assert CacheRelParent._merge_on == []
+
+        CacheRelChild(source=source, target=target)
+
+        assert CacheRelChild._merge_on == ["merge_key"]
+        assert CacheRelParent._merge_on == []
