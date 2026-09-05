@@ -82,12 +82,11 @@ for what each one means.
 | `graph_mutations` | Yes | Yes | No |
 | `return_star` | Yes | Yes | No |
 | `duplicate_create` | Yes | Yes | No |
-| `case_insensitive_filters` | Yes | Yes | Yes |
 | `datetime_filters` | Yes | Yes | No |
 | `datetime_functions` | Yes | Yes | No |
 | `list_property_filters` | Yes | Yes | No |
 | `complex_property_types` | Yes | Yes | No |
-| `collected_values` | Yes | Yes | No |
+| `collect_distinct` | Yes | Yes | No |
 | `relationship_property_queries` | Yes | Yes | No |
 <!-- END CAPABILITY MATRIX -->
 

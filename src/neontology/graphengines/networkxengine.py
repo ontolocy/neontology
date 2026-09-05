@@ -265,11 +265,7 @@ class NetworkxEngine(GraphEngineBase):
     # grand-cypher is a query language over an in-memory NetworkX graph, with no
     # mutation clauses and a reduced expression language, so it supports few of
     # the named capabilities. Everything not named in Capability works normally.
-    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset(
-        {
-            Capability.CASE_INSENSITIVE_FILTERS,
-        }
-    )
+    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
 
     def __init__(self, config: "NetworkxConfig") -> None:
         """Initialise connection to the engine.

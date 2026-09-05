@@ -179,7 +179,7 @@ def test_retrieve_property(engine, use_graph):
     assert bob.follower_count() == 1
 
     # grand cypher behaves differently for returning collected values
-    if engine.supports(Capability.COLLECTED_VALUES):
+    if engine.supports(Capability.COLLECT_DISTINCT):
         assert bob.follower_names == ["Alice"]
 
 
@@ -192,7 +192,7 @@ def test_retrieve_property_none(engine, use_graph):
 
     assert not bob.follower_count()
 
-    if engine.supports(Capability.COLLECTED_VALUES):
+    if engine.supports(Capability.COLLECT_DISTINCT):
         assert not bob.follower_names
 
 

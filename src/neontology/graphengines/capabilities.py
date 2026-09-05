@@ -29,9 +29,6 @@ class Capability(str, Enum):
     # label), so a second create() overwrites the first instead of duplicating.
     DUPLICATE_CREATE = "duplicate_create"
 
-    # Case insensitive filters: name__icontains, name__iexact, name__istartswith.
-    CASE_INSENSITIVE_FILTERS = "case_insensitive_filters"
-
     # Comparing datetime values in filters, e.g. created__gt=some_datetime.
     DATETIME_FILTERS = "datetime_filters"
 
@@ -45,9 +42,9 @@ class Capability(str, Enum):
     # Filtering on properties holding complex (non-scalar) types.
     COMPLEX_PROPERTY_TYPES = "complex_property_types"
 
-    # Aggregating values into a list with COLLECT, which @related_property uses
-    # to return several values from one query.
-    COLLECTED_VALUES = "collected_values"
+    # DISTINCT inside an aggregation, e.g. COLLECT(DISTINCT n.name). Plain
+    # COLLECT works on every engine and needs no capability.
+    COLLECT_DISTINCT = "collect_distinct"
 
     # Querying relationship properties via get_related().
     RELATIONSHIP_PROPERTY_QUERIES = "relationship_property_queries"

@@ -119,28 +119,18 @@ def test_match_nodes_with_string_filters(engine, use_graph):
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
-        results = TestNode.match_nodes(filters={"name__icontains": "aspart"})
-        assert len(results) == 2
-        assert sorted([x.id for x in results]) == ["1", "3"]
-
-    else:
-        with pytest.raises(NotImplementedError):
-            TestNode.match_nodes(filters={"name__icontains": "aspart"})
+    results = TestNode.match_nodes(filters={"name__icontains": "aspart"})
+    assert len(results) == 2
+    assert sorted([x.id for x in results]) == ["1", "3"]
 
     # Test case-sensitive contains
     results = TestNode.match_nodes(filters={"name__contains": "Aspart"})
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
-        results = TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
-        assert len(results) == 1
-        assert results[0].id == "3"
-
-    else:
-        with pytest.raises(NotImplementedError):
-            TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
+    results = TestNode.match_nodes(filters={"name__iexact": "aspartame synthetic"})
+    assert len(results) == 1
+    assert results[0].id == "3"
 
     # Test startswith and istartswith
 
@@ -148,14 +138,9 @@ def test_match_nodes_with_string_filters(engine, use_graph):
     assert len(results) == 1
     assert results[0].id == "1"
 
-    if engine.supports(Capability.CASE_INSENSITIVE_FILTERS):
-        results = TestNode.match_nodes(filters={"description__istartswith": "plant"})
-        assert len(results) == 1
-        assert results[0].id == "4"
-
-    else:
-        with pytest.raises(NotImplementedError):
-            TestNode.match_nodes(filters={"description__istartswith": "plant"})
+    results = TestNode.match_nodes(filters={"description__istartswith": "plant"})
+    assert len(results) == 1
+    assert results[0].id == "4"
 
 
 def test_match_nodes_with_numeric_filters(use_graph):
@@ -288,7 +273,6 @@ def test_match_nodes_with_datetime_filter(use_graph):
     assert sorted([x.id for x in results]) == ["2"]
 
 
-@pytest.mark.requires_capability(Capability.CASE_INSENSITIVE_FILTERS)
 def test_match_nodes_with_combined_filters(use_graph):
     """Test combination of different filter types."""
 
@@ -370,7 +354,6 @@ def test_match_nodes_with_combined_filters(use_graph):
     assert results[0].id == "5"
 
 
-@pytest.mark.requires_capability(Capability.CASE_INSENSITIVE_FILTERS)
 def test_match_nodes_with_pagination_and_filters_icontains(use_graph):
     """Test combination of filters with pagination parameters."""
     # Create test nodes
