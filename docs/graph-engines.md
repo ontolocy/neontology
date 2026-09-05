@@ -67,7 +67,7 @@ Working with the `NetworkxEngine` requires additional dependencies and works wit
 pip install neontology[grand]
 ```
 
-Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend - case insensitive filters, datetime functionality, 'merge-on' properties for relationships.
+Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend - case insensitive filters and datetime functionality.
 
 ```python
 from neontology import GraphConnection, init_neontology
