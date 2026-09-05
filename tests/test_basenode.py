@@ -253,7 +253,7 @@ def test_create_multilabel_inheritance_multiple(use_graph):
 
     class Human(Animal):
         __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "Human"
+        __primarylabel__: ClassVar[Optional[str]] = "HumanInherited"
         pp: str
 
     class Elephant(Animal):
@@ -294,7 +294,7 @@ def test_merge_defined_label_inherited(use_graph):
 
     class Human(Mammal):
         __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[Optional[str]] = "Human"
+        __primarylabel__: ClassVar[Optional[str]] = "HumanDefinedLabel"
         pp: str
 
     tn = Human(pp="Bob")
@@ -302,14 +302,14 @@ def test_merge_defined_label_inherited(use_graph):
     tn.merge()
 
     cypher = """
-    MATCH (n:Human)
+    MATCH (n:HumanDefinedLabel)
     WHERE n.pp = 'Bob'
     RETURN n
     """
 
     result = use_graph.evaluate_query(cypher)
 
-    assert {"Human", "Mammal"} <= raw_labels(result)
+    assert {"HumanDefinedLabel", "Mammal"} <= raw_labels(result)
 
     assert result.nodes[0].pp == "Bob"
 
@@ -668,7 +668,7 @@ def test_match_nodes_with_combined_filters(use_graph):
 
     class Product(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "Product"
+        __primarylabel__: ClassVar[str] = "ProductDatetimeFilter"
         id: str
         name: str
         category: str
@@ -782,7 +782,7 @@ def test_match_nodes_with_special_values(use_graph):
 
     class TestNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "TestNode"
+        __primarylabel__: ClassVar[str] = "TestNodePagination"
         id: str
         name: Optional[str] = None
         description: str = ""
@@ -816,7 +816,7 @@ def test_match_nodes_with_enum_filter(use_graph):
 
     class Product(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "Product"
+        __primarylabel__: ClassVar[str] = "ProductCombinedFilter"
         id: str
         name: str
         status: SampleEnum
@@ -844,7 +844,7 @@ def test_match_nodes_with_list_filters(use_graph):
 
     class Product(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "Product"
+        __primarylabel__: ClassVar[str] = "ProductListFilter"
         id: str
         name: str
         tags: list[str]
@@ -877,7 +877,7 @@ def test_match_nodes_with_unsupported_filter(use_graph):
 
     class TestNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "TestNode"
+        __primarylabel__: ClassVar[str] = "TestNodeUnsupportedFilter"
         id: str
         name: str
 
@@ -913,7 +913,7 @@ def test_match_nodes_with_complex_types(use_graph):
 
     class TestNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
-        __primarylabel__: ClassVar[str] = "TestNode"
+        __primarylabel__: ClassVar[str] = "TestNodeComplexTypes"
         id: UUID
         name: str
         created_at: datetime
@@ -1541,7 +1541,7 @@ def test_retrieve_nodes_none(use_graph):
 
 class ComplexPerson(BaseNode):
     __primaryproperty__: ClassVar[str] = "identifier"
-    __primarylabel__: ClassVar[str] = "PersonLabel1"  # optionally specify the label to use
+    __primarylabel__: ClassVar[str] = "PersonLabel1RetrieveNone"  # optionally specify the label to use
 
     name: str = Field(default_factory=uuid4)
     age: int

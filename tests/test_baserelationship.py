@@ -14,7 +14,7 @@ from neontology.graphengines.capabilities import Capability
 
 class PracticeNode(BaseNode):
     __primaryproperty__: ClassVar[str] = "pp"
-    __primarylabel__: ClassVar[Optional[str]] = "PracticeNode"
+    __primarylabel__: ClassVar[Optional[str]] = "PracticeNodeRel"
     pp: str
 
 
@@ -44,7 +44,7 @@ def test_rel_schema():
     schema = PracticeRelationship.neontology_schema()
 
     assert schema.relationship_type == "PRACTICE_RELATIONSHIP"
-    assert schema.source_labels == ["PracticeNode"]
+    assert schema.source_labels == ["PracticeNodeRel"]
 
     practice_rel_prop = [x for x in schema.properties if x.name == "practice_rel_prop"][0]
 
@@ -78,7 +78,7 @@ def test_merge_relationship(use_graph):
     br.merge()
 
     cypher = """
-    MATCH (src:PracticeNode {pp: 'Source Node'})-[r]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:PracticeNodeRel {pp: 'Source Node'})-[r]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN r.practice_rel_prop
     """
 
@@ -129,7 +129,7 @@ def test_merge_relationship_merge_on_match(use_graph):
     br.merge()
 
     cypher = """
-    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_MATCH]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:PracticeNodeRel {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_MATCH]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN src,r,tgt
     """
 
@@ -175,7 +175,7 @@ def test_merge_relationship_merge_on_create(use_graph):
     br.merge()
 
     cypher = """
-    MATCH (src:PracticeNode {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_CREATE]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:PracticeNodeRel {pp: 'Source Node'})-[r:TEST_REL_MERGE_ON_CREATE]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN src,r,tgt
     """
 
@@ -260,7 +260,7 @@ def test_merge_relationships_defined_types(use_graph):
     NewRelType.merge_relationships([rel1, rel2])
 
     cypher = """
-    MATCH (src:PracticeNode)-[r:TEST_NEW_RELATIONSHIP_TYPE]->(tgt:PracticeNode)
+    MATCH (src:PracticeNodeRel)-[r:TEST_NEW_RELATIONSHIP_TYPE]->(tgt:PracticeNodeRel)
     RETURN src,r,tgt
     """
 
@@ -317,7 +317,7 @@ def test_merge_df(use_graph):
     NewRelType2.merge_df(df, SubclassNode, PracticeNode)
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN r.new_rel_prop
     """
 
@@ -346,7 +346,7 @@ def test_merge_df_alt_prop(use_graph):
     NewRelType2.merge_df(df, SubclassNode, PracticeNode, source_prop="myprop")
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN r.new_rel_prop
     """
 
@@ -375,7 +375,7 @@ def test_merge_records(use_graph):
     NewRelType2.merge_records(records)
 
     cypher = """
-    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNode {pp: 'Target Node'})
+    MATCH (src:SubclassNode {pp: 'Source Node'})-[r:TEST_NEW_RELATIONSHIP_TYPE2]->(tgt:PracticeNodeRel {pp: 'Target Node'})
     RETURN r.new_rel_prop
     """
 

@@ -47,3 +47,32 @@ def test_default_engines_support_everything():
     """Capabilities name where engines diverge, so the mainstream engines have them all."""
     for engine in (Neo4jEngine, MemgraphEngine):
         assert engine.supported_capabilities == frozenset(Capability)
+
+
+def test_no_duplicate_primary_labels_in_the_suite():
+    """Test models must not share a primary label.
+
+    Type discovery is global - `get_node_types()` walks BaseNode.__subclasses__() and
+    builds {primary_label: class} - so two test models claiming the same label leave
+    the winner decided by traversal order. Queries that rehydrate without explicit
+    node_classes could then build the wrong class, which fails confusingly and depends
+    on test ordering.
+    """
+    import collections
+    import glob
+    import re
+
+    root = Path(__file__).parent
+
+    definitions = collections.defaultdict(list)
+
+    for path in glob.glob(str(root / "**" / "*.py"), recursive=True):
+        for lineno, line in enumerate(Path(path).read_text().split("\n"), start=1):
+            match = re.search(r'__primarylabel__[^=]*=\s*"([^"]+)"', line)
+
+            if match:
+                definitions[match.group(1)].append(f"{Path(path).name}:{lineno}")
+
+    duplicates = {label: sites for label, sites in definitions.items() if len(sites) > 1}
+
+    assert not duplicates, f"primary labels defined more than once: {duplicates}"
