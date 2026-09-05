@@ -5,6 +5,7 @@
 ### Changed
 
 - The `grand` extra now requires `grand-cypher>=1.2.0`. The NetworkX engine depends on the flattened relationship result shape introduced in 1.x.
+- The NetworkX engine now supports case insensitive filters (`__icontains`, `__iexact`, `__istartswith`), which previously raised `NotImplementedError`. grand-cypher gained `toLower` in 1.2.0.
 
 ### Fixed
 

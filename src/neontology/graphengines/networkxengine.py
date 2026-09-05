@@ -262,11 +262,14 @@ def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relati
 
 
 class NetworkxEngine(GraphEngineBase):
-    # The Capability vocabulary names exactly the places this engine diverges
-    # from Neo4j/Memgraph, so it supports none of them - grand-cypher is a query
-    # language over an in-memory NetworkX graph, with no mutation clauses and a
-    # reduced expression language. Everything not named there works normally.
-    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
+    # grand-cypher is a query language over an in-memory NetworkX graph, with no
+    # mutation clauses and a reduced expression language, so it supports few of
+    # the named capabilities. Everything not named in Capability works normally.
+    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset(
+        {
+            Capability.CASE_INSENSITIVE_FILTERS,
+        }
+    )
 
     def __init__(self, config: "NetworkxConfig") -> None:
         """Initialise connection to the engine.
@@ -291,6 +294,11 @@ class NetworkxEngine(GraphEngineBase):
             "exact",
             "contains",
             "startswith",
+            # case insensitive lookups build toLower() comparisons, supported
+            # by grand-cypher from 1.2.0
+            "iexact",
+            "icontains",
+            "istartswith",
             "gt",
             "lt",
             "gte",
