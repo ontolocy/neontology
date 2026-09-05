@@ -1,3 +1,21 @@
+# Storage: both images declare VOLUME for their data directories, so Docker
+# creates a volume whether or not one is configured here. Leaving that implicit
+# produces anonymous volumes with unreadable hex names that outlive `down` and
+# get silently reattached on the next `up`, so this file is explicit instead:
+#
+#   dev services  - named volumes, so data survives a restart and can be wiped
+#                   by name (see "Wiping data" in docs/.development.md)
+#   test services - tmpfs, so every start is a clean database. The pytest
+#                   session fixture asserts the database is empty before it
+#                   runs, and credentials are only applied to an empty data
+#                   directory, so persistence here causes both spurious
+#                   failures and stale-password auth errors.
+#
+# tmpfs is RAM-backed and starts EMPTY - it masks whatever the image ships at
+# that path. That is why /etc/memgraph (which contains memgraph.conf) gets a
+# named volume rather than tmpfs. Sizes are capped so a runaway ingest cannot
+# exhaust host memory.
+
 services:
   neo4j:
     image: neo4j:2026-community
@@ -7,12 +25,23 @@ services:
       - 7687:7687
     environment:
       - NEO4J_AUTH=${NEO4J_AUTH:?not set - copy .env.example to .env}
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    # the image has no curl; cypher-shell also proves bolt and auth work, not
+    # just that a port is open. NEO4J_AUTH is "user/password", so it is split
+    # here rather than duplicating the credentials into more variables
     healthcheck:
-      test: curl --fail http://localhost:7474 || exit 1
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -u \"$${NEO4J_AUTH%%/*}\" -p \"$${NEO4J_AUTH#*/}\" 'RETURN 1' || exit 1",
+        ]
       interval: 30s
       retries: 5
       start_period: 20s
       timeout: 10s
+
   testneo4j:
     image: neo4j:2026-community
     ports:
@@ -21,12 +50,23 @@ services:
       - 8687:7687
     environment:
       - NEO4J_AUTH=${TEST_NEO4J_AUTH:?not set - copy .env.example to .env}
+    tmpfs:
+      - /data:size=1g
+      - /logs:size=256m
+    # the image has no curl; cypher-shell also proves bolt and auth work, not
+    # just that a port is open. NEO4J_AUTH is "user/password", so it is split
+    # here rather than duplicating the credentials into more variables
     healthcheck:
-      test: curl --fail http://localhost:7474 || exit 1
+      test:
+        [
+          "CMD-SHELL",
+          "cypher-shell -u \"$${NEO4J_AUTH%%/*}\" -p \"$${NEO4J_AUTH#*/}\" 'RETURN 1' || exit 1",
+        ]
       interval: 30s
       retries: 5
       start_period: 20s
       timeout: 10s
+
   memgraph:
     image: memgraph/memgraph:latest
     ports:
@@ -37,26 +77,10 @@ services:
     environment:
       - MEMGRAPH_USER=${MEMGRAPH_USERNAME:?not set - copy .env.example to .env}
       - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "echo 'RETURN 0;' | mgconsole --username \"$$MEMGRAPH_USER\" --password \"$$MEMGRAPH_PASSWORD\" || exit 1",
-        ]
-      interval: 30s
-      retries: 5
-      start_period: 20s
-      timeout: 10s
-  testmemgraph:
-    # 9687 matches the port the CI workflow publishes, so TEST_MEMGRAPH_URI is
-    # the same locally and in CI
-    image: memgraph/memgraph:latest
-    ports:
-      - 9687:7687
-      - 7445:7444
-    environment:
-      - MEMGRAPH_USER=${TEST_MEMGRAPH_USER:?not set - copy .env.example to .env}
-      - MEMGRAPH_PASSWORD=${TEST_MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
+    volumes:
+      - memgraph_data:/var/lib/memgraph
+      - memgraph_etc:/etc/memgraph
+      - memgraph_log:/var/log/memgraph
     healthcheck:
       test:
         [
@@ -68,6 +92,43 @@ services:
       start_period: 20s
       timeout: 10s
 
-# Note: the test services deliberately have no volumes. The pytest session
-# fixture asserts the database is empty before it runs, so persisting data
-# between runs would break the suite.
+  testmemgraph:
+    # 9687 matches the port the CI workflow publishes, so TEST_MEMGRAPH_URI is
+    # the same locally and in CI
+    image: memgraph/memgraph:latest
+    ports:
+      - 9687:7687
+      - 7445:7444
+    environment:
+      - MEMGRAPH_USER=${TEST_MEMGRAPH_USER:?not set - copy .env.example to .env}
+      - MEMGRAPH_PASSWORD=${TEST_MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
+    # /var/lib/memgraph holds the graph AND the auth store, so it must be
+    # ephemeral for credentials from .env to apply on every start
+    # tmpfs mounts are root-owned by default, and memgraph refuses to start
+    # unless its data directory is owned by the user it runs as. 101:103 is
+    # the memgraph uid:gid in the image - if a future image changes it, the
+    # container exits at startup with an ownership error naming the new owner.
+    tmpfs:
+      - /var/lib/memgraph:size=512m,uid=101,gid=103
+      - /var/log/memgraph:size=128m,uid=101,gid=103
+    # not tmpfs: the image ships memgraph.conf here and tmpfs would mask it
+    volumes:
+      - testmemgraph_etc:/etc/memgraph
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "echo 'RETURN 0;' | mgconsole --username \"$$MEMGRAPH_USER\" --password \"$$MEMGRAPH_PASSWORD\" || exit 1",
+        ]
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  memgraph_data:
+  memgraph_etc:
+  memgraph_log:
+  testmemgraph_etc:
