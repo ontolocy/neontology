@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
 from neontology.graphengines import MemgraphConfig, Neo4jConfig, NetworkxConfig
+from neontology.graphengines.capabilities import Capability
 
 logger = logging.getLogger(__name__)
 
@@ -188,14 +189,15 @@ def use_graph(request, graph_db):
     MATCH (n) DETACH DELETE n;
     """
 
-    if "networkx-engine" not in request.node.callspec.id:
+    if graph_db.engine.supports(Capability.GRAPH_MUTATIONS):
         try:
             graph_db.evaluate_query_single(cypher)
         except RuntimeError:
             pass
 
-    if "networkx-engine" in request.node.callspec.id:
-        # grand cypher doesn't support DETACH DELETE
+    else:
+        # without GRAPH_MUTATIONS there is no DETACH DELETE, so empty the
+        # underlying graph directly
         graph_db.engine.driver.clear()
 
     # not all engines will implement constraints, so we don't always have to reset them

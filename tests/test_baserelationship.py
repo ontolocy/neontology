@@ -9,6 +9,7 @@ from pydantic import Field, ValidationError
 
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
+from neontology.graphengines.capabilities import Capability
 
 
 class PracticeNode(BaseNode):
@@ -62,7 +63,7 @@ def test_source_target_type():
     assert expected in str(exception_info.value)
 
 
-def test_merge_relationship(request, use_graph):
+def test_merge_relationship(use_graph):
     source_node = PracticeNode(pp="Source Node")
     source_node.create()
 
@@ -302,7 +303,7 @@ class NewRelType2(BaseRelationship):
     new_rel_prop: str
 
 
-def test_merge_df(request, use_graph):
+def test_merge_df(use_graph):
     source_node = SubclassNode(pp="Source Node", myprop="Some Value")
     source_node.merge()
 
@@ -325,7 +326,7 @@ def test_merge_df(request, use_graph):
     assert result == "New Rel 3"
 
 
-def test_merge_df_alt_prop(request, use_graph):
+def test_merge_df_alt_prop(use_graph):
     source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
     source_node.merge()
 
@@ -362,7 +363,7 @@ def test_merge_empty_df():
     assert result is None
 
 
-def test_merge_records(request, use_graph):
+def test_merge_records(use_graph):
     source_node = SubclassNode(pp="Source Node", myprop="My Prop Value")
     source_node.merge()
 
@@ -383,7 +384,7 @@ def test_merge_records(request, use_graph):
     assert result == "New Rel 5"
 
 
-def test_create_mass_rels(request, use_graph, benchmark):
+def test_create_mass_rels(engine, use_graph, benchmark):
     practice_records = [{"pp": uuid4().hex} for x in range(1000)]
 
     records_df = pd.DataFrame.from_records(practice_records)
@@ -399,13 +400,15 @@ def test_create_mass_rels(request, use_graph, benchmark):
     def do_merge(input_df):
         PracticeRelationship.merge_df(input_df)
 
-        if request.node.callspec.id not in ["networkx-engine"]:
+        # without GRAPH_MUTATIONS the relationships cannot be counted or removed
+        # with a query, so go through the driver instead
+        if engine.supports(Capability.GRAPH_MUTATIONS):
             result = use_graph.evaluate_query_single("MATCH (n)-[r]->(o) RETURN COUNT(r)")
             assert result == 999
 
             use_graph.evaluate_query_single("MATCH (n)-[r]->(o) DELETE r")
 
-        if request.node.callspec.id in ["networkx-engine"]:
+        else:
             assert len(use_graph.engine.driver.edges) == 999
             use_graph.engine.driver.clear_edges()
 

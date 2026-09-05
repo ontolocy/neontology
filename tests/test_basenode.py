@@ -13,6 +13,7 @@ from pydantic import (
     field_serializer,
     field_validator,
 )
+from rawresult import raw_labels, raw_property
 
 from neontology import (
     BaseNode,
@@ -136,7 +137,7 @@ def test_create_if_exists(engine, use_graph):
     assert node_count == expected
 
 
-def test_create_multiple_if_exists(request, use_graph):
+def test_create_multiple_if_exists(engine, use_graph):
     tn = PracticeNode(pp="Test Node")
 
     tn.create()
@@ -157,13 +158,11 @@ def test_create_multiple_if_exists(request, use_graph):
 
     node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert node_count == 2
+    # engines without DUPLICATE_CREATE identify nodes by (primary property,
+    # label), so the second create overwrote the first
+    expected = 2 if engine.supports(Capability.DUPLICATE_CREATE) else 1
 
-    # networkx identifies nodes by (primary property, label), so a second
-    # create overwrites rather than duplicating
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert node_count == 1
+    assert node_count == expected
 
 
 def test_no_primary_label():
@@ -189,7 +188,7 @@ def test_none_primary_label():
             SpecialPracticeNode(pp="Test Node")
 
 
-def test_create_multilabel(request, use_graph):
+def test_create_multilabel(use_graph):
     class MultipleLabelNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = "PrimaryLabel"
@@ -212,19 +211,13 @@ def test_create_multilabel(request, use_graph):
 
     # confirm the secondary labels were written to the database
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert "ExtraLabel1" in result.records_raw[0].values()[0].labels
-        assert "ExtraLabel2" in result.records_raw[0].values()[0].labels
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert "ExtraLabel1" in result.records_raw["n"][0]["__labels__"]
-        assert "ExtraLabel2" in result.records_raw["n"][0]["__labels__"]
+    assert {"ExtraLabel1", "ExtraLabel2"} <= raw_labels(result)
 
     assert result.nodes[0].pp == "Test Node"
     assert result.nodes[0].__secondarylabels__ == ["ExtraLabel1", "ExtraLabel2"]
 
 
-def test_create_multilabel_inheritance(request, use_graph):
+def test_create_multilabel_inheritance(use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -247,18 +240,12 @@ def test_create_multilabel_inheritance(request, use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert "Human" in result.records_raw[0].values()[0].labels
-        assert "Mammal" in result.records_raw[0].values()[0].labels
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert "Human" in result.records_raw["n"][0]["__labels__"]
-        assert "Mammal" in result.records_raw["n"][0]["__labels__"]
+    assert {"Human", "Mammal"} <= raw_labels(result)
 
     assert result.nodes[0].pp == "Bob"
 
 
-def test_create_multilabel_inheritance_multiple(request, use_graph):
+def test_create_multilabel_inheritance_multiple(use_graph):
     class Animal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Animal"]
@@ -299,7 +286,7 @@ def test_create_multilabel_inheritance_multiple(request, use_graph):
     assert result == 2
 
 
-def test_merge_defined_label_inherited(request, use_graph):
+def test_merge_defined_label_inherited(use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __secondarylabels__: ClassVar[Optional[list]] = ["Mammal"]
@@ -322,13 +309,7 @@ def test_merge_defined_label_inherited(request, use_graph):
 
     result = use_graph.evaluate_query(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert "Human" in result.records_raw[0].values()[0].labels
-        assert "Mammal" in result.records_raw[0].values()[0].labels
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert "Human" in result.records_raw["n"][0]["__labels__"]
-        assert "Mammal" in result.records_raw["n"][0]["__labels__"]
+    assert {"Human", "Mammal"} <= raw_labels(result)
 
     assert result.nodes[0].pp == "Bob"
 
@@ -378,7 +359,7 @@ def test_create_multiple_defined_label(use_graph):
     assert set(["Special Test Node", "Special Test Node2"]) == node_pps
 
 
-def test_creation_datetime(request, use_graph):
+def test_creation_datetime(engine, use_graph):
     """Check we can manually define the created datetime.
 
     Then check we can query for it using neo4j DateTime type.
@@ -397,12 +378,12 @@ def test_creation_datetime(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
+    # without DATETIME_FUNCTIONS the accessor in the query is not evaluated, so
+    # the property comes back as a datetime rather than the year
+    if engine.supports(Capability.DATETIME_FUNCTIONS):
         assert result == 2022
 
-    # grand cypher doesn't do full datetime operations, so the property comes
-    # back as a datetime rather than the year the query asked for
-    if request.node.callspec.id in ["networkx-engine"]:
+    else:
         assert result.year == 2022
 
 
@@ -645,10 +626,9 @@ def test_match_nodes_with_boolean_filter(use_graph):
     assert len(results) == 2
 
 
-def test_match_nodes_with_datetime_filter(request, use_graph):
+@pytest.mark.requires_capability(Capability.DATETIME_FILTERS)
+def test_match_nodes_with_datetime_filter(use_graph):
     """Test filtering on datetime fields."""
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support datetime comparison.")
 
     class Event(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
@@ -682,7 +662,8 @@ def test_match_nodes_with_datetime_filter(request, use_graph):
     assert sorted([x.id for x in results]) == ["2"]
 
 
-def test_match_nodes_with_combined_filters(request, use_graph):
+@pytest.mark.requires_capability(Capability.CASE_INSENSITIVE_FILTERS)
+def test_match_nodes_with_combined_filters(use_graph):
     """Test combination of different filter types."""
 
     class Product(BaseNode):
@@ -751,9 +732,6 @@ def test_match_nodes_with_combined_filters(request, use_graph):
     assert len(results) == 1
     assert results[0].id == "2"
 
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support case insensitive matching.")
-
     # Test another combination
     results = Product.match_nodes(
         filters={
@@ -766,10 +744,9 @@ def test_match_nodes_with_combined_filters(request, use_graph):
     assert results[0].id == "5"
 
 
-def test_match_nodes_with_pagination_and_filters_icontains(request, use_graph):
+@pytest.mark.requires_capability(Capability.CASE_INSENSITIVE_FILTERS)
+def test_match_nodes_with_pagination_and_filters_icontains(use_graph):
     """Test combination of filters with pagination parameters."""
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support case insensitive matching.")
     # Create test nodes
     nodes = [PracticeNode(pp=f"Test Node {i}") for i in range(1, 11)]
     PracticeNode.merge_nodes(nodes)
@@ -861,10 +838,9 @@ def test_match_nodes_with_enum_filter(use_graph):
     assert len(results) == 2
 
 
-def test_match_nodes_with_list_filters(request, use_graph):
+@pytest.mark.requires_capability(Capability.LIST_PROPERTY_FILTERS)
+def test_match_nodes_with_list_filters(use_graph):
     """Test filtering on list fields."""
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support list types.")
 
     class Product(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
@@ -896,10 +872,8 @@ def test_match_nodes_with_list_filters(request, use_graph):
     pass
 
 
-def test_match_nodes_with_unsupported_filter(request, use_graph):
+def test_match_nodes_with_unsupported_filter(use_graph):
     """Test handling of unsupported filter types."""
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support undefined filters.")
 
     class TestNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
@@ -910,7 +884,9 @@ def test_match_nodes_with_unsupported_filter(request, use_graph):
     node = TestNode(id="1", name="Test Node")
     node.merge()
 
-    with pytest.raises(ValueError):
+    # the shared implementation raises ValueError for an unknown lookup; the
+    # networkx override rejects it as NotImplementedError before reaching that
+    with pytest.raises((ValueError, NotImplementedError)):
         TestNode.match_nodes(filters={"name__unsupported": "Test"})
 
 
@@ -931,10 +907,9 @@ def test_match_nodes_with_empty_filters(use_graph):
     assert len(results) == 2
 
 
-def test_match_nodes_with_complex_types(request, use_graph):
+@pytest.mark.requires_capability(Capability.COMPLEX_PROPERTY_TYPES)
+def test_match_nodes_with_complex_types(use_graph):
     """Test filtering on complex types like UUID, datetime, etc."""
-    if request.node.callspec.id in ["networkx-engine"]:
-        pytest.skip("NetworkxEngine does not support complex types.")
 
     class TestNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "id"
@@ -1339,7 +1314,7 @@ def test_merge_df_with_lists(use_graph):
     assert ben.favorite_colors is None
 
 
-def test_get_count(request, use_graph):
+def test_get_count(use_graph):
     people_records = [
         {"name": "arthur", "age": 70, "favorite_colors": ["red"]},
         {"name": "betty", "age": 65, "favorite_colors": ["red", "blue"]},
@@ -1462,7 +1437,7 @@ def test_rels_schema_md():
     assert "| follow_tag | Optional[str] | False |" in schema_md
 
 
-def test_related_nodes(request, use_graph):
+def test_related_nodes(engine, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
@@ -1483,7 +1458,7 @@ def test_related_nodes(request, use_graph):
     assert related_nodes[0].name == "Bob"
 
     # grand cypher has limited support for relationship property queries
-    if request.node.callspec.id not in ["networkx-engine"]:
+    if engine.supports(Capability.RELATIONSHIP_PROPERTY_QUERIES):
         bobs_followers = bob.get_related(
             relationship_types=["AUGMENTED_PERSON_FOLLOWS"],
             incoming=True,
@@ -1522,7 +1497,7 @@ def test_related_nodes_no_rels(use_graph):
     assert len(alice_rels.nodes) == 0
 
 
-def test_retrieve_property(request, use_graph):
+def test_retrieve_property(engine, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
@@ -1535,11 +1510,11 @@ def test_retrieve_property(request, use_graph):
     assert bob.follower_count() == 1
 
     # grand cypher behaves differently for returning collected values
-    if request.node.callspec.id not in ["networkx-engine"]:
+    if engine.supports(Capability.COLLECTED_VALUES):
         assert bob.follower_names == ["Alice"]
 
 
-def test_retrieve_property_none(request, use_graph):
+def test_retrieve_property_none(engine, use_graph):
     alice = AugmentedPerson(name="Alice")
     alice.merge()
 
@@ -1548,7 +1523,7 @@ def test_retrieve_property_none(request, use_graph):
 
     assert not bob.follower_count()
 
-    if request.node.callspec.id not in ["networkx-engine"]:
+    if engine.supports(Capability.COLLECTED_VALUES):
         assert not bob.follower_names
 
 
@@ -1612,7 +1587,7 @@ class UserWithAliases(BaseNode):
     some_other_property: Optional[str] = Field(None, alias="otherProperty")
 
 
-def test_aliased_properties(request, use_graph):
+def test_aliased_properties(use_graph):
     user1: UserWithAliases = UserWithAliases(userName="User1")
     user2: UserWithAliases = UserWithAliases(user_name="User2", some_other_property="alpha")
     user3: UserWithAliases = UserWithAliases(userName="User3", otherProperty="beta")
@@ -1638,16 +1613,8 @@ def test_aliased_properties(request, use_graph):
     assert result.nodes[2].user_name == "User3"
     assert result.nodes[1].user_name == "User2"
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result.records_raw[0][0]["userName"] == "User1"
-        assert result.records_raw[0][0]["otherProperty"] is None
+    assert raw_property(result, "userName") == "User1"
+    assert raw_property(result, "otherProperty") is None
 
-        assert result.records_raw[1][0]["otherProperty"] == "alpha"
-        assert result.records_raw[2][0]["otherProperty"] == "beta"
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert result.records_raw["n"][0]["userName"] == "User1"
-        assert result.records_raw["n"][0]["otherProperty"] is None
-
-        assert result.records_raw["n"][1]["otherProperty"] == "alpha"
-        assert result.records_raw["n"][2]["otherProperty"] == "beta"
+    assert raw_property(result, "otherProperty", index=1) == "alpha"
+    assert raw_property(result, "otherProperty", index=2) == "beta"
