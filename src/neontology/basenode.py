@@ -1,17 +1,21 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, TypeVar, Union
 
-import pandas as pd
 from pydantic import ValidationError, model_validator
 from typing_extensions import ParamSpec, Self
 
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
+from .optional_deps import require_pandas
 from .result import NeontologyResult
 from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -362,7 +366,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return [by_pp.get(getattr(node, pp_field)) for node in nodes]
 
     @classmethod
-    def merge_df(cls, df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
+    def merge_df(cls, df: "pd.DataFrame", deduplicate: bool = True) -> "pd.Series":
         """Merge in new nodes based on data in a dataframe.
 
         The dataframe columns must correspond to the Node properties. This is a thin
@@ -376,6 +380,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             pd.Series: the merged nodes, one per input row, indexed like the input
         """
+        pd = require_pandas()
+
         if df.empty is True:
             return pd.Series(dtype=object)
 

@@ -69,3 +69,52 @@ class PersonNode(BaseNode):
 ```
 
 Depending on what you're trying to achieve, you could also use a custom field_validator to help generate an appropriate unique value.
+
+## Ingesting from a dataframe library other than pandas
+
+`merge_records` takes a list of dictionaries, so any dataframe library that can produce
+one works without installing an extra. With [polars](https://pola.rs), that is `to_dicts()`:
+
+```python
+from typing import ClassVar, Optional
+
+import polars as pl
+
+from neontology import BaseNode
+
+
+class PersonNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "Person"
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
+    age: int
+
+
+df = pl.DataFrame(
+    {
+        "name": ["Alice", "Bob", "Alice"],
+        "age": [40, 35, 40],
+    }
+)
+
+nodes = PersonNode.merge_records(df.to_dicts())
+```
+
+`merge_records` returns one node per input row, in the order given, so the result lines
+up with the dataframe and can be added back as a column:
+
+```python
+df = df.with_columns(pl.Series("node", nodes, dtype=pl.Object))
+```
+
+Note that the repeated "Alice" row is merged only once, but still gets a node in the
+returned list, so the result stays the same length as the input.
+
+Unlike pandas, polars represents missing values as `None` rather than `NaN`, so no
+conversion is needed before merging.
+
+The same approach works for any source of dictionaries - `csv.DictReader`, a JSON
+payload, a database cursor, or `to_dict(orient="records")` if you do happen to have a
+pandas dataframe.
+

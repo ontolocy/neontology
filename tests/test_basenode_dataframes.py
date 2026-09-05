@@ -3,7 +3,7 @@
 from typing import ClassVar, Optional
 from uuid import UUID, uuid4
 
-import pandas as pd
+import pytest
 from models_basenode import PracticeNode
 from pydantic import (
     ConfigDict,
@@ -17,6 +17,10 @@ from neontology import (
     BaseNode,
 )
 from neontology.result import NeontologyResult
+
+# pandas is an optional extra: merge_df is a convenience wrapper over
+# merge_records, which takes plain dictionaries
+pd = pytest.importorskip("pandas", reason="needs the [pandas] extra")
 
 
 class Person(BaseNode):

@@ -28,7 +28,6 @@ classifiers = [
 dependencies = [
     "neo4j>=5.0,<6",
     "pydantic>=2.7,<3",
-    "pandas>=2.0,<3",
     "python-dotenv>=1.0,<2",
     "Jinja2>=3.0,<4",
     "typing-extensions>=4.0,<5",
@@ -53,6 +52,12 @@ Documentation = "https://neontology.readthedocs.io/"
 "Bug Tracker" = "https://github.com/ontolocy/neontology/issues"
 
 [project.optional-dependencies]
+# merge_df and friends. The core ingest path (merge_records) takes plain
+# dictionaries and needs none of this.
+pandas = [
+    "pandas>=2.0,<3",
+]
+
 grand = [
     # 1.2.0 or later: the engine depends on the flattened relationship result
     # shape introduced in 1.x, and on toLower/COLLECT from 1.2.0
@@ -61,7 +66,7 @@ grand = [
 ]
 
 all = [
-    "neontology[grand]"
+    "neontology[grand,pandas]"
 ]
 
 # Tool configurations (keeping your existing ones + removing flake8)

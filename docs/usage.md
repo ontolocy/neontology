@@ -1,6 +1,6 @@
 # Usage
 
-This guide will help you quickly start using Python and pandas with Neo4j.
+This guide will help you quickly start using Python with Neo4j.
 
 [Jupyter](https://jupyter.org/) notebooks are a great way to get started playing with neontology.
 
@@ -105,32 +105,54 @@ rel = FollowsRel(source=bob,target=alice)
 rel.merge()
 ```
 
-## Populating Neo4j with pandas data
+## Populating Neo4j in bulk
 
-Often we might have data in a pandas dataframe which we want to push to Neo4j according to the model which we have defined.
-
-neontology makes this easy!
-
-For nodes, just create a dataframe where each column represents the fields/properties of the nodes.
+Often we have a collection of data which we want to push to Neo4j according to the model which we have defined. `merge_records` takes a list of dictionaries, where each dictionary's keys correspond to the fields/properties of the node.
 
 ```python
-node_records = [{"name": "Freddy", "age": 42}, {"name": "Philipa", "age":42}]
-node_df = pd.DataFrame.from_records(node_records)
+node_records = [{"name": "Freddy", "age": 42}, {"name": "Philipa", "age": 42}]
 
-PersonNode.merge_df(node_df)
+PersonNode.merge_records(node_records)
 ```
 
-Similarly, if you have the values for the primary properties of sources and targets, you can push relationships to Neo4j using a pandas dataframe. If the relationship has additional properties, these should also be columns on the dataframe.
+It returns one node per input record, in the order given, so the results can be matched back to the input. Identical records are merged only once - pass `deduplicate=False` if you would rather each record was merged individually.
+
+Similarly, if you have the values for the primary properties of sources and targets, you can push relationships. If the relationship has additional properties, include them in each dictionary.
 
 ```python
 rel_records = [
     {"source": "Freddy", "target": "Philipa"},
     {"source": "Alice", "target": "Freddy"}
 ]
+
+FollowsRel.merge_records(rel_records)
+```
+
+### Using pandas
+
+If you work with pandas, install the extra:
+
+```bash
+pip install neontology[pandas]
+```
+
+`merge_df` accepts a dataframe whose columns correspond to the node's properties, and returns a Series indexed like the input, so you can assign it straight back:
+
+```python
+import pandas as pd
+
+node_df = pd.DataFrame.from_records(node_records)
+
+node_df["node"] = PersonNode.merge_df(node_df)
+
 rel_df = pd.DataFrame.from_records(rel_records)
 
 FollowsRel.merge_df(rel_df)
 ```
+
+`merge_df` is a thin wrapper around `merge_records`: it converts `NaN` to `None` and hands the records over. Calling it without the extra installed raises an `ImportError` explaining how to install pandas, and pointing at `merge_records` as the alternative.
+
+Other dataframe libraries need no extra at all - anything that can produce a list of dictionaries works with `merge_records`. See the [cookbook](recipes.md) for a polars example.
 
 ## Putting it all together
 

@@ -1,9 +1,8 @@
 import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
-import pandas as pd
 from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
 
 from neontology.graphconnection import GraphConnection
@@ -11,7 +10,12 @@ from neontology.graphconnection import GraphConnection
 from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
+from .optional_deps import require_pandas
 from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 
 R = TypeVar("R", bound="BaseRelationship")
 
@@ -279,7 +283,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     @classmethod
     def merge_df(
         cls: type[R],
-        df: pd.DataFrame,
+        df: "pd.DataFrame",
         source_type: Optional[type[BaseNode]] = None,
         target_type: Optional[type[BaseNode]] = None,
         source_prop: Optional[str] = None,
@@ -299,6 +303,8 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             source_prop (Optional[str]): The property to use for the source node.
             target_prop (Optional[str]): The property to use for the target node.
         """
+        pd = require_pandas()
+
         if df.empty is False:
             cleaned_df = df.mask(pd.isna(df), None).copy()
             records = cleaned_df.to_dict(orient="records")

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- **pandas is now an optional extra rather than a required dependency.** Install it with `pip install neontology[pandas]` if you use `merge_df`. The core ingest path, `merge_records`, takes plain dictionaries and needs nothing extra. Calling `merge_df` without pandas installed raises an `ImportError` explaining how to install it. This roughly halves `import neontology` time for everyone who does not use dataframes.
 - `BaseNode.merge_records` now returns one node per input record, in the order given, rather than one per distinct node merged. It also takes a `deduplicate` argument (default `True`) so identical records are merged only once. `merge_df` is now a thin wrapper around it, so the deduplication and ordering behaviour that used to be dataframe-only is available without pandas.
 - The `grand` extra now requires `grand-cypher>=1.2.0`. The NetworkX engine depends on the flattened relationship result shape introduced in 1.x.
 - The NetworkX engine now supports case insensitive filters (`__icontains`, `__iexact`, `__istartswith`), which previously raised `NotImplementedError`. grand-cypher gained `toLower` in 1.2.0, so every engine now supports these and they are no longer a point of divergence.
