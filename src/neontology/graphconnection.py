@@ -335,7 +335,19 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
 
         if graph_engine:
             logger.info(f"No GraphConfig provided, using defaults based on specified engine: {graph_engine}.")
-            config = graph_engines[graph_engine]()
+
+            config_class = graph_engines.get(graph_engine)
+
+            if config_class is None:
+                available = ", ".join(sorted(graph_engines))
+                hint = (
+                    " Install the optional 'grand' extra (pip install neontology[grand]) to use NETWORKX."
+                    if graph_engine == "NETWORKX"
+                    else ""
+                )
+                raise ValueError(f"Unknown graph engine '{graph_engine}'. Available engines: {available}.{hint}")
+
+            config = config_class()
 
         else:
             logger.info("No GraphConfig provided and no Graph Engine specified, using Neo4j.")

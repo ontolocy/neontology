@@ -6,6 +6,14 @@ import pytest
 from neontology.graphengines import MemgraphEngine, Neo4jEngine
 from neontology.graphengines.capabilities import Capability, render_capability_matrix
 
+try:
+    from neontology.graphengines import NetworkxEngine  # noqa: F401
+
+    HAS_GRAND = True
+
+except ImportError:
+    HAS_GRAND = False
+
 DOCS = Path(__file__).parent.parent / "docs" / "graph-engines.md"
 MARKERS = re.compile(
     r"<!-- BEGIN CAPABILITY MATRIX -->\n(.*?)\n<!-- END CAPABILITY MATRIX -->",
@@ -13,6 +21,10 @@ MARKERS = re.compile(
 )
 
 
+@pytest.mark.skipif(
+    not HAS_GRAND,
+    reason="the committed matrix includes the networkx column, which needs the [grand] extra",
+)
 def test_capability_matrix_in_docs_is_current():
     match = MARKERS.search(DOCS.read_text())
 

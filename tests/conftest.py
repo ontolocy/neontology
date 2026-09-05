@@ -7,7 +7,18 @@ import pytest
 from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
-from neontology.graphengines import MemgraphConfig, Neo4jConfig, NetworkxConfig
+from neontology.graphengines import MemgraphConfig, Neo4jConfig
+
+try:
+    from neontology.graphengines import NetworkxConfig
+
+    HAS_GRAND = True
+
+except ImportError:
+    # the networkx engine needs the optional [grand] extra - without it the
+    # suite must still collect and run against the other engines
+    NetworkxConfig = None
+    HAS_GRAND = False
 from neontology.graphengines.capabilities import Capability
 
 logger = logging.getLogger(__name__)
@@ -57,6 +68,7 @@ def reset_constraints():
                 "graph_engine": "NETWORKX",
             },
             id="networkx-engine",
+            marks=pytest.mark.skipif(not HAS_GRAND, reason="needs the [grand] extra"),
         ),
     ],
 )

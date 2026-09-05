@@ -58,3 +58,30 @@ jobs:
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
           uv run pytest -x --benchmark-skip
+
+  minimal-install:
+    # neontology must work without the optional [grand] extra. No other job
+    # exercises that - they all install it - so a stray top-level import of
+    # networkx would break `pip install neontology` while CI stayed green.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Install dev dependencies but no extras
+        run: |
+          uv sync
+      - name: Confirm the optional dependency really is absent
+        # if grand ever moves into the dev group this fails loudly, rather than
+        # the job quietly stopping testing what it exists to test
+        run: |
+          uv run python -c "import importlib.util, sys; sys.exit('networkx is installed - this job must run without the [grand] extra') if importlib.util.find_spec('networkx') else print('grand absent, as required')"
+      - name: Confirm neontology imports without it
+        run: |
+          uv run python -c "import neontology; neontology.BaseNode; print('neontology imports without grand')"
+      - name: Test with pytest
+        run: |
+          uv run pytest -m "not uses_graph" --benchmark-skip
