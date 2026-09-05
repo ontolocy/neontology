@@ -91,7 +91,11 @@ Target Label(s): {{ outgoing_rel.target_labels |join(', ') }}
 
 def extract_type_mapping(annotation: Any, show_optional: bool = True) -> NeontologyAnnotationData:
     """Extract type information from a type annotation."""
-    if isinstance(annotation, type):
+    # get_origin is None for plain types but set for parametrised generics like
+    # list[str]. On Python 3.10 isinstance(list[str], type) is True (it became False
+    # in 3.11), so without this check generics take the plain-type branch there and
+    # are reported as bare "list".
+    if isinstance(annotation, type) and get_origin(annotation) is None:
         if issubclass(annotation, enum.Enum):
             enum_values = [e.value for e in annotation]
 

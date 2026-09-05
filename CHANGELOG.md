@@ -2,6 +2,10 @@
 
 ## v3.0.0
 
+### Fixed
+
+- Schema generation now reports parametrised generics consistently on Python 3.10. `isinstance(list[str], type)` is True on 3.10 but False from 3.11, so `extract_type_mapping` took the plain-type branch on 3.10 and described a `list[str]` property as `list`.
+
 ### Changed
 
 - `init_neontology` now raises a `ValueError` naming the available engines when `NEONTOLOGY_ENGINE` is set to something unavailable, instead of a bare `KeyError`. Asking for `NETWORKX` without the optional `grand` extra installed now points at the extra.
