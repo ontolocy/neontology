@@ -59,6 +59,16 @@ Graph-backed tests read connection details from env vars (a `.env` file works): 
 
 Each engine pairs with a `GraphEngineConfig` subclass declaring `engine` and `env_fields`; the base validator auto-populates missing fields from environment variables (via `load_dotenv`) and raises if neither is provided. `NetworkxEngine`/`NetworkxConfig` import lazily — [graphengines/\_\_init\_\_.py](src/neontology/graphengines/__init__.py) and `init_neontology` both swallow the `ImportError` when the `grand` extra isn't installed, so guard any new reference to it the same way.
 
+### Engine capabilities
+
+Parity between engines is the goal; where one cannot do something it is named in `Capability` ([graphengines/capabilities.py](src/neontology/graphengines/capabilities.py)) and declared on the engine. Engines list what they **do** support, so a newly added capability is never silently claimed — omission means unsupported. `supports()` raises on anything that isn't a `Capability`, so a typo fails instead of reporting a feature as missing. In practice only `NetworkxEngine` diverges: the vocabulary names exactly its gaps, so its supported set is empty.
+
+**Never branch on an engine name in tests.** Use `@pytest.mark.requires_capability(Capability.X)` when a test cannot run at all, or `engine.supports(Capability.X)` (via the `engine` fixture) when the expected value differs. The marker resolves at collection time to `xfail(strict=True)` rather than skip, so a capability that starts working **fails the build** instead of passing unnoticed — that is the mechanism, not a stylistic choice. It exists because a skip claimed `merge_on` was unsupported for the NetworkX backend when it had worked since v2.2.1, and nothing caught the drift.
+
+**When you find a new backend gap:** add a `Capability` member with a comment saying what it means, remove it from that engine's `supported_capabilities`, and mark or branch the affected tests. Then regenerate the matrix in [docs/graph-engines.md](docs/graph-engines.md) — it sits between `<!-- BEGIN/END CAPABILITY MATRIX -->` markers and `tests/test_capabilities.py` fails if it is stale, so never hand-edit it.
+
+Not every difference is a capability. `records_raw` is the driver's own structure and differs by design — assert on it through the helpers in [tests/rawresult.py](tests/rawresult.py). Differences in which exception is raised are usually best handled by accepting either.
+
 ### Query safety
 
 Cypher is built with parameters for values. Anything interpolated into the query string (labels, property keys, relationship types) must pass through `gql_identifier_adapter.validate_strings(...)` from [gql.py](src/neontology/gql.py), which enforces `^[a-zA-Z][a-zA-Z0-9_]+$`. Follow this in any new query construction.
