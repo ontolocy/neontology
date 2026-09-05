@@ -150,8 +150,6 @@ rel_df = pd.DataFrame.from_records(rel_records)
 FollowsRel.merge_df(rel_df)
 ```
 
-`merge_df` is a thin wrapper around `merge_records`: it converts `NaN` to `None` and hands the records over. Calling it without the extra installed raises an `ImportError` explaining how to install pandas, and pointing at `merge_records` as the alternative.
-
 Other dataframe libraries need no extra at all - anything that can produce a list of dictionaries works with `merge_records`. See the [cookbook](recipes.md) for a polars example.
 
 ## Putting it all together

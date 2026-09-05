@@ -385,8 +385,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         if df.empty is True:
             return pd.Series(dtype=object)
 
-        # NaN is a pandas way of saying "no value"; the models expect None
-        records = df.mask(pd.isna(df), None).to_dict(orient="records")
+        # pandas spells "no value" as NaN, NaT or pd.NA depending on the column's
+        # dtype; the models expect None. Casting to object first is what makes the
+        # replacement stick: on a typed column, filling with None coerces back to the
+        # column's own missing value instead.
+        records = df.astype(object).where(df.notna(), None).to_dict(orient="records")
 
         nodes = cls.merge_records(records, deduplicate=deduplicate)
 

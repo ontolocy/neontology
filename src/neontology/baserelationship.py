@@ -303,10 +303,13 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             source_prop (Optional[str]): The property to use for the source node.
             target_prop (Optional[str]): The property to use for the target node.
         """
-        pd = require_pandas()
+        # raises a helpful ImportError if the pandas extra is not installed
+        require_pandas()
 
         if df.empty is False:
-            cleaned_df = df.mask(pd.isna(df), None).copy()
+            # see the note in BaseNode.merge_df: casting to object first is what
+            # makes the None replacement stick across dtypes
+            cleaned_df = df.astype(object).where(df.notna(), None)
             records = cleaned_df.to_dict(orient="records")
             cls.merge_records(
                 records,

@@ -55,7 +55,9 @@ Documentation = "https://neontology.readthedocs.io/"
 # merge_df and friends. The core ingest path (merge_records) takes plain
 # dictionaries and needs none of this.
 pandas = [
-    "pandas>=2.0,<3",
+    # pandas 3 requires Python 3.11+, so 2.x remains resolvable on 3.10. Both are
+    # supported: merge_df normalises missing values across the dtype changes in 3.0.
+    "pandas>=2.0,<4",
 ]
 
 grand = [

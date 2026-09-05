@@ -70,7 +70,7 @@ class PersonNode(BaseNode):
 
 Depending on what you're trying to achieve, you could also use a custom field_validator to help generate an appropriate unique value.
 
-## Ingesting from a dataframe library other than pandas
+## Ingesting from polars and other dataframes
 
 `merge_records` takes a list of dictionaries, so any dataframe library that can produce
 one works without installing an extra. With [polars](https://pola.rs), that is `to_dicts()`:
