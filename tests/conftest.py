@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from neontology import GraphConnection, init_neontology
 from neontology.graphengines import MemgraphConfig, Neo4jConfig
+from neontology.graphengines.capabilities import Capability
 
 try:
     from neontology.graphengines import NetworkxConfig
@@ -19,7 +20,59 @@ except ImportError:
     # suite must still collect and run against the other engines
     NetworkxConfig = None
     HAS_GRAND = False
-from neontology.graphengines.capabilities import Capability
+
+
+# The single source of truth for the engines the suite runs against. To add a
+# backend, add one entry here: the parametrisation, the config construction and
+# the capability lookup are all derived from it.
+#
+#   id:         the pytest param id, used to select an engine with -k
+#   config:     the GraphEngineConfig subclass
+#   env_vars:   config field -> environment variable holding its value
+#   available:  False when an optional dependency is missing, so the param skips
+ENGINES = [
+    {
+        "id": "neo4j-engine",
+        "config": Neo4jConfig,
+        "env_vars": {
+            "uri": "TEST_NEO4J_URI",
+            "username": "TEST_NEO4J_USERNAME",
+            "password": "TEST_NEO4J_PASSWORD",
+        },
+        "available": True,
+        "skip_reason": "",
+    },
+    {
+        "id": "memgraph-engine",
+        "config": MemgraphConfig,
+        "env_vars": {
+            "uri": "TEST_MEMGRAPH_URI",
+            "username": "TEST_MEMGRAPH_USER",
+            "password": "TEST_MEMGRAPH_PASSWORD",
+        },
+        "available": True,
+        "skip_reason": "",
+    },
+    {
+        "id": "networkx-engine",
+        "config": NetworkxConfig,
+        "env_vars": {},
+        "available": HAS_GRAND,
+        "skip_reason": "needs the [grand] extra",
+    },
+]
+
+ENGINES_BY_ID = {entry["id"]: entry for entry in ENGINES}
+
+ENGINE_PARAMS = [
+    pytest.param(
+        entry["id"],
+        id=entry["id"],
+        marks=([] if entry["available"] else [pytest.mark.skipif(True, reason=entry["skip_reason"])]),
+    )
+    for entry in ENGINES
+]
+
 
 logger = logging.getLogger(__name__)
 
@@ -37,64 +90,23 @@ def reset_constraints():
         gc.engine.drop_constraint(constraint_name)
 
 
-@pytest.fixture(
-    scope="session",
-    params=[
-        pytest.param(
-            {
-                "graph_config_vars": {
-                    "uri": "TEST_NEO4J_URI",
-                    "username": "TEST_NEO4J_USERNAME",
-                    "password": "TEST_NEO4J_PASSWORD",
-                },
-                "graph_engine": "NEO4J",
-            },
-            id="neo4j-engine",
-        ),
-        pytest.param(
-            {
-                "graph_config_vars": {
-                    "uri": "TEST_MEMGRAPH_URI",
-                    "username": "TEST_MEMGRAPH_USER",
-                    "password": "TEST_MEMGRAPH_PASSWORD",
-                },
-                "graph_engine": "MEMGRAPH",
-            },
-            id="memgraph-engine",
-        ),
-        pytest.param(
-            {
-                "graph_config_vars": {},
-                "graph_engine": "NETWORKX",
-            },
-            id="networkx-engine",
-            marks=pytest.mark.skipif(not HAS_GRAND, reason="needs the [grand] extra"),
-        ),
-    ],
-)
-def get_graph_config(request, tmp_path_factory) -> tuple:
+@pytest.fixture(scope="session", params=ENGINE_PARAMS)
+def get_graph_config(request) -> object:
+    """Build the config for the engine under test, from the ENGINES table."""
     load_dotenv()
 
-    graph_engines = {
-        "NEO4J": Neo4jConfig,
-        "MEMGRAPH": MemgraphConfig,
-        "NETWORKX": NetworkxConfig,
-    }
-
-    graph_config_vars = request.param["graph_config_vars"]
+    entry = ENGINES_BY_ID[request.param]
 
     graph_config = {}
 
-    # build config using environment variables
-    for key, value in graph_config_vars.items():
-        graph_config[key] = os.getenv(value)
-        assert graph_config[key] is not None, f"Environment variable {value} is not set."
+    for field, env_var in entry["env_vars"].items():
+        value = os.getenv(env_var)
 
-    graph_engine = request.param["graph_engine"]
+        assert value is not None, f"Environment variable {env_var} is not set."
 
-    config = graph_engines[graph_engine](**graph_config)
+        graph_config[field] = value
 
-    return config
+    return entry["config"](**graph_config)
 
 
 @pytest.fixture(
@@ -131,20 +143,14 @@ def _engine_for_item(item):
     if callspec is None:
         return None
 
-    param = callspec.params.get("get_graph_config")
+    engine_id = callspec.params.get("get_graph_config")
 
-    if not param:
+    entry = ENGINES_BY_ID.get(engine_id)
+
+    if entry is None or entry["config"] is None:
         return None
 
-    graph_engines = {
-        "NEO4J": Neo4jConfig,
-        "MEMGRAPH": MemgraphConfig,
-        "NETWORKX": NetworkxConfig,
-    }
-
-    config_class = graph_engines.get(param["graph_engine"])
-
-    return config_class.engine if config_class else None
+    return entry["config"].engine
 
 
 def pytest_collection_modifyitems(config, items):
