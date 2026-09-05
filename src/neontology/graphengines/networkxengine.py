@@ -327,23 +327,23 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             list: Updated list of dictionaries with the swapped property.
         """
+        # index the graph once rather than scanning every node for every entry -
+        # merging n relationships over a graph of m nodes was O(n * m)
+        by_prop = {}
+
+        for _, data in self.driver.nodes(data=True):
+            if prop_to_update in data:
+                by_prop[data[prop_to_update]] = data
+
         for entry in all_props:
-            # find the source node by the property
-            this_node = None
-            for node, data in self.driver.nodes(data=True):
-                if data.get(prop_to_update) == entry[props_key]:
-                    this_node = data
+            this_node = by_prop.get(entry[props_key])
 
             if not this_node:
                 warnings.warn(f"Source node with property {prop_to_update}={entry[props_key]} not found.")
                 continue
 
-            # get the actual node id
-
-            actual_node_id = this_node[new_prop]
-
-            # update the source_prop to the actual node's pp
-            entry[props_key] = actual_node_id
+            # update the source_prop to the actual node's primary property value
+            entry[props_key] = this_node[new_prop]
 
         return all_props
 
