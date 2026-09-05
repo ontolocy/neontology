@@ -137,8 +137,10 @@ def test_create_if_exists(request, use_graph):
     if request.node.callspec.id not in ["networkx-engine"]:
         assert node_count == 2
 
+    # networkx identifies nodes by (primary property, label), so a second
+    # create overwrites rather than duplicating
     if request.node.callspec.id in ["networkx-engine"]:
-        assert node_count[0]["_"] == 1
+        assert node_count == 1
 
 
 def test_create_multiple_if_exists(request, use_graph):
@@ -167,8 +169,10 @@ def test_create_multiple_if_exists(request, use_graph):
     if request.node.callspec.id not in ["networkx-engine"]:
         assert node_count == 2
 
+    # networkx identifies nodes by (primary property, label), so a second
+    # create overwrites rather than duplicating
     if request.node.callspec.id in ["networkx-engine"]:
-        assert node_count[0]["_"] == 1
+        assert node_count == 1
 
 
 def test_no_primary_label():
@@ -302,11 +306,7 @@ def test_create_multilabel_inheritance_multiple(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result == 2
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert result[0]["_"] == 2
+    assert result == 2
 
 
 def test_merge_defined_label_inherited(request, use_graph):
@@ -410,9 +410,10 @@ def test_creation_datetime(request, use_graph):
     if request.node.callspec.id not in ["networkx-engine"]:
         assert result == 2022
 
+    # grand cypher doesn't do full datetime operations, so the property comes
+    # back as a datetime rather than the year the query asked for
     if request.node.callspec.id in ["networkx-engine"]:
-        # grand cypher doesn't do full datetime operations
-        assert result[0].year == 2022
+        assert result.year == 2022
 
 
 def test_match_nodes(use_graph):
@@ -1584,13 +1585,11 @@ def test_retrieve_property(request, use_graph):
     )
     follows.merge()
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert bob.follower_count() == 1
-        assert bob.follower_names == ["Alice"]
+    assert bob.follower_count() == 1
 
-    if request.node.callspec.id in ["networkx-engine"]:
-        # grand cypher behaves differently for returning specific values
-        assert bob.follower_count()[0]["_"] == 1
+    # grand cypher behaves differently for returning collected values
+    if request.node.callspec.id not in ["networkx-engine"]:
+        assert bob.follower_names == ["Alice"]
 
 
 def test_retrieve_property_none(request, use_graph):

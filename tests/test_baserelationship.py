@@ -85,14 +85,7 @@ def test_merge_relationship(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result == "Default Practice Relationship Property"
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert (
-            result[0][(0, "PRACTICE_RELATIONSHIP")]
-            == "Default Practice Relationship Property"
-        )
+    assert result == "Default Practice Relationship Property"
 
 
 def test_match_relationship(use_graph):
@@ -333,11 +326,7 @@ def test_merge_df(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result == "New Rel 3"
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert result[0][(0, "TEST_NEW_RELATIONSHIP_TYPE2")] == "New Rel 3"
+    assert result == "New Rel 3"
 
 
 def test_merge_df_alt_prop(request, use_graph):
@@ -366,11 +355,7 @@ def test_merge_df_alt_prop(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result == "New Rel 4"
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert result[0][(0, "TEST_NEW_RELATIONSHIP_TYPE2")] == "New Rel 4"
+    assert result == "New Rel 4"
 
 
 def test_merge_empty_df():
@@ -401,11 +386,7 @@ def test_merge_records(request, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    if request.node.callspec.id not in ["networkx-engine"]:
-        assert result == "New Rel 5"
-
-    if request.node.callspec.id in ["networkx-engine"]:
-        assert result[0][(0, "TEST_NEW_RELATIONSHIP_TYPE2")] == "New Rel 5"
+    assert result == "New Rel 5"
 
 
 def test_create_mass_rels(request, use_graph, benchmark):

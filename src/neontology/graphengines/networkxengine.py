@@ -252,6 +252,32 @@ def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relati
     return new_records, unique_nodes, all_rels, all_paths
 
 
+def _unwrap_grand_value(value: Any) -> Any:
+    """Reduce a single grand-cypher result value to a plain Python value.
+
+    GrandCypher wraps some results in dictionaries where Neo4j and Memgraph return plain
+    values: aggregations come back keyed by entity alias alongside a '_' total, and
+    relationship properties are keyed by a (hop, relationship type) tuple. Unwrapping here
+    keeps `evaluate_query_single` interchangeable across engines.
+
+    Args:
+        value (Any): a single value taken from a grand-cypher result column.
+
+    Returns:
+        Any: the unwrapped value, or the original value if it is not a recognised wrapper.
+    """
+    if isinstance(value, dict):
+        # aggregations carry the total under '_' alongside per-alias entries
+        if "_" in value:
+            return value["_"]
+
+        # relationship properties come back as a single {(hop, rel_type): value} entry
+        if len(value) == 1:
+            return next(iter(value.values()))
+
+    return value
+
+
 class NetworkxEngine(GraphEngineBase):
     def __init__(self, config: "NetworkxConfig") -> None:
         """Initialise connection to the engine.
@@ -633,12 +659,17 @@ class NetworkxEngine(GraphEngineBase):
 
         raw_result = GrandCypher(self.driver).run(subbed_cypher)
 
-        if raw_result:
-            first_record = next(iter(raw_result.values()))
-            return first_record
-
-        else:
+        if not raw_result:
             return None
+
+        # take the first column, then the first row, to match the neo4j driver's
+        # Result.single().value() behaviour
+        first_column = next(iter(raw_result.values()))
+
+        if not first_column:
+            return None
+
+        return _unwrap_grand_value(first_column[0])
 
     def get_count(
         self,
@@ -662,11 +693,11 @@ class NetworkxEngine(GraphEngineBase):
 
         result = self.evaluate_query_single(cypher, params)
 
-        if result:
-            return result[0]["_"]
-
-        else:
+        # a count over zero matches returns no rows at all, where neo4j returns 0
+        if result is None:
             return 0
+
+        return result
 
 
 class NetworkxConfig(GraphEngineConfig):
