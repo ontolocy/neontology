@@ -17,6 +17,15 @@ wheels = [
 ]
 
 [[package]]
+name = "cachetools"
+version = "7.1.8"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/39/9a4689914dd907915cee74733b95888fc1d8a21aad47a24a0a2deec73ac4/cachetools-7.1.8.tar.gz", hash = "sha256:1221d547a0b24b7f26fa891d40d488b5258beab9aebd8ed68c729be3af849c43", size = 40909, upload-time = "2026-08-31T19:02:53.985Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/3d/9487690d0e937854db587205c66bab3c3cf88d9f00ed380b74cb88cc94ee/cachetools-7.1.8-py3-none-any.whl", hash = "sha256:a81e3844acaa7355b6567f97bd67a94a14ec3a9bc2cbbdae45b9592cc036775b", size = 16842, upload-time = "2026-08-31T19:02:52.554Z" },
+]
+
+[[package]]
 name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -132,17 +141,18 @@ wheels = [
 
 [[package]]
 name = "grand-cypher"
-version = "1.0.0"
+version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "cachetools" },
     { name = "grandiso" },
     { name = "lark" },
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "networkx", version = "3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/42/8b9a7ca2222efc7e0f70328dbe3ce67ec384192cf4a91f82a5635821383c/grand_cypher-1.0.0.tar.gz", hash = "sha256:4cb7cf0a2bb1dc43e18f140b4a0990310c201721e3edc64e96055b5ae2004959", size = 96877, upload-time = "2025-05-23T16:09:25.106Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/00/bf/1863931d5cb777ce900bc6989c7c2995e9e807e5c33403519ddec7f102bf/grand_cypher-1.2.0.tar.gz", hash = "sha256:2fc47eeabe96e93ee9d5b41b50b611e17a849676009e9f2e3b9052ada5d8ebbf", size = 80957, upload-time = "2026-07-24T16:23:54.219Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d0/dd/e4563304b8179f0e053fdd5196827a514f8ad483ce4276bcd4fa9337e3b8/grand_cypher-1.0.0-py3-none-any.whl", hash = "sha256:5078cfd4264c26798821429574f588737019d11c75a95d6443e46e6b8d7bbe38", size = 27858, upload-time = "2025-05-23T16:09:23.378Z" },
+    { url = "https://files.pythonhosted.org/packages/10/42/ba452bb593d53327d9d5dede688b17e38b532ee0126375754d722a91bf1a/grand_cypher-1.2.0-py3-none-any.whl", hash = "sha256:64021a947f9ad9e79a0c14c857bd9ce80985fd1a818d21454991cce934e37f58", size = 73393, upload-time = "2026-07-24T16:23:55.608Z" },
 ]
 
 [[package]]
@@ -350,7 +360,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "grand-cypher", marker = "extra == 'grand'", specifier = ">=0.13.0" },
+    { name = "grand-cypher", marker = "extra == 'grand'", specifier = ">=1.2.0" },
     { name = "jinja2", specifier = ">=3.0,<4" },
     { name = "neo4j", specifier = ">=5.0,<6" },
     { name = "neontology", extras = ["grand"], marker = "extra == 'all'" },

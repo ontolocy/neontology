@@ -54,7 +54,9 @@ Documentation = "https://neontology.readthedocs.io/"
 
 [project.optional-dependencies]
 grand = [
-    "grand-cypher>=0.13.0",
+    # 1.2.0 or later: the engine depends on the flattened relationship result
+    # shape introduced in 1.x, and on toLower/COLLECT from 1.2.0
+    "grand-cypher>=1.2.0",
     "networkx>=3.2.1",
 ]
 
