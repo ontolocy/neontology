@@ -318,8 +318,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         input_df = df.mask(pd.isna(df), None).copy()
 
         # create a unique identifier field based on all rows
-        # we'll use this later to match up deduplicated rows to the original ordering
-        input_df["unique_identifier"] = input_df.astype(str).values.sum(axis=1)
+        # we'll use this later to match up deduplicated rows to the original ordering.
+        # the values are kept as a tuple rather than concatenated: concatenating means
+        # ("ab", "c") and ("a", "bc") produce the same key, so distinct rows collide
+        # and one of them is silently dropped
+        input_df["unique_identifier"] = list(map(tuple, input_df.astype(str).to_numpy()))
 
         if deduplicate is True:
             # we don't wan't to waste time attempting to merge identical records

@@ -35,6 +35,34 @@ class Person(BaseNode):
         return v
 
 
+def test_merge_df_does_not_collide_distinct_rows(use_graph):
+    """Rows that are distinct must not be deduplicated into one another.
+
+    The dedup key used to be every column stringified and concatenated, so
+    {"name": "ab", "role": "c"} and {"name": "a", "role": "bc"} both keyed to "abc"
+    and one of the two rows was silently dropped.
+    """
+
+    class Colliding(BaseNode):
+        __primaryproperty__: ClassVar[str] = "name"
+        __primarylabel__: ClassVar[Optional[str]] = "CollidingNode"
+
+        name: str
+        role: str
+
+    df = pd.DataFrame.from_records(
+        [
+            {"name": "ab", "role": "c"},
+            {"name": "a", "role": "bc"},
+        ]
+    )
+
+    results = Colliding.merge_df(df)
+
+    assert [x.name for x in results] == ["ab", "a"]
+    assert sorted(x.name for x in Colliding.match_nodes()) == ["a", "ab"]
+
+
 def test_merge_df_with_duplicates(use_graph):
     people_records = [
         {"name": "arthur", "age": 70},
