@@ -1,0 +1,73 @@
+services:
+  neo4j:
+    image: neo4j:2026-community
+    ports:
+      - 7474:7474
+      - 7373:7373
+      - 7687:7687
+    environment:
+      - NEO4J_AUTH=${NEO4J_AUTH:?not set - copy .env.example to .env}
+    healthcheck:
+      test: curl --fail http://localhost:7474 || exit 1
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+  testneo4j:
+    image: neo4j:2026-community
+    ports:
+      - 8474:7474
+      - 8373:7373
+      - 8687:7687
+    environment:
+      - NEO4J_AUTH=${TEST_NEO4J_AUTH:?not set - copy .env.example to .env}
+    healthcheck:
+      test: curl --fail http://localhost:7474 || exit 1
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+  memgraph:
+    image: memgraph/memgraph:latest
+    ports:
+      - 9686:7687
+      - 7444:7444
+    # the image expects MEMGRAPH_USER, but neontology's MemgraphConfig reads
+    # MEMGRAPH_USERNAME - map here so .env only needs the name the library uses
+    environment:
+      - MEMGRAPH_USER=${MEMGRAPH_USERNAME:?not set - copy .env.example to .env}
+      - MEMGRAPH_PASSWORD=${MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "echo 'RETURN 0;' | mgconsole --username \"$$MEMGRAPH_USER\" --password \"$$MEMGRAPH_PASSWORD\" || exit 1",
+        ]
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+  testmemgraph:
+    # 9687 matches the port the CI workflow publishes, so TEST_MEMGRAPH_URI is
+    # the same locally and in CI
+    image: memgraph/memgraph:latest
+    ports:
+      - 9687:7687
+      - 7445:7444
+    environment:
+      - MEMGRAPH_USER=${TEST_MEMGRAPH_USER:?not set - copy .env.example to .env}
+      - MEMGRAPH_PASSWORD=${TEST_MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "echo 'RETURN 0;' | mgconsole --username \"$$MEMGRAPH_USER\" --password \"$$MEMGRAPH_PASSWORD\" || exit 1",
+        ]
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 10s
+
+# Note: the test services deliberately have no volumes. The pytest session
+# fixture asserts the database is empty before it runs, so persisting data
+# between runs would break the suite.

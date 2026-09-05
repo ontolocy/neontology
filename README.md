@@ -159,13 +159,12 @@ Neontology has experimental support for GQL/openCypher property graph databases 
 
 ```python
 from neontology import init_neontology, MemgraphConfig
-from neontology.graphengines import MemgraphEngine
 
 config = MemgraphConfig(
-                "uri": "bolt://localhost:9687",
-                "username": "memgraphuser",
-                "password": "<MEMGRAPH PASSWORD>"
-            )
+    uri="bolt://localhost:9687",
+    username="memgraphuser",
+    password="<MEMGRAPH PASSWORD>"
+)
 
 init_neontology(config)
 ```

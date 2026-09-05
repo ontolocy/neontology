@@ -11,7 +11,9 @@ Neontology is an object-graph mapper: Pydantic models define nodes/relationships
 The project uses `uv`.
 
 ```bash
-uv sync --all-extras          # install deps incl. the optional [grand] extra
+uv sync --all-extras          # --all-extras is mandatory: conftest.py imports
+                              # NetworkxConfig unconditionally, so without the
+                              # [grand] extra the suite fails at collection
 uv build
 
 uv run pytest -x
@@ -31,7 +33,7 @@ Work happens on branches which get merged when complete to a work-in-progress `d
 
 ### Test environment
 
-Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USER`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers; the networkx engine is exercised by a separate workflow ([ci_grand.yml](.github/workflows/ci_grand.yml)) because it needs the optional extra.
+Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USER`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers. The networkx engine needs no configuration, but does need the `grand` extra installed.
 
 ## Architecture
 
@@ -68,5 +70,5 @@ Cypher is built with parameters for values. Anything interpolated into the query
 ## Conventions
 
 - Ruff with `line-length = 128` and pydocstyle (google convention) — docstrings are required on public functions/methods (`D100`, `D101`, `D104`, `D107` are ignored). Lint/format target is `src` only.
-- `requires-python = ">=3.9"`: no `X | Y` unions at runtime, use `from __future__ import annotations` or `Optional`/`Union`; import `Self`/`ParamSpec` from `typing_extensions`.
+- `requires-python = ">=3.10"`: `X | Y` unions and `ParamSpec` are available from the stdlib, but `Self` still needs `typing_extensions` (stdlib only from 3.11). Existing modules use `Optional`/`Union` and `from __future__ import annotations` from the 3.9 era — match the surrounding file rather than converting it piecemeal.
 - New user-facing behaviour normally needs a `docs/` update and a `CHANGELOG.md` entry under the next version.

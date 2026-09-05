@@ -137,19 +137,16 @@ Note that auto constrain features only use a model's primary label (not secondar
 
 [Memgraph](https://memgraph.com/) is a Neo4j compatible database.
 
-In addition to configuring explicitly as above, you can also use the following environment variables and just `init_neontology(graph_engine=MemgraphEngine)`:
+In addition to configuring explicitly as above, you can also use the following environment variables and just `init_neontology(MemgraphConfig())`:
 
 * `MEMGRAPH_URI`
-* `MEMGRAPH_USER`
+* `MEMGRAPH_USERNAME`
 * `MEMGRAPH_PASSWORD`
 
 ```python
-from neontology import init_neontology
-from neontology.graph_engines import MemgraphEngine
+from neontology import init_neontology, MemgraphConfig
 
-init_neontology(
-    engine=MemgraphConfig()
-)
+init_neontology(MemgraphConfig())
 ```
 
 ### Memgraph Driver

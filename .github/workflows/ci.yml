@@ -16,7 +16,7 @@ jobs:
     services:
       neo4j:
         # Docker Hub Image
-        image: neo4j:5-community
+        image: neo4j:2026-community
         # ports to expose
         ports:
           - 7687:7687
@@ -37,7 +37,7 @@ jobs:
       fail-fast: true
       max-parallel: 2
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.13t"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     steps:
       - uses: actions/checkout@v4
@@ -57,4 +57,4 @@ jobs:
           TEST_MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
-          uv run pytest -x --benchmark-skip -k "not networkx-engine"
+          uv run pytest -x --benchmark-skip
