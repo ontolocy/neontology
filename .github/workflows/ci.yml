@@ -57,7 +57,7 @@ jobs:
           TEST_MEMGRAPH_USER: ${{secrets.TEST_MEMGRAPH_USER}}
           TEST_MEMGRAPH_PASSWORD: ${{secrets.TEST_MEMGRAPH_PASSWORD}}
         run: |
-          uv run pytest -x --benchmark-skip
+          uv run pytest -x --benchmark-disable
 
   minimal-install:
     # neontology must work without the optional [grand] extra. No other job
@@ -84,4 +84,4 @@ jobs:
           uv run python -c "import neontology; neontology.BaseNode; print('neontology imports without grand')"
       - name: Test with pytest
         run: |
-          uv run pytest -m "not uses_graph" --benchmark-skip
+          uv run pytest -m "not uses_graph" --benchmark-disable

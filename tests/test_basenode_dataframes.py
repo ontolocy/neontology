@@ -158,7 +158,7 @@ def test_create_mass_nodes(use_graph, benchmark):
 
     benchmark(ComplexPerson.merge_df, people_df)
 
-    assert Person.get_count() == 1000
+    assert ComplexPerson.get_count() == 1000
 
 
 class UserWithAliases(BaseNode):

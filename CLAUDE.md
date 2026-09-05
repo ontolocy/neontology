@@ -19,7 +19,9 @@ uv build
 uv run pytest -x
 uv run pytest -m "not uses_graph"       # skip tests needing a live database
 uv run pytest -k 'neo4j-engine'         # run against one engine only
-uv run pytest --benchmark-skip          # skip the pytest-benchmark tests
+uv run pytest --benchmark-disable        # run benchmark test bodies once, no timing
+                                         # (--benchmark-skip does NOT run them at all,
+                                         #  so it hides failures in those tests)
 uv run pytest tests/test_basenode.py::test_name -k 'neo4j-engine'   # single test
 uv run pytest --cov=src/neontology
 
