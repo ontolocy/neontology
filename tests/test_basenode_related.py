@@ -3,6 +3,7 @@
 import json
 from typing import ClassVar, Optional
 
+import pytest
 from models_basenode import SampleEnum
 from pydantic import (
     Field,
@@ -206,3 +207,71 @@ def test_retrieve_nodes_none(use_graph):
     followers = bob.followers()
 
     assert len(followers) == 0
+
+
+class TestDecoratedQueryFunctions:
+    """A decorated function may return a query, or a (query, params) pair.
+
+    Which shape it is used to be decided by unpacking optimistically and catching the
+    failure, which called the function a second time and swallowed any ValueError the
+    function itself raised.
+    """
+
+    def test_bare_query_string_calls_the_function_once(self, use_graph):
+        calls = []
+
+        class OnceBare(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "OnceBareNode"
+
+            name: str
+
+            @related_property
+            def label(self):
+                calls.append(1)
+                return "MATCH (#ThisNode) RETURN ThisNode.name"
+
+        node = OnceBare(name="x")
+        node.merge()
+
+        assert node.label() == "x"
+        assert len(calls) == 1
+
+    def test_query_and_params_calls_the_function_once(self, use_graph):
+        calls = []
+
+        class OncePair(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "OncePairNode"
+
+            name: str
+
+            @related_property
+            def label(self):
+                calls.append(1)
+                return "MATCH (#ThisNode) RETURN ThisNode.name", {}
+
+        node = OncePair(name="x")
+        node.merge()
+
+        assert node.label() == "x"
+        assert len(calls) == 1
+
+    def test_a_value_error_from_the_function_is_not_swallowed(self, use_graph):
+        """A ValueError raised by the function is the author's bug, not a shape signal."""
+
+        class Exploding(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "ExplodingNode"
+
+            name: str
+
+            @related_property
+            def label(self):
+                raise ValueError("something went wrong building the query")
+
+        node = Exploding(name="x")
+        node.merge()
+
+        with pytest.raises(ValueError, match="something went wrong"):
+            node.label()

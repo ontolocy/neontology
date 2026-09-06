@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Methods decorated with `@related_nodes` or `@related_property` are now called once per invocation rather than twice. The decorator worked out whether the method returned a query or a `(query, parameters)` pair by unpacking optimistically and catching the failure, so a method returning just a query ran twice - and a `ValueError` raised inside the method was mistaken for that signal and swallowed.
 - `merge_df` now converts missing values to `None` for every column type. It replaced them with `pandas.NA`/`NaN` in place, which on a typed column coerces straight back to that column's own missing value - so a missing string arrived at the model as `NaN` and failed validation. This was already wrong for numeric columns under pandas 2, and pandas 3's typed string columns made it wrong for text as well.
 - `merge_df` no longer silently drops distinct rows. Deduplication keyed on every column stringified and concatenated, so `{"name": "ab", "role": "c"}` and `{"name": "a", "role": "bc"}` both keyed to `"abc"` and only one of the two nodes was created.
 - Schema generation now reports parametrised generics consistently on Python 3.10. `isinstance(list[str], type)` is True on 3.10 but False from 3.11, so `extract_type_mapping` took the plain-type branch on 3.10 and described a `list[str]` property as `list`.

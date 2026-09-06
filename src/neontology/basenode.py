@@ -30,13 +30,32 @@ def _find_this_node(query, params, node):
 
 
 def _prepare_related_query(node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any) -> tuple[str, dict]:
-    try:
-        query, params = wrapped_function(node, *args, **kwargs)
-    except ValueError:
-        query = wrapped_function(node, *args, **kwargs)
+    """Run a decorated function and normalise what it returns into a query and parameters.
+
+    A decorated function may return either the query on its own or a (query, parameters)
+    pair. Which one it is is decided by the type of the result: unpacking optimistically
+    and catching the failure would call the function a second time, and would also
+    swallow a ValueError raised by the function itself.
+
+    Args:
+        node (BaseNode): the node the decorated method was called on.
+        wrapped_function (Callable): the decorated function.
+        *args: positional arguments the method was called with.
+        **kwargs: keyword arguments the method was called with.
+
+    Returns:
+        tuple[str, dict]: the query to run and the parameters to run it with.
+    """
+    result = wrapped_function(node, *args, **kwargs)
+
+    if isinstance(result, str):
+        query = result
 
         # if the function doesn't pass params, they may be taken from user provided parameters
         params = {**kwargs}
+
+    else:
+        query, params = result
 
     # make it easy to match on this specific node
     if "(#ThisNode)" in query:
