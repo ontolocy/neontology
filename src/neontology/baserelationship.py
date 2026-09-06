@@ -1,9 +1,10 @@
 import itertools
 import json
 import warnings
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
-from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
+from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field, model_validator
 
 from neontology.graphconnection import GraphConnection
 
@@ -523,5 +524,24 @@ class RelationshipTypeData(BaseModel):
     relationship_class: type[BaseRelationship]
     source_class: type[BaseNode]
     target_class: type[BaseNode]
-    all_source_classes: list[type[BaseNode]]
-    all_target_classes: list[type[BaseNode]]
+
+    # The subclasses of the source and target are worked out on demand rather than when
+    # this is built. Type discovery constructs one of these per relationship on every
+    # query, and nothing on that path reads them - walking the node hierarchy twice per
+    # relationship to populate them was most of the cost of the walk.
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def all_source_classes(self) -> list[type[BaseNode]]:
+        """The source class and every class which inherits from it."""
+        from .utils import get_node_types
+
+        return list(get_node_types(self.source_class).values())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def all_target_classes(self) -> list[type[BaseNode]]:
+        """The target class and every class which inherits from it."""
+        from .utils import get_node_types
+
+        return list(get_node_types(self.target_class).values())

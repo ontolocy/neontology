@@ -65,15 +65,10 @@ def generate_relationship_type_data(
     if not defined_source_class or not defined_target_class:
         raise ValueError(f"Relationship {rel_class.__name__} must have source and target classes defined.")
 
-    all_source_classes = list(get_node_types(defined_source_class).values())
-    all_target_classes = list(get_node_types(defined_target_class).values())
-
     return RelationshipTypeData(
         relationship_class=rel_class,
         source_class=defined_source_class,
         target_class=defined_target_class,
-        all_source_classes=all_source_classes,
-        all_target_classes=all_target_classes,
     )
 
 
