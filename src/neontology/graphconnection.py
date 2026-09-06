@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
-from warnings import warn
 
 from .graphengines import MemgraphConfig, Neo4jConfig
 from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
@@ -300,8 +299,15 @@ class GraphConnection(object):
         self.engine.close_connection()
 
 
-def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> None:
-    """Initialise neontology."""
+def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
+    """Initialise neontology.
+
+    Args:
+        config (Optional[GraphEngineConfig]): configuration for the engine to connect
+            with. If not given, the NEONTOLOGY_ENGINE environment variable selects the
+            engine and its own environment variables supply the connection details,
+            defaulting to Neo4j.
+    """
     graph_engines = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
@@ -314,29 +320,6 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, **kwargs) -> Non
 
     except ImportError:
         pass
-
-    if "neo4j_uri" in kwargs or "neo4j_username" in kwargs or "neo4j_password" in kwargs:
-        warn(
-            (
-                "Neo4j keyword arguments in init_neontology are being deprecated "
-                "- use config dictionary instead. Read the docs for new syntax."
-            ),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        neo4j_config = {}
-
-        if kwargs.get("neo4j_uri"):
-            neo4j_config["uri"] = kwargs.get("neo4j_uri")
-
-        if kwargs.get("neo4j_username"):
-            neo4j_config["username"] = kwargs.get("neo4j_username")
-
-        if kwargs.get("neo4j_password"):
-            neo4j_config["password"] = kwargs.get("neo4j_password")
-
-        config = Neo4jConfig(**neo4j_config)
 
     if config is None:
         graph_engine = os.getenv("NEONTOLOGY_ENGINE")

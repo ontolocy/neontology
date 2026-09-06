@@ -11,7 +11,6 @@ from typing import ClassVar, Optional
 import pytest
 
 from neontology import BaseNode, BaseRelationship, init_neontology
-from neontology.graphengines import Neo4jConfig
 from neontology.schema_utils import extract_type_mapping
 
 
@@ -30,63 +29,27 @@ class RegressionRel(BaseRelationship):
     target: RegressionNode
 
 
-class TestDeprecatedInitKwargs:
-    """`init_neontology(neo4j_uri=...)` is deprecated but still supported.
+class TestRemovedDeprecations:
+    """Deprecated API removed in v3.
 
-    Nothing covered this path, so there was no way to tell whether removing it would
-    break callers. These tests pin what it does today.
+    Kept as tests so that removal stays deliberate: passing the old arguments now fails
+    loudly rather than being silently ignored, which is what would happen if
+    init_neontology still accepted **kwargs.
     """
 
-    def test_neo4j_kwargs_raise_a_deprecation_warning(self, monkeypatch):
-        captured = {}
-
-        def fake_connection(config):
-            captured["config"] = config
-
-        monkeypatch.setattr("neontology.graphconnection.GraphConnection", fake_connection)
-
-        with pytest.warns(DeprecationWarning, match="being deprecated"):
+    def test_neo4j_kwargs_are_rejected(self):
+        """The deprecated connection kwargs are gone; passing them is an error."""
+        with pytest.raises(TypeError, match="neo4j_uri"):
             init_neontology(
                 neo4j_uri="bolt://example:7687",
                 neo4j_username="someone",
                 neo4j_password="secret",
             )
 
-    def test_neo4j_kwargs_build_an_equivalent_config(self, monkeypatch):
-        captured = {}
-
-        def fake_connection(config):
-            captured["config"] = config
-
-        monkeypatch.setattr("neontology.graphconnection.GraphConnection", fake_connection)
-
-        with pytest.warns(DeprecationWarning):
-            init_neontology(
-                neo4j_uri="bolt://example:7687",
-                neo4j_username="someone",
-                neo4j_password="secret",
-            )
-
-        config = captured["config"]
-
-        assert isinstance(config, Neo4jConfig)
-        assert config.uri == "bolt://example:7687"
-        assert config.username == "someone"
-        assert config.password == "secret"
-
-    def test_partial_kwargs_fall_back_to_the_environment(self, monkeypatch):
-        """Only the kwargs given are used; the rest come from env vars as usual."""
-        captured = {}
-
-        monkeypatch.setattr("neontology.graphconnection.GraphConnection", lambda config: captured.setdefault("config", config))
-        monkeypatch.setenv("NEO4J_USERNAME", "from-env")
-        monkeypatch.setenv("NEO4J_PASSWORD", "env-secret")
-
-        with pytest.warns(DeprecationWarning):
-            init_neontology(neo4j_uri="bolt://example:7687")
-
-        assert captured["config"].uri == "bolt://example:7687"
-        assert captured["config"].username == "from-env"
+    def test_get_primary_property_value_is_gone(self):
+        """Removed in favour of get_pp()."""
+        assert not hasattr(RegressionNode, "get_primary_property_value")
+        assert hasattr(RegressionNode, "get_pp")
 
 
 class TestResultDumping:

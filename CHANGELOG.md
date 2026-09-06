@@ -2,6 +2,17 @@
 
 ## v3.0.0
 
+### Removed
+
+- `BaseNode.get_primary_property_value()`, deprecated since v2.0. Use `get_pp()`.
+- The `neo4j_uri`, `neo4j_username` and `neo4j_password` keyword arguments to `init_neontology`, deprecated since v2.0. Pass a `Neo4jConfig` instead:
+
+    ```python
+    init_neontology(Neo4jConfig(uri=..., username=..., password=...))
+    ```
+
+    `init_neontology` no longer accepts arbitrary keyword arguments, so passing the old ones raises a `TypeError` naming the argument rather than being silently ignored.
+
 ### Changed
 
 - The `pandas` extra allows pandas 3 (`>=2.0,<4`). pandas 3 requires Python 3.11+, so 2.x is still resolved on Python 3.10; both are supported.

@@ -240,17 +240,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
         return self._get_merge_parameters()["pp"]
 
-    def get_primary_property_value(self) -> Union[str, int]:
-        """Get the primary property value for this node.
-
-        Deprecated: Use `get_pp()` instead.
-
-        Returns:
-            Union[str, int]: The value of the primary property.
-        """
-        warnings.warn(("get_primary_property_value is deprecated, use get_pp instead."))
-        return self.get_pp()
-
     def create(self) -> Self:
         """Create this node in the graph."""
         all_props = self._engine_dict()
