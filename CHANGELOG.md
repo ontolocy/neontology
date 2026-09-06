@@ -12,6 +12,7 @@
 
 ### Fixed
 
+- Type discovery no longer processes every class twice. `get_node_types` and `get_rels_by_type` handled each subclass in their loop and then again at the top of the recursive call for that subclass, so the whole hierarchy was walked - and every relationship's type data built - twice per query. Halves the per-query cost, which `evaluate_query` pays on every call by default.
 - Methods decorated with `@related_nodes` or `@related_property` are now called once per invocation rather than twice. The decorator worked out whether the method returned a query or a `(query, parameters)` pair by unpacking optimistically and catching the failure, so a method returning just a query ran twice - and a `ValueError` raised inside the method was mistaken for that signal and swallowed.
 - `merge_df` now converts missing values to `None` for every column type. It replaced them with `pandas.NA`/`NaN` in place, which on a typed column coerces straight back to that column's own missing value - so a missing string arrived at the model as `NaN` and failed validation. This was already wrong for numeric columns under pandas 2, and pandas 3's typed string columns made it wrong for text as well.
 - `merge_df` no longer silently drops distinct rows. Deduplication keyed on every column stringified and concatenated, so `{"name": "ab", "role": "c"}` and `{"name": "a", "role": "bc"}` both keyed to `"abc"` and only one of the two nodes was created.

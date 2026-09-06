@@ -28,13 +28,9 @@ def get_node_types(
     if getattr(base_type, "__primarylabel__", None):
         node_types[base_type.__primarylabel__] = base_type
 
+    # each subclass is handled by its own recursive call, which starts by looking at
+    # its own label above - handling it here as well would process every class twice
     for subclass in base_type.__subclasses__():
-        # we can define 'abstract' nodes which don't have a label
-        # these are to provide common properties to be used by subclassed nodes
-        # but shouldn't be put in the graph
-        if getattr(subclass, "__primarylabel__", None):
-            node_types[subclass.__primarylabel__] = subclass
-
         node_types.update(get_node_types(subclass))
 
     return node_types
@@ -89,14 +85,9 @@ def get_rels_by_type(
     if getattr(base_type, "__relationshiptype__", None) and _validate_relationship_nodes(base_type):
         rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type)
 
+    # as above: the recursive call builds each subclass's own type data, so doing it
+    # here as well would build it twice for every class
     for rel_subclass in base_type.__subclasses__():
-        # we can define 'abstract' relationships which don't have a label
-        # these are to provide common properties to be used by subclassed relationships
-        # but shouldn't be put in the graph
-
-        if getattr(rel_subclass, "__relationshiptype__", None) and _validate_relationship_nodes(rel_subclass):
-            rel_types[rel_subclass.__relationshiptype__] = generate_relationship_type_data(rel_subclass)
-
         rel_types.update(get_rels_by_type(rel_subclass))
 
     return rel_types
