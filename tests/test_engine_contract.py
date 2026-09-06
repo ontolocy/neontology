@@ -156,6 +156,38 @@ def test_constraint_methods_work_or_raise_not_implemented(use_graph):
     assert isinstance(constraints, list)
 
 
+def test_collect_aggregates_into_a_list(use_graph):
+    """Plain COLLECT must work on every engine - it needs no capability guard."""
+    ContractNode(pp="one", number=1).merge()
+    ContractNode(pp="two", number=2).merge()
+
+    result = use_graph.evaluate_query_single("MATCH (n:EngineContractNode) RETURN COLLECT(n.pp)")
+
+    assert isinstance(result, list)
+    assert sorted(result) == ["one", "two"]
+
+
+@pytest.mark.requires_capability(Capability.COLLECT_DISTINCT)
+def test_collect_distinct_deduplicates(use_graph):
+    """COLLECT(DISTINCT ...) where the engine supports DISTINCT inside an aggregation."""
+    source = ContractNode(pp="source")
+    first = ContractNode(pp="first")
+    second = ContractNode(pp="second")
+    source.merge()
+    first.merge()
+    second.merge()
+
+    # two relationships into the same target, so a non-distinct collect would repeat it
+    ContractRel(source=first, target=source).merge()
+    ContractRel(source=second, target=source).merge()
+
+    result = use_graph.evaluate_query_single(
+        "MATCH (n:EngineContractNode)-[r:ENGINE_CONTRACT_REL]->(o:EngineContractNode) RETURN COLLECT(DISTINCT o.pp)"
+    )
+
+    assert result == ["source"]
+
+
 def test_export_dict_converter_rejects_unsupported_types(engine):
     """Every engine must reject dicts as property values, consistently."""
     with pytest.raises(TypeError):

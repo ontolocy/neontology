@@ -164,8 +164,9 @@ def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relati
     # grand dict represents each key returned, with a list of records for that key
     for key, entries in records.items():
         for idx, entry in enumerate(entries):
-            # skip relationships and handle nodes first so that relationships can reference them
-            if "__labels__" in entry:
+            # skip relationships and handle nodes first so that relationships can reference them.
+            # both carry __labels__, so relationships are identified by their own marker
+            if isinstance(entry, dict) and "__labels__" in entry and "__neograndrel__" not in entry:
                 # handle nodes
                 node = grand_node_to_neontology_node(entry, node_classes)
 
@@ -180,51 +181,58 @@ def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relati
     for key, entries in records.items():
         for idx, entry in enumerate(entries):
             # process relationships
-            if isinstance(entry, dict):
-                for subentry in entry.values():
-                    if isinstance(subentry, dict):
-                        source_node = all_nodes.get(subentry["__sourcepp__"])
-                        target_node = all_nodes.get(subentry["__targetpp__"])
+            if isinstance(entry, dict) and "__neograndrel__" in entry:
+                source_node = all_nodes.get(entry["__sourcepp__"])
+                target_node = all_nodes.get(entry["__targetpp__"])
 
-                        rel_type = list(subentry["__labels__"])[0]
+                rel_type = next(iter(entry["__labels__"]))
 
-                        if not source_node or not target_node:
-                            warnings.warn(
-                                (
-                                    f"{rel_type} relationship type query did not include nodes."
-                                    " To get neontology relationships, return source and target "
-                                    "nodes as part of result."
-                                )
-                            )
-                            rel = None
+                if not source_node or not target_node:
+                    warnings.warn(
+                        (
+                            f"{rel_type} relationship type query did not include nodes."
+                            " To get neontology relationships, return source and target "
+                            "nodes as part of result."
+                        )
+                    )
+                    rel = None
 
-                        else:
-                            rel = grand_relationship_to_neontology_relationship(
-                                subentry, source_node, target_node, relationship_classes
-                            )
+                else:
+                    rel = grand_relationship_to_neontology_relationship(entry, source_node, target_node, relationship_classes)
 
-                        if rel:
-                            all_rels.append(rel)
+                if rel:
+                    all_rels.append(rel)
 
-                        try:
-                            new_records[idx]["relationships"][key.value] = rel
+                try:
+                    new_records[idx]["relationships"][key.value] = rel
 
-                        except IndexError:
-                            new_records.append(
-                                {
-                                    "nodes": {},
-                                    "relationships": {key.value: rel},
-                                    "paths": {},
-                                }
-                            )
+                except IndexError:
+                    new_records.append(
+                        {
+                            "nodes": {},
+                            "relationships": {key.value: rel},
+                            "paths": {},
+                        }
+                    )
 
             # handle paths
             elif isinstance(entry, list):
                 this_path = []
                 for entity in entry:
                     if isinstance(entity, dict):
-                        # this is a relationship, process it
-                        path_rel_record = entity[0]
+                        # a named path alternates node ids with relationships wrapped as
+                        # {hop: {...}}, while a variable length match yields the
+                        # relationship dict directly
+                        if "__neograndrel__" in entity:
+                            path_rel_record = entity
+
+                        else:
+                            nested = next((v for v in entity.values() if isinstance(v, dict)), None)
+
+                            if nested is None:
+                                continue
+
+                            path_rel_record = nested
 
                         source_node = all_nodes.get(path_rel_record["__sourcepp__"])
                         target_node = all_nodes.get(path_rel_record["__targetpp__"])
@@ -253,37 +261,10 @@ def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relati
     return new_records, unique_nodes, all_rels, all_paths
 
 
-def _unwrap_grand_value(value: Any) -> Any:
-    """Reduce a single grand-cypher result value to a plain Python value.
-
-    GrandCypher wraps some results in dictionaries where Neo4j and Memgraph return plain
-    values: aggregations come back keyed by entity alias alongside a '_' total, and
-    relationship properties are keyed by a (hop, relationship type) tuple. Unwrapping here
-    keeps `evaluate_query_single` interchangeable across engines.
-
-    Args:
-        value (Any): a single value taken from a grand-cypher result column.
-
-    Returns:
-        Any: the unwrapped value, or the original value if it is not a recognised wrapper.
-    """
-    if isinstance(value, dict):
-        # aggregations carry the total under '_' alongside per-alias entries
-        if "_" in value:
-            return value["_"]
-
-        # relationship properties come back as a single {(hop, rel_type): value} entry
-        if len(value) == 1:
-            return next(iter(value.values()))
-
-    return value
-
-
 class NetworkxEngine(GraphEngineBase):
-    # The Capability vocabulary names exactly the places this engine diverges
-    # from Neo4j/Memgraph, so it supports none of them - grand-cypher is a query
-    # language over an in-memory NetworkX graph, with no mutation clauses and a
-    # reduced expression language. Everything not named there works normally.
+    # grand-cypher is a query language over an in-memory NetworkX graph, with no
+    # mutation clauses and a reduced expression language, so it supports few of
+    # the named capabilities. Everything not named in Capability works normally.
     supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
 
     def __init__(self, config: "NetworkxConfig") -> None:
@@ -309,6 +290,11 @@ class NetworkxEngine(GraphEngineBase):
             "exact",
             "contains",
             "startswith",
+            # case insensitive lookups build toLower() comparisons, supported
+            # by grand-cypher from 1.2.0
+            "iexact",
+            "icontains",
+            "istartswith",
             "gt",
             "lt",
             "gte",
@@ -341,23 +327,23 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             list: Updated list of dictionaries with the swapped property.
         """
+        # index the graph once rather than scanning every node for every entry -
+        # merging n relationships over a graph of m nodes was O(n * m)
+        by_prop = {}
+
+        for _, data in self.driver.nodes(data=True):
+            if prop_to_update in data:
+                by_prop[data[prop_to_update]] = data
+
         for entry in all_props:
-            # find the source node by the property
-            this_node = None
-            for node, data in self.driver.nodes(data=True):
-                if data.get(prop_to_update) == entry[props_key]:
-                    this_node = data
+            this_node = by_prop.get(entry[props_key])
 
             if not this_node:
                 warnings.warn(f"Source node with property {prop_to_update}={entry[props_key]} not found.")
                 continue
 
-            # get the actual node id
-
-            actual_node_id = this_node[new_prop]
-
-            # update the source_prop to the actual node's pp
-            entry[props_key] = actual_node_id
+            # update the source_prop to the actual node's primary property value
+            entry[props_key] = this_node[new_prop]
 
         return all_props
 
@@ -676,7 +662,7 @@ class NetworkxEngine(GraphEngineBase):
         if not first_column:
             return None
 
-        return _unwrap_grand_value(first_column[0])
+        return first_column[0]
 
     def get_count(
         self,

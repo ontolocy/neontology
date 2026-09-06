@@ -1,17 +1,22 @@
 import itertools
 import json
 import warnings
-from typing import Any, ClassVar, Optional, TypeVar
+from functools import cached_property
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
-import pandas as pd
-from pydantic import BaseModel, PrivateAttr, ValidationError, model_validator
+from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field, model_validator
 
 from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
+from .optional_deps import require_pandas
 from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 
 R = TypeVar("R", bound="BaseRelationship")
 
@@ -279,7 +284,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     @classmethod
     def merge_df(
         cls: type[R],
-        df: pd.DataFrame,
+        df: "pd.DataFrame",
         source_type: Optional[type[BaseNode]] = None,
         target_type: Optional[type[BaseNode]] = None,
         source_prop: Optional[str] = None,
@@ -299,8 +304,13 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             source_prop (Optional[str]): The property to use for the source node.
             target_prop (Optional[str]): The property to use for the target node.
         """
+        # raises a helpful ImportError if the pandas extra is not installed
+        require_pandas()
+
         if df.empty is False:
-            cleaned_df = df.mask(pd.isna(df), None).copy()
+            # see the note in BaseNode.merge_df: casting to object first is what
+            # makes the None replacement stick across dtypes
+            cleaned_df = df.astype(object).where(df.notna(), None)
             records = cleaned_df.to_dict(orient="records")
             cls.merge_records(
                 records,
@@ -514,5 +524,24 @@ class RelationshipTypeData(BaseModel):
     relationship_class: type[BaseRelationship]
     source_class: type[BaseNode]
     target_class: type[BaseNode]
-    all_source_classes: list[type[BaseNode]]
-    all_target_classes: list[type[BaseNode]]
+
+    # The subclasses of the source and target are worked out on demand rather than when
+    # this is built. Type discovery constructs one of these per relationship on every
+    # query, and nothing on that path reads them - walking the node hierarchy twice per
+    # relationship to populate them was most of the cost of the walk.
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def all_source_classes(self) -> list[type[BaseNode]]:
+        """The source class and every class which inherits from it."""
+        from .utils import get_node_types
+
+        return list(get_node_types(self.source_class).values())
+
+    @computed_field  # type: ignore[prop-decorator]
+    @cached_property
+    def all_target_classes(self) -> list[type[BaseNode]]:
+        """The target class and every class which inherits from it."""
+        from .utils import get_node_types
+
+        return list(get_node_types(self.target_class).values())

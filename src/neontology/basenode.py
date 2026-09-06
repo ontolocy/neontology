@@ -1,17 +1,21 @@
 import functools
 import json
 import warnings
-from typing import Any, Callable, ClassVar, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, TypeVar, Union
 
-import pandas as pd
 from pydantic import ValidationError, model_validator
 from typing_extensions import ParamSpec, Self
 
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
+from .optional_deps import require_pandas
 from .result import NeontologyResult
 from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
+
+if TYPE_CHECKING:
+    import pandas as pd
+
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -26,13 +30,32 @@ def _find_this_node(query, params, node):
 
 
 def _prepare_related_query(node: "BaseNode", wrapped_function: Callable, *args: Any, **kwargs: Any) -> tuple[str, dict]:
-    try:
-        query, params = wrapped_function(node, *args, **kwargs)
-    except ValueError:
-        query = wrapped_function(node, *args, **kwargs)
+    """Run a decorated function and normalise what it returns into a query and parameters.
+
+    A decorated function may return either the query on its own or a (query, parameters)
+    pair. Which one it is is decided by the type of the result: unpacking optimistically
+    and catching the failure would call the function a second time, and would also
+    swallow a ValueError raised by the function itself.
+
+    Args:
+        node (BaseNode): the node the decorated method was called on.
+        wrapped_function (Callable): the decorated function.
+        *args: positional arguments the method was called with.
+        **kwargs: keyword arguments the method was called with.
+
+    Returns:
+        tuple[str, dict]: the query to run and the parameters to run it with.
+    """
+    result = wrapped_function(node, *args, **kwargs)
+
+    if isinstance(result, str):
+        query = result
 
         # if the function doesn't pass params, they may be taken from user provided parameters
         params = {**kwargs}
+
+    else:
+        query, params = result
 
     # make it easy to match on this specific node
     if "(#ThisNode)" in query:
@@ -76,6 +99,35 @@ def related_nodes(f: Callable[P, R]) -> Callable:
     wrapper.neontology_related_nodes = True  # type: ignore
 
     return wrapper
+
+
+def _record_key(record: dict) -> tuple:
+    """Build a hashable key identifying a record for deduplication.
+
+    Values are keyed individually rather than concatenated: concatenating means
+    ("ab", "c") and ("a", "bc") produce the same key, so distinct records would
+    collide. Unhashable values (lists for instance) fall back to their repr.
+
+    Args:
+        record (dict): a dictionary of node properties.
+
+    Returns:
+        tuple: a hashable key for the record.
+    """
+    key = []
+
+    for field in sorted(record):
+        value = record[field]
+
+        try:
+            hash(value)
+
+        except TypeError:
+            value = repr(value)
+
+        key.append((field, value))
+
+    return tuple(key)
 
 
 class BaseNode(CommonModel):  # pyre-ignore[13]
@@ -188,17 +240,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
         return self._get_merge_parameters()["pp"]
 
-    def get_primary_property_value(self) -> Union[str, int]:
-        """Get the primary property value for this node.
-
-        Deprecated: Use `get_pp()` instead.
-
-        Returns:
-            Union[str, int]: The value of the primary property.
-        """
-        warnings.warn(("get_primary_property_value is deprecated, use get_pp instead."))
-        return self.get_pp()
-
     def create(self) -> Self:
         """Create this node in the graph."""
         all_props = self._engine_dict()
@@ -281,66 +322,86 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return results
 
     @classmethod
-    def merge_records(cls, records: list[dict]) -> list[Self]:
+    def merge_records(cls, records: list[dict], deduplicate: bool = True) -> list[Self]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
             represent properties to be applied.
 
-        Returns:
-            list: A list of the primary property values
+        Returns one node per input record, in the order given, so the result can be
+        matched back to the input. Identical records are merged once and the same node
+        is returned for each of them.
 
         Args:
             records (list[dict[str, Any]]): a list of dictionaries of node properties
-        """
-        nodes = [cls(**x) for x in records]
-
-        return cls.merge_nodes(nodes)
-
-    @classmethod
-    def merge_df(cls, df: pd.DataFrame, deduplicate: bool = True) -> pd.Series:
-        """Merge in new nodes based on data in a dataframe.
-
-        The dataframe columns must correspond to the Node properties.
+            deduplicate (bool): merge identical records only once. Defaults to True.
+                The result is unaffected either way, but merging a record repeatedly
+                is wasted work.
 
         Returns:
-            pd.Series: A list of the primary property values
+            list: the merged nodes, one per input record, in input order
+        """
+        if not records:
+            return []
+
+        nodes = [cls(**x) for x in records]
+
+        if deduplicate is True:
+            # merge each distinct record once, keeping the first occurrence
+            seen: set = set()
+            to_merge = []
+
+            for record, node in zip(records, nodes):
+                key = _record_key(record)
+
+                if key not in seen:
+                    seen.add(key)
+                    to_merge.append(node)
+
+        else:
+            to_merge = nodes
+
+        merged = cls.merge_nodes(to_merge)
+
+        # Map every input record onto its merged node by primary property, so the
+        # result lines up with the input however much was deduplicated. The property
+        # is read directly rather than through get_pp(), which dumps the whole model
+        # through the engine converter and would do so twice for every node here.
+        pp_field = cls.__primaryproperty__
+
+        by_pp = {getattr(node, pp_field): node for node in merged}
+
+        return [by_pp.get(getattr(node, pp_field)) for node in nodes]
+
+    @classmethod
+    def merge_df(cls, df: "pd.DataFrame", deduplicate: bool = True) -> "pd.Series":
+        """Merge in new nodes based on data in a dataframe.
+
+        The dataframe columns must correspond to the Node properties. This is a thin
+        wrapper around `merge_records`, which does the work and can be used directly
+        if you would rather not depend on pandas.
 
         Args:
             df (pd.DataFrame): A pandas dataframe of node properties
-            deduplicate (bool): If True, deduplicate the dataframe before merging.
-                Defaults to True.
+            deduplicate (bool): merge identical rows only once. Defaults to True.
 
+        Returns:
+            pd.Series: the merged nodes, one per input row, indexed like the input
         """
+        pd = require_pandas()
+
         if df.empty is True:
             return pd.Series(dtype=object)
 
-        input_df = df.mask(pd.isna(df), None).copy()
+        # pandas spells "no value" as NaN, NaT or pd.NA depending on the column's
+        # dtype; the models expect None. Casting to object first is what makes the
+        # replacement stick: on a typed column, filling with None coerces back to the
+        # column's own missing value instead.
+        records = df.astype(object).where(df.notna(), None).to_dict(orient="records")
 
-        # create a unique identifier field based on all rows
-        # we'll use this later to match up deduplicated rows to the original ordering
-        input_df["unique_identifier"] = input_df.astype(str).values.sum(axis=1)
+        nodes = cls.merge_records(records, deduplicate=deduplicate)
 
-        if deduplicate is True:
-            # we don't wan't to waste time attempting to merge identical records
-            unique_df = input_df.drop_duplicates(subset="unique_identifier", ignore_index=True).copy()
-        else:
-            unique_df = input_df
-
-        model_data = unique_df.drop("unique_identifier", axis=1).copy()
-
-        records = model_data.to_dict(orient="records")
-
-        unique_df["generated_nodes"] = pd.Series(cls.merge_records(records))
-
-        # now we need to get the mapping from unique id to primary property
-        # so that we can return the data in the same shape it was received
-        input_df.insert(0, "ontolocy_merging_order", range(0, len(input_df)))
-        output_df = input_df.merge(unique_df, how="outer", on="unique_identifier", suffixes=(None, "_y"))
-
-        ordered_nodes = output_df.sort_values("ontolocy_merging_order", ignore_index=True).generated_nodes.copy()
-
-        return ordered_nodes
+        return pd.Series(nodes, index=df.index, dtype=object)
 
     @classmethod
     def match(cls, pp: str) -> Optional[Self]:

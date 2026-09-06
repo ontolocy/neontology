@@ -80,6 +80,58 @@ def follower_count(self):
     return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN COUNT(DISTINCT o)"
 ```
 
+### Returning parameters
+
+A decorated method may return the query on its own, or a `(query, parameters)` pair if
+the query needs parameters:
+
+```python
+@related_nodes
+def followers_since(self, year):
+    return "MATCH (#ThisNode)<-[r:FOLLOWS]-(o) WHERE r.year > $year RETURN o", {"year": year}
+```
+
+Returning just the query is the common case; any keyword arguments the method was
+called with are used as the parameters.
+
+### Caching results
+
+Both decorators run their query every time the method is called. That is the right
+default for a database mapper - the graph can change between calls - but it means a
+view that reads the same relationship several times pays for it each time.
+
+For an accessor that takes no arguments, `functools.cached_property` composes with the
+decorators and caches the result for the lifetime of the node object:
+
+```python
+from functools import cached_property
+
+class PersonNode(BaseNode):
+    ...
+
+    @cached_property
+    @related_property
+    def follower_count(self):
+        return "MATCH (#ThisNode)<-[:FOLLOWS]-(o) RETURN COUNT(o)"
+```
+
+The query then runs once per node instance. In a web application where a node is
+fetched to render a request, that scopes the cache to the request, which is usually
+what you want. To recompute, drop the cached value:
+
+```python
+person.__dict__.pop("follower_count", None)
+```
+
+Two things to be aware of:
+
+- Nothing invalidates the cache when the graph changes. If you merge data and then read
+  a cached property on a node object you already had, you will get the previous answer.
+  Fetch the node again, or drop the cached value, after writing.
+- A cached property is not reported by `get_related_property_methods()`, because the
+  attribute on the class is the `cached_property` rather than the decorated function.
+  The same is already true of a plain `@property`.
+
 ### Example
 
 We can put this all together to add some handy extra functionality to nodes - for example, making it easy to access followers in a social graph.

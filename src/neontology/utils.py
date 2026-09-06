@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Optional
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
@@ -28,13 +29,9 @@ def get_node_types(
     if getattr(base_type, "__primarylabel__", None):
         node_types[base_type.__primarylabel__] = base_type
 
+    # each subclass is handled by its own recursive call, which starts by looking at
+    # its own label above - handling it here as well would process every class twice
     for subclass in base_type.__subclasses__():
-        # we can define 'abstract' nodes which don't have a label
-        # these are to provide common properties to be used by subclassed nodes
-        # but shouldn't be put in the graph
-        if getattr(subclass, "__primarylabel__", None):
-            node_types[subclass.__primarylabel__] = subclass
-
         node_types.update(get_node_types(subclass))
 
     return node_types
@@ -42,39 +39,60 @@ def get_node_types(
 
 def generate_relationship_type_data(
     rel_class: type[BaseRelationship],
+    nodes: Optional[tuple[type, type]] = None,
 ) -> RelationshipTypeData:
-    """Generate relationship type data for a given relationship class."""
-    defined_source_class = rel_class.model_fields["source"].annotation
-    defined_target_class = rel_class.model_fields["target"].annotation
+    """Generate relationship type data for a given relationship class.
+
+    Args:
+        rel_class (type[BaseRelationship]): the relationship class to describe.
+        nodes (Optional[tuple[type, type]]): the resolved source and target classes, if
+            the caller already has them. `model_fields` is a pydantic property rather
+            than a plain attribute, so passing them avoids reading it a second time.
+
+    Returns:
+        RelationshipTypeData: the relationship's type information.
+
+    Raises:
+        ValueError: if the relationship has no source or target class defined.
+    """
+    if nodes is None:
+        defined_source_class = rel_class.model_fields["source"].annotation
+        defined_target_class = rel_class.model_fields["target"].annotation
+
+    else:
+        defined_source_class, defined_target_class = nodes
 
     if not defined_source_class or not defined_target_class:
         raise ValueError(f"Relationship {rel_class.__name__} must have source and target classes defined.")
-
-    all_source_classes = list(get_node_types(defined_source_class).values())
-    all_target_classes = list(get_node_types(defined_target_class).values())
 
     return RelationshipTypeData(
         relationship_class=rel_class,
         source_class=defined_source_class,
         target_class=defined_target_class,
-        all_source_classes=all_source_classes,
-        all_target_classes=all_target_classes,
     )
 
 
-def _validate_relationship_nodes(rel_class: type[BaseRelationship]) -> bool:
-    """Validate that a relationship class has valid source and target node classes defined.
+def _resolved_relationship_nodes(rel_class: type[BaseRelationship]) -> Optional[tuple[type, type]]:
+    """Return a relationship's source and target classes, if both are resolved.
 
     This handles cases where the relationship class is defined but the source or target are ForwardRefs
-        which may be resolved later.
+        which may be resolved later. Returning the classes rather than a boolean lets the caller pass
+        them on instead of reading `model_fields` again.
+
+    Args:
+        rel_class (type[BaseRelationship]): the relationship class to inspect.
+
+    Returns:
+        Optional[tuple[type, type]]: the source and target classes, or None if either is not
+            yet resolved to an actual class.
     """
     defined_source_class = rel_class.model_fields["source"].annotation
     defined_target_class = rel_class.model_fields["target"].annotation
 
     if not isinstance(defined_source_class, type) or not isinstance(defined_target_class, type):
-        return False
+        return None
 
-    return True
+    return defined_source_class, defined_target_class
 
 
 def get_rels_by_type(
@@ -86,17 +104,16 @@ def get_rels_by_type(
     """
     rel_types: dict = defaultdict(dict)
 
-    if getattr(base_type, "__relationshiptype__", None) and _validate_relationship_nodes(base_type):
-        rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type)
+    # an 'abstract' relationship has no type and isn't put in the graph
+    if getattr(base_type, "__relationshiptype__", None):
+        nodes = _resolved_relationship_nodes(base_type)
 
+        if nodes is not None:
+            rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type, nodes)
+
+    # as above: the recursive call builds each subclass's own type data, so doing it
+    # here as well would build it twice for every class
     for rel_subclass in base_type.__subclasses__():
-        # we can define 'abstract' relationships which don't have a label
-        # these are to provide common properties to be used by subclassed relationships
-        # but shouldn't be put in the graph
-
-        if getattr(rel_subclass, "__relationshiptype__", None) and _validate_relationship_nodes(rel_subclass):
-            rel_types[rel_subclass.__relationshiptype__] = generate_relationship_type_data(rel_subclass)
-
         rel_types.update(get_rels_by_type(rel_subclass))
 
     return rel_types
@@ -123,15 +140,17 @@ def get_rels_by_node(base_type: type[BaseRelationship] = BaseRelationship, by_so
     by_node: dict[str, set[str]] = defaultdict(set)
 
     for rel_type, entry in all_rels.items():
-        try:
-            node_label = entry.model_dump()[node_dir].__primarylabel__
-        except AttributeError:
-            node_label = None
+        # read the attribute directly: model_dump() serialises all five fields, including
+        # two lists, to get at one of them, and these fields hold classes which it returns
+        # unchanged anyway
+        node_class = getattr(entry, node_dir)
+
+        node_label = getattr(node_class, "__primarylabel__", None)
 
         if node_label is not None:
             by_node[node_label].add(rel_type)
 
-        for node_subclass in all_subclasses(entry.model_dump()[node_dir]):
+        for node_subclass in all_subclasses(node_class):
             subclass_label = node_subclass.__primarylabel__
             if subclass_label is not None:
                 by_node[subclass_label].add(rel_type)

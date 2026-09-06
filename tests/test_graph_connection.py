@@ -450,3 +450,76 @@ def test_evaluate_query_node_links_simple(use_graph):
 
     assert len(node_link_data["nodes"]) == 2
     assert len(node_link_data["edges"]) == 1
+
+
+class TestConnectionVerification:
+    """The connection is verified where it is established, not on every access.
+
+    GraphConnection() is how the library reaches the singleton - including once per
+    model dump - so verifying in __init__ cost a database round trip per call, which
+    dominated bulk operations.
+    """
+
+    def test_accessing_the_connection_does_not_verify(self, use_graph, monkeypatch):
+        calls = []
+
+        monkeypatch.setattr(
+            type(use_graph.engine),
+            "verify_connection",
+            lambda self: calls.append(1) or True,
+        )
+
+        for _ in range(5):
+            GraphConnection()
+
+        assert calls == []
+
+    def test_using_a_model_does_not_verify_per_record(self, use_graph, monkeypatch):
+        """Bulk work must not scale database round trips with the number of records."""
+
+        class VerifyCountNode(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[Optional[str]] = "VerifyCountNode"
+
+            pp: str
+
+        calls = []
+
+        monkeypatch.setattr(
+            type(use_graph.engine),
+            "verify_connection",
+            lambda self: calls.append(1) or True,
+        )
+
+        VerifyCountNode.merge_records([{"pp": f"n{i}"} for i in range(20)])
+
+        assert calls == []
+
+    def test_uninitialised_connection_still_explains_itself(self):
+        """The helpful error comes from __new__, so it survives moving the check."""
+        original = GraphConnection._instance
+
+        GraphConnection._instance = None
+
+        try:
+            with pytest.raises(RuntimeError, match="init_neontology"):
+                GraphConnection()
+
+        finally:
+            GraphConnection._instance = original
+
+    def test_change_engine_verifies_the_new_connection(self, use_graph, get_graph_config, monkeypatch):
+        """Swapping the engine establishes a connection, so that is checked."""
+        engine_class = type(use_graph.engine)
+
+        monkeypatch.setattr(engine_class, "verify_connection", lambda self: False)
+
+        with pytest.raises(RuntimeError, match="could not connect"):
+            GraphConnection.change_engine(get_graph_config)
+
+        # restore a working engine for the rest of the session
+        monkeypatch.undo()
+
+        GraphConnection.change_engine(get_graph_config)
+
+        assert GraphConnection().engine.verify_connection() is True

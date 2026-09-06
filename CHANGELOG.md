@@ -2,13 +2,44 @@
 
 ## v3.0.0
 
-### Fixed
+### Removed
 
-- Schema generation now reports parametrised generics consistently on Python 3.10. `isinstance(list[str], type)` is True on 3.10 but False from 3.11, so `extract_type_mapping` took the plain-type branch on 3.10 and described a `list[str]` property as `list`.
+- Support for Python 3.9, which is end of life. Neontology now requires Python 3.10 or later.
+- `BaseNode.get_primary_property_value()`, deprecated since v2.0. Use `get_pp()`.
+- The `neo4j_uri`, `neo4j_username` and `neo4j_password` keyword arguments to `init_neontology`, deprecated since v2.0. Pass a `Neo4jConfig` instead. `init_neontology` no longer accepts arbitrary keyword arguments, so the old call raises a `TypeError` naming the argument rather than being silently ignored.
+
+### Added
+
+- Engine capabilities. Where an engine cannot do something, it is named in `Capability` (`neontology.graphengines.capabilities`) and declared on the engine, which reports it through `GraphEngineBase.supports()`. `docs/graph-engines.md` carries a matrix generated from those declarations. Only the experimental NetworkX engine currently diverges.
+- `pandas` and `all` install extras, alongside the existing `grand`.
 
 ### Changed
 
+- **pandas is now an optional extra rather than a required dependency.** Install it with `pip install neontology[pandas]` if you use `merge_df`. The core ingest path, `merge_records`, takes plain dictionaries and needs nothing extra. Calling `merge_df` without pandas installed raises an `ImportError` explaining how to install it. This roughly halves `import neontology` time for everyone who does not use dataframes.
+- The `pandas` extra allows pandas 3 (`>=2.0,<4`). pandas 3 requires Python 3.11+, so 2.x is still resolved on Python 3.10; both are supported.
+- `BaseNode.merge_records` now returns one node per input record, in the order given, rather than one per distinct node merged. It also takes a `deduplicate` argument (default `True`) so identical records are merged only once. `merge_df` is now a thin wrapper around it, so the deduplication and ordering behaviour that used to be dataframe-only is available without pandas.
+- The `grand` extra now requires `grand-cypher>=1.2.0`. The NetworkX engine depends on the flattened relationship result shape introduced in 1.x.
+- `evaluate_query_single` on the NetworkX engine now returns a plain value, as the other engines do, rather than the raw grand-cypher column.
+- The NetworkX engine now supports case insensitive filters (`__icontains`, `__iexact`, `__istartswith`), which previously raised `NotImplementedError`. Every engine now supports these, so the `CASE_INSENSITIVE_FILTERS` capability has been removed from the vocabulary.
+- The `COLLECTED_VALUES` capability is now `COLLECT_DISTINCT`. Plain `COLLECT` works on every engine; only `DISTINCT` inside an aggregation is unsupported by the NetworkX engine.
+- On the NetworkX engine, datetime accessors in a query (`RETURN n.created.year`) now raise a parse error rather than silently returning the datetime and ignoring the accessor. Covered by the `DATETIME_FUNCTIONS` capability.
 - `init_neontology` now raises a `ValueError` naming the available engines when `NEONTOLOGY_ENGINE` is set to something unavailable, instead of a bare `KeyError`. Asking for `NETWORKX` without the optional `grand` extra installed now points at the extra.
+
+### Fixed
+
+- `merge_df` no longer silently drops distinct rows. Deduplication keyed on every column stringified and concatenated, so `{"name": "ab", "role": "c"}` and `{"name": "a", "role": "bc"}` both keyed to `"abc"` and only one of the two nodes was created.
+- `merge_df` now converts missing values to `None` for every column type. It replaced them in place, which on a typed column coerces back to that column's own missing value - so a missing string arrived at the model as `NaN` and failed validation. This was already wrong for numeric columns under pandas 2, and pandas 3's typed string columns made it wrong for text as well.
+- Methods decorated with `@related_nodes` or `@related_property` are now called once per invocation rather than twice. The decorator worked out whether the method returned a query or a `(query, parameters)` pair by unpacking optimistically and catching the failure, so a method returning just a query ran twice - and a `ValueError` raised inside the method was mistaken for that signal and swallowed.
+- Schema generation now reports parametrised generics consistently on Python 3.10. `isinstance(list[str], type)` is True on 3.10 but False from 3.11, so `extract_type_mapping` took the plain-type branch and described a `list[str]` property as `list`.
+
+### Performance
+
+Bulk operations and queries are substantially faster; behaviour is unchanged.
+
+- Model property usage (`set_on_match`, `set_on_create`, `merge_on`) is worked out once per class rather than on every object construction, where it generated the pydantic JSON schema each time. Bulk merges improve by roughly 2x on Neo4j and Memgraph, and far more on NetworkX where database I/O does not mask the cost.
+- The database connection is verified where it is established - in `init_neontology` and `change_engine` - rather than on every `GraphConnection()` call. `GraphConnection()` is how the library reaches the singleton, including once per model dump, so verification cost a database round trip per call: merging 1000 records made over 2000 of them. `change_engine` previously did not verify at all.
+- Type discovery no longer walks the class hierarchy twice, and no longer reads `model_fields` twice per relationship. `RelationshipTypeData.all_source_classes` and `all_target_classes` are worked out on demand rather than when the object is built - nothing on the query path reads them. They remain readable as attributes and still appear in `model_dump()`.
+- `get_rels_by_node` reads the attributes it needs rather than serialising the whole model to reach one of them, which dominated schema generation.
 
 ## v2.2.2
 

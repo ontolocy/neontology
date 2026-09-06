@@ -3,13 +3,16 @@
 from typing import ClassVar, Optional
 from uuid import uuid4
 
-import pandas as pd
 import pytest
 from pydantic import Field, ValidationError
 
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphengines.capabilities import Capability
+
+# pandas is an optional extra: merge_df is a convenience wrapper over
+# merge_records, which takes plain dictionaries
+pd = pytest.importorskip("pandas", reason="needs the [pandas] extra")
 
 
 class PracticeNode(BaseNode):

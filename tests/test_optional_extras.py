@@ -1,9 +1,13 @@
-"""The library must work without the optional [grand] extra installed.
+"""The library must work without its optional extras installed.
 
-`NetworkxEngine` is optional: `neontology.graphengines` and `init_neontology` both
-swallow the ImportError when grand-cypher is absent. These tests hold that contract,
-and the CI job that installs without extras is what exercises the absent case.
+Two things are optional: the NetworkX engine ([grand]) and dataframe support
+([pandas]). `neontology.graphengines` and `init_neontology` swallow the ImportError
+for the former, and `merge_df` defers importing pandas until it is called. These tests
+hold that contract, and the CI job that installs without extras exercises the absent
+case.
 """
+
+from typing import ClassVar, Optional
 
 import pytest
 
@@ -17,6 +21,14 @@ try:
 
 except ImportError:
     HAS_GRAND = False
+
+try:
+    import pandas  # noqa: F401
+
+    HAS_PANDAS = True
+
+except ImportError:
+    HAS_PANDAS = False
 
 
 def test_neontology_imports_without_the_grand_extra():
@@ -53,3 +65,29 @@ def test_requesting_networkx_without_extra_points_at_the_extra(monkeypatch):
 
     with pytest.raises(ValueError, match="grand"):
         neontology.init_neontology()
+
+
+@pytest.mark.skipif(HAS_PANDAS, reason="only meaningful without the [pandas] extra")
+def test_merge_df_explains_how_to_install_pandas():
+    """merge_df must name the extra, and point at the alternative that needs nothing."""
+
+    class PandaslessNode(neontology.BaseNode):
+        __primaryproperty__: ClassVar[str] = "name"
+        __primarylabel__: ClassVar[Optional[str]] = "PandaslessNode"
+
+        name: str
+
+    with pytest.raises(ImportError, match="neontology\\[pandas\\]") as excinfo:
+        PandaslessNode.merge_df(None)
+
+    assert "merge_records" in str(excinfo.value)
+
+
+def test_merge_records_needs_no_optional_dependencies():
+    """The canonical ingest path must not reach for pandas."""
+    import inspect
+
+    source = inspect.getsource(neontology.BaseNode.merge_records)
+
+    assert "pandas" not in source
+    assert "require_pandas" not in source

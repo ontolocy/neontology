@@ -3,7 +3,7 @@
 from typing import ClassVar, Optional
 from uuid import UUID, uuid4
 
-import pandas as pd
+import pytest
 from models_basenode import PracticeNode
 from pydantic import (
     ConfigDict,
@@ -17,6 +17,10 @@ from neontology import (
     BaseNode,
 )
 from neontology.result import NeontologyResult
+
+# pandas is an optional extra: merge_df is a convenience wrapper over
+# merge_records, which takes plain dictionaries
+pd = pytest.importorskip("pandas", reason="needs the [pandas] extra")
 
 
 class Person(BaseNode):
@@ -33,6 +37,103 @@ class Person(BaseNode):
             v = f"{values.data['name']}_{values.data['age']}"
 
         return v
+
+
+class TestMergeRecords:
+    """merge_records is the canonical ingest path; merge_df is a wrapper over it."""
+
+    def test_returns_one_node_per_input_record_in_order(self, use_graph):
+        records = [{"name": "arthur", "age": 70}, {"name": "betty", "age": 65}, {"name": "ted", "age": 50}]
+
+        results = Person.merge_records(records)
+
+        assert [x.name for x in results] == ["arthur", "betty", "ted"]
+
+    def test_duplicate_records_map_to_the_same_node(self, use_graph):
+        records = [
+            {"name": "arthur", "age": 70},
+            {"name": "betty", "age": 65},
+            {"name": "betty", "age": 65},
+            {"name": "arthur", "age": 70},
+        ]
+
+        results = Person.merge_records(records)
+
+        # one result per input record, in input order
+        assert [x.name for x in results] == ["arthur", "betty", "betty", "arthur"]
+
+        # the repeated records resolve to the same node
+        assert results[0].identifier == results[3].identifier
+        assert results[1].identifier == results[2].identifier
+
+    def test_deduplicate_false_still_returns_one_per_record(self, use_graph):
+        records = [{"name": "betty", "age": 65}, {"name": "betty", "age": 65}]
+
+        results = Person.merge_records(records, deduplicate=False)
+
+        assert len(results) == 2
+        assert [x.name for x in results] == ["betty", "betty"]
+
+    def test_distinct_records_are_not_collided(self, use_graph):
+        class RecordCollide(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "RecordCollideNode"
+
+            name: str
+            role: str
+
+        results = RecordCollide.merge_records([{"name": "ab", "role": "c"}, {"name": "a", "role": "bc"}])
+
+        assert [x.name for x in results] == ["ab", "a"]
+        assert sorted(x.name for x in RecordCollide.match_nodes()) == ["a", "ab"]
+
+    def test_unhashable_values_can_be_deduplicated(self, use_graph):
+        """List properties are not hashable, so the key falls back to a repr."""
+
+        class Listy(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "ListyNode"
+
+            name: str
+            tags: list = []
+
+        results = Listy.merge_records(
+            [{"name": "one", "tags": ["a", "b"]}, {"name": "one", "tags": ["a", "b"]}, {"name": "two", "tags": []}]
+        )
+
+        assert [x.name for x in results] == ["one", "one", "two"]
+        assert sorted(x.name for x in Listy.match_nodes()) == ["one", "two"]
+
+    def test_empty_records_returns_empty(self, use_graph):
+        assert Person.merge_records([]) == []
+
+
+def test_merge_df_does_not_collide_distinct_rows(use_graph):
+    """Rows that are distinct must not be deduplicated into one another.
+
+    The dedup key used to be every column stringified and concatenated, so
+    {"name": "ab", "role": "c"} and {"name": "a", "role": "bc"} both keyed to "abc"
+    and one of the two rows was silently dropped.
+    """
+
+    class Colliding(BaseNode):
+        __primaryproperty__: ClassVar[str] = "name"
+        __primarylabel__: ClassVar[Optional[str]] = "CollidingNode"
+
+        name: str
+        role: str
+
+    df = pd.DataFrame.from_records(
+        [
+            {"name": "ab", "role": "c"},
+            {"name": "a", "role": "bc"},
+        ]
+    )
+
+    results = Colliding.merge_df(df)
+
+    assert [x.name for x in results] == ["ab", "a"]
+    assert sorted(x.name for x in Colliding.match_nodes()) == ["a", "ab"]
 
 
 def test_merge_df_with_duplicates(use_graph):

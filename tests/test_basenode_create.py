@@ -345,7 +345,8 @@ def test_create_multiple_defined_label(use_graph):
     assert set(["Special Test Node", "Special Test Node2"]) == node_pps
 
 
-def test_creation_datetime(engine, use_graph):
+@pytest.mark.requires_capability(Capability.DATETIME_FUNCTIONS)
+def test_creation_datetime(use_graph):
     """Check we can manually define the created datetime.
 
     Then check we can query for it using neo4j DateTime type.
@@ -364,10 +365,4 @@ def test_creation_datetime(engine, use_graph):
 
     result = use_graph.evaluate_query_single(cypher)
 
-    # without DATETIME_FUNCTIONS the accessor in the query is not evaluated, so
-    # the property comes back as a datetime rather than the year
-    if engine.supports(Capability.DATETIME_FUNCTIONS):
-        assert result == 2022
-
-    else:
-        assert result.year == 2022
+    assert result == 2022

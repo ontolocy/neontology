@@ -131,3 +131,37 @@ def test_apply_neo4j_constraints(use_graph):
     # not all graph engines do constraints
     except NotImplementedError:
         pass
+
+
+class TestForwardRefRelationships:
+    """A relationship may be defined before the node classes it points at.
+
+    Discovery has to tolerate unresolved ForwardRefs rather than raising, and pick the
+    relationship up once `model_rebuild()` resolves them. This was a bug fixed in v2.2.1
+    and had no test.
+    """
+
+    def test_unresolved_forward_refs_are_skipped_then_picked_up(self):
+        class ForwardRel(BaseRelationship):
+            __relationshiptype__: ClassVar[Optional[str]] = "FORWARD_REF_REL"
+
+            source: "ForwardNode"
+            target: "ForwardNode"
+
+        # the node class does not exist yet, so the relationship is not discoverable
+        # and discovery must not raise
+        assert "FORWARD_REF_REL" not in get_rels_by_type()
+
+        class ForwardNode(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[Optional[str]] = "ForwardRefNode"
+
+            pp: str
+
+        ForwardRel.model_rebuild()
+
+        discovered = get_rels_by_type()
+
+        assert "FORWARD_REF_REL" in discovered
+        assert discovered["FORWARD_REF_REL"].source_class is ForwardNode
+        assert discovered["FORWARD_REF_REL"].target_class is ForwardNode
