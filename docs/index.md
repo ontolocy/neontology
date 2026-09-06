@@ -18,7 +18,10 @@ The core works with plain Python dictionaries. Optional extras add pandas datafr
 pip install neontology[pandas]
 pip install neontology[grand]
 pip install neontology[all]
+pip install neontology[rust]
 ```
+
+The `rust` extra installs the Neo4j driver's Rust extensions, which the driver uses automatically. It is kept out of `[all]` because it needs a compiled wheel for your platform.
 
 ## A Simple Example
 

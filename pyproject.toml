@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Database",
 ]
 dependencies = [
-    "neo4j>=5.0,<6",
+    "neo4j>=6.0,<7",
     "pydantic>=2.7,<3",
     "python-dotenv>=1.0,<2",
     "Jinja2>=3.0,<4",
@@ -52,6 +52,14 @@ Documentation = "https://neontology.readthedocs.io/"
 "Bug Tracker" = "https://github.com/ontolocy/neontology/issues"
 
 [project.optional-dependencies]
+# Optional Rust implementation of the driver's packstream codec. A drop-in: the
+# driver detects and uses it automatically, no code or configuration change. Not
+# included in [all], because it needs a compiled wheel for the platform and would
+# otherwise make the convenience extra fail to install.
+rust = [
+    "neo4j-rust-ext>=6.0,<7",
+]
+
 # merge_df and friends. The core ingest path (merge_records) takes plain
 # dictionaries and needs none of this.
 pandas = [

@@ -10,11 +10,13 @@
 
 ### Added
 
+- A `rust` install extra (`pip install neontology[rust]`), which installs the Neo4j driver's Rust extensions. The driver detects and uses them automatically. Deliberately not part of `all`, since it needs a compiled wheel for the platform.
 - Engine capabilities. Where an engine cannot do something, it is named in `Capability` (`neontology.graphengines.capabilities`) and declared on the engine, which reports it through `GraphEngineBase.supports()`. `docs/graph-engines.md` carries a matrix generated from those declarations. Only the experimental NetworkX engine currently diverges.
 - `pandas` and `all` install extras, alongside the existing `grand`.
 
 ### Changed
 
+- Requires the Neo4j driver v6 (`neo4j>=6.0,<7`), up from v5. The driver's own breaking changes are in [its changelog](https://github.com/neo4j/neo4j-python-driver/wiki/6.x-changelog); none of the removed or changed APIs are used by neontology, so no code change is needed when upgrading.
 - **pandas is now an optional extra rather than a required dependency.** Install it with `pip install neontology[pandas]` if you use `merge_df`. The core ingest path, `merge_records`, takes plain dictionaries and needs nothing extra. Calling `merge_df` without pandas installed raises an `ImportError` explaining how to install it. This roughly halves `import neontology` time for everyone who does not use dataframes.
 - The `pandas` extra allows pandas 3 (`>=2.0,<4`). pandas 3 requires Python 3.11+, so 2.x is still resolved on Python 3.10; both are supported.
 - `BaseNode.merge_records` now returns one node per input record, in the order given, rather than one per distinct node merged. It also takes a `deduplicate` argument (default `True`) so identical records are merged only once. `merge_df` is now a thin wrapper around it, so the deduplication and ordering behaviour that used to be dataframe-only is available without pandas.

@@ -21,13 +21,16 @@ Read the documentation [here](https://neontology.readthedocs.io/en/latest/).
 pip install neontology
 ```
 
-Neontology's core works with plain Python dictionaries and has no heavyweight dependencies. Two optional extras are available:
+Neontology's core works with plain Python dictionaries and has no heavyweight dependencies. Optional extras are available:
 
 ```bash
 pip install neontology[pandas]   # merge_df and other pandas dataframe helpers
 pip install neontology[grand]    # the experimental in-memory NetworkX backend
-pip install neontology[all]      # both
+pip install neontology[all]      # both of the above
+pip install neontology[rust]     # Rust extensions for the Neo4j driver (faster, needs a wheel for your platform)
 ```
+
+The `rust` extra installs [neo4j-rust-ext](https://pypi.org/project/neo4j-rust-ext/), which the Neo4j driver picks up automatically - there is nothing to configure. It is not part of `[all]` because it needs a compiled wheel for your platform.
 
 ## Example
 
