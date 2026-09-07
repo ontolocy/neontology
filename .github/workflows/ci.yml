@@ -45,8 +45,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
+        # The [rust] extra is dropped on free-threaded builds: neo4j-rust-ext ships no
+        # free-threaded wheels, so it falls back to compiling its sdist, where PyO3
+        # refuses free-threaded CPython below 3.14 outright and costs minutes of cargo
+        # build on 3.14t. It is a drop-in codec for the driver rather than something
+        # neontology calls, so the other matrix entries cover it.
         run: |
-          uv sync --all-extras
+          uv sync --all-extras ${{ endsWith(matrix.python-version, 't') && '--no-extra rust' || '' }}
       - name: Test default engines with pytest
         env:
           TEST_NEO4J_URI: bolt://localhost:7687
@@ -75,7 +80,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - name: Install dev dependencies but no extras
         run: |
           uv sync
