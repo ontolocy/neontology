@@ -30,7 +30,7 @@ pip install neontology[all]      # both of the above
 pip install neontology[rust]     # Rust extensions for the Neo4j driver (faster, needs a wheel for your platform)
 ```
 
-The `rust` extra installs [neo4j-rust-ext](https://pypi.org/project/neo4j-rust-ext/), which the Neo4j driver picks up automatically - there is nothing to configure. It is not part of `[all]` because it needs a compiled wheel for your platform.
+The `rust` extra installs [neo4j-rust-ext](https://pypi.org/project/neo4j-rust-ext/), which the underlying Neo4j driver then picks up automatically - there is nothing to configure. It is not part of `[all]` because it requires a compiled wheel for your platform.
 
 ## Example
 
@@ -89,7 +89,7 @@ rel_records = [
 FollowsRel.merge_records(rel_records)
 ```
 
-## Ingesting data
+## Pandas to Neo4j
 
 `merge_records` takes a list of dictionaries and is the canonical way to ingest data. It returns one node per input record, in the order given, and merges identical records only once.
 
@@ -103,7 +103,7 @@ node_df = pd.DataFrame.from_records([{"name": "Freddy", "age": 42}])
 node_df["node"] = PersonNode.merge_df(node_df)
 ```
 
-`merge_df` is a thin wrapper around `merge_records`, so any dataframe library works without the extra - anything that can produce a list of dictionaries will do. See the [cookbook](https://neontology.readthedocs.io/en/latest/recipes/) for a polars example.
+`merge_df` is a thin wrapper around `merge_records`, so any dataframe library (like polars or pandas) also works without the extra - anything that can produce a list of dictionaries will do. See the [cookbook](https://neontology.readthedocs.io/en/latest/recipes/) for an example of ingesting graph data from polars.
 
 ## Configuring your graph connection
 
