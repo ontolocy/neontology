@@ -77,17 +77,23 @@ ENGINE_PARAMS = [
 logger = logging.getLogger(__name__)
 
 
-def reset_constraints():
+def reset_schema():
+    """Drop every constraint and index, so each test starts from a bare schema.
+
+    Capability-guarded rather than wrapped in try/except: an engine that starts
+    supporting these should be reset, not silently skipped.
+    """
     gc = GraphConnection()
 
-    try:
-        constraints = gc.engine.get_constraints()
+    if gc.supports(Capability.CONSTRAINTS):
+        for constraint in gc.get_constraints():
+            gc.drop_constraint(constraint)
 
-    except NotImplementedError:
-        return
-
-    for constraint_name in constraints:
-        gc.engine.drop_constraint(constraint_name)
+    if gc.supports(Capability.INDEXES):
+        # get_indexes() excludes constraint-backed and database-owned indexes, so this
+        # cannot drop neo4j's own token LOOKUP indexes
+        for index in gc.get_indexes():
+            gc.drop_index(index)
 
 
 @pytest.fixture(scope="session", params=ENGINE_PARAMS)
@@ -231,6 +237,4 @@ def use_graph(request, graph_db):
         # underlying graph directly
         graph_db.engine.driver.clear()
 
-    # not all engines will implement constraints, so we don't always have to reset them
-
-    reset_constraints()
+    reset_schema()

@@ -143,17 +143,16 @@ def test_delete_removes_a_node(use_graph):
     assert remaining[0].pp == "keep"
 
 
-def test_constraint_methods_work_or_raise_not_implemented(use_graph):
-    """Constraints are optional, but the methods must not fail in some other way."""
-    engine = use_graph.engine
+@pytest.mark.requires_capability(Capability.CONSTRAINTS)
+def test_get_constraints_returns_a_list(use_graph):
+    """Constraints are optional, but where declared the method must work."""
+    assert isinstance(use_graph.engine.get_constraints(), list)
 
-    try:
-        constraints = engine.get_constraints()
 
-    except NotImplementedError:
-        pytest.skip("engine does not implement constraints")
-
-    assert isinstance(constraints, list)
+@pytest.mark.requires_capability(Capability.INDEXES)
+def test_get_indexes_returns_a_list(use_graph):
+    """Indexes are optional, but where declared the method must work."""
+    assert isinstance(use_graph.engine.get_indexes(), list)
 
 
 def test_collect_aggregates_into_a_list(use_graph):

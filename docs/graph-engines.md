@@ -88,7 +88,86 @@ for what each one means.
 | `complex_property_types` | Yes | Yes | No |
 | `collect_distinct` | Yes | Yes | No |
 | `relationship_property_queries` | Yes | Yes | No |
+| `constraints` | Yes | Yes | No |
+| `indexes` | Yes | Yes | No |
 <!-- END CAPABILITY MATRIX -->
+
+### Constraints and indexes
+
+Constraints and indexes are backend features, so they live on the graph engine and are
+gated by the `constraints` and `indexes` capabilities above. Neo4j and Memgraph support
+both; the NetworkX backend supports neither.
+
+#### Constraints
+
+The common case is constraining every model's primary label and primary property to be
+unique. `auto_constrain()` does that for all node types currently defined:
+
+```python
+from neontology import GraphConnection, init_neontology
+
+init_neontology()
+
+# ... define your models ...
+
+GraphConnection().auto_constrain()
+```
+
+A class has to be imported or defined before this runs to be covered, and only primary
+labels are constrained - secondary labels are not. To constrain a specific set of node
+types instead, use `GraphConnection().apply_constraints([MyNode, MyOtherNode])`.
+
+Constraints can also be applied directly, by label and property:
+
+```python
+gc = GraphConnection()
+
+gc.engine.apply_uniqueness_constraint("Person", "email")
+gc.engine.apply_uniqueness_constraint("Person", ["first_name", "last_name"])  # composite
+```
+
+`get_constraints()` returns `Constraint` objects describing what the database holds,
+including constraints Neontology did not create. Pass one back to `drop_constraint()` to
+remove it - Neo4j names constraints and Memgraph identifies them by pattern, so the
+description travels rather than a name:
+
+```python
+for constraint in gc.get_constraints():
+    gc.drop_constraint(constraint)
+```
+
+#### Indexes
+
+An index speeds up lookups without requiring uniqueness:
+
+```python
+gc.apply_index("Person", "email")
+
+for index in gc.get_indexes():
+    gc.drop_index(index)
+```
+
+`get_indexes()` only reports indexes you can manage. Indexes backing a constraint and
+indexes the database maintains for itself (Neo4j's token `LOOKUP` indexes) are excluded,
+so a teardown loop over the list cannot destroy them.
+
+Note that Memgraph indexes either a label on its own (`gc.apply_index("Person")`) or a
+single label/property pair - it has no composite index, and raises a `ValueError` if
+given more than one property. Neo4j requires at least one property.
+
+#### Unsupported backends
+
+Asking an engine for something it cannot do raises `CapabilityNotSupportedError`, which
+subclasses `NotImplementedError`. Portable code can check first:
+
+```python
+from neontology import Capability, GraphConnection
+
+gc = GraphConnection()
+
+if gc.supports(Capability.CONSTRAINTS):
+    gc.auto_constrain()
+```
 
 ```python
 from neontology import GraphConnection, init_neontology
@@ -143,16 +222,6 @@ print(result)
 # [{'name': 'Alice'}, {'name': 'Bob'}]
 
 ```
-
-### Applying constraints
-
-With neo4j, we can constrain label/property pairs to be unique and indexed.
-
-Neontology can automatically apply neo4j constraints for all defined nodes using the `auto_constrain_neo4j` method.
-
-Simply use `auto_constrain_neo4j()` after defining your models and initialising your connection.
-
-Note that auto constrain features only use a model's primary label (not secondary labels if they're defined).
 
 ## Memgraph
 

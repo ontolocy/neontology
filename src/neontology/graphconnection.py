@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, TypeVar, Union
 
 from .graphengines import MemgraphConfig, Neo4jConfig
+from .graphengines.capabilities import Capability
+from .graphengines.dbschema import Constraint, Index
 from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
 from .result import NeontologyResult
 
@@ -297,6 +299,87 @@ class GraphConnection(object):
     def close(self) -> None:
         """Close the connection to the graph database."""
         self.engine.close_connection()
+
+    def supports(self, capability: Capability) -> bool:
+        """Report whether the current engine supports a capability.
+
+        Constraints and indexes are backend features, so portable code checks here
+        before calling rather than catching the error.
+
+        Args:
+            capability (Capability): the capability to check.
+
+        Returns:
+            bool: True if the engine supports it.
+        """
+        return self.engine.supports(capability)
+
+    def apply_constraints(self, node_types: Iterable[type[BaseNodeT]]) -> list[Constraint]:
+        """Apply uniqueness constraints for the given node types.
+
+        Args:
+            node_types (Iterable[type[BaseNode]]): the node classes to constrain.
+
+        Returns:
+            list[Constraint]: the constraints applied.
+        """
+        return self.engine.apply_constraints(node_types)
+
+    def auto_constrain(self) -> list[Constraint]:
+        """Apply a uniqueness constraint for every node type currently defined.
+
+        Node types are discovered from the class hierarchy, so a class has to be
+        imported or defined before this runs to be covered. Only primary labels are
+        constrained - secondary labels are not.
+
+        Returns:
+            list[Constraint]: the constraints applied.
+        """
+        from .utils import get_node_types
+
+        return self.apply_constraints(list(get_node_types().values()))
+
+    def get_constraints(self) -> list[Constraint]:
+        """Get the constraints defined in the graph database.
+
+        Returns:
+            list[Constraint]: every constraint the database reports.
+        """
+        return self.engine.get_constraints()
+
+    def drop_constraint(self, constraint: Constraint) -> None:
+        """Drop a constraint from the graph database.
+
+        Args:
+            constraint (Constraint): a constraint as returned by `get_constraints()`.
+        """
+        self.engine.drop_constraint(constraint)
+
+    def apply_index(self, label: str, properties: Union[str, Sequence[str], None] = None) -> None:
+        """Index a label/property combination without requiring uniqueness.
+
+        Args:
+            label (str): the node label to index.
+            properties (Union[str, Sequence[str], None]): one property name, several for
+                a composite index, or none for a label-only index.
+        """
+        self.engine.apply_index(label, properties)
+
+    def get_indexes(self) -> list[Index]:
+        """Get the indexes defined in the graph database.
+
+        Returns:
+            list[Index]: the indexes a caller can manage.
+        """
+        return self.engine.get_indexes()
+
+    def drop_index(self, index: Index) -> None:
+        """Drop an index from the graph database.
+
+        Args:
+            index (Index): an index as returned by `get_indexes()`.
+        """
+        self.engine.drop_index(index)
 
 
 def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:

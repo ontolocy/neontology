@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, model_validator
 
 from ..gql import gql_identifier_adapter, int_adapter
 from ..result import NeontologyResult
-from .capabilities import Capability
+from .capabilities import Capability, CapabilityNotSupportedError
+from .dbschema import Constraint, ConstraintType, Index
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
@@ -23,6 +24,10 @@ class GraphEngineBase:
     # engines declare what they support - an omission means unsupported, so a
     # capability added to the vocabulary is never silently claimed
     supported_capabilities: ClassVar[frozenset[Capability]] = frozenset(Capability)
+
+    # extra context for the error raised when an unsupported capability is asked for,
+    # so an engine can explain *why* rather than only that it cannot
+    capability_hints: ClassVar[dict[Capability, str]] = {}
 
     _supported_types: ClassVar[Any] = (
         list,
@@ -168,30 +173,199 @@ class GraphEngineBase:
         """
         raise NotImplementedError
 
-    def apply_constraint(self, label: str, property: str) -> None:
-        """Apply a constraint to a label and property in the database.
+    def _require(self, capability: Capability) -> None:
+        """Raise unless this engine supports a capability.
+
+        Every constraint and index method guards on this, so an unsupported backend
+        gives one clear error naming itself and the capability, rather than a bare
+        NotImplementedError from wherever the call happened to land.
 
         Args:
-            label (str): The label to apply the constraint to.
-            property (str): The property to apply the constraint on.
-        """
-        raise NotImplementedError
+            capability (Capability): the capability the caller needs.
 
-    def drop_constraint(self, constraint_name: str) -> None:
-        """Drop a constraint from the database.
+        Raises:
+            CapabilityNotSupportedError: if this engine does not support it.
+        """
+        if self.supports(capability):
+            return
+
+        message = f"{type(self).__name__} does not support {capability.value}."
+
+        hint = self.capability_hints.get(capability)
+
+        if hint:
+            message += f"\n\n{hint}"
+
+        message += (
+            f"\n\nCheck GraphConnection().supports(Capability.{capability.name})"
+            " before calling. See docs/graph-engines.md for the capability matrix."
+        )
+
+        raise CapabilityNotSupportedError(message)
+
+    def _unimplemented(self, method: str, capability: Capability) -> NotImplementedError:
+        """Build the error for an engine that claims a capability but lacks the method.
+
+        Reaching this is a bug in the engine rather than something a caller can act on,
+        so it is deliberately not a CapabilityNotSupportedError.
 
         Args:
-            constraint_name (str): The name of the constraint to drop.
-        """
-        raise NotImplementedError
-
-    def get_constraints(self) -> list:
-        """Get a list of constraints in the database.
+            method (str): the method that should have been overridden.
+            capability (Capability): the capability the engine declares.
 
         Returns:
-            list: A list of constraints in the database.
+            NotImplementedError: the error to raise.
         """
-        raise NotImplementedError
+        return NotImplementedError(f"{type(self).__name__} declares {capability.value} but does not implement {method}().")
+
+    # -- constraints -------------------------------------------------------
+
+    def apply_uniqueness_constraint(self, label: str, properties: Union[str, Sequence[str]]) -> None:
+        """Require a label/property combination to be unique.
+
+        Applying the same constraint twice is a no-op on every engine that supports
+        constraints, so callers do not have to check first.
+
+        Args:
+            label (str): the node label to constrain.
+            properties (Union[str, Sequence[str]]): one property name, or several for a
+                composite constraint.
+
+        Raises:
+            NotImplementedError: if the engine declares CONSTRAINTS without implementing this.
+        """
+        self._require(Capability.CONSTRAINTS)
+
+        raise self._unimplemented("apply_uniqueness_constraint", Capability.CONSTRAINTS)
+
+    def get_constraints(self) -> list[Constraint]:
+        """Get the constraints defined in the database.
+
+        Returns:
+            list[Constraint]: every constraint the database reports, including any
+                neontology did not create.
+
+        Raises:
+            NotImplementedError: if the engine declares CONSTRAINTS without implementing this.
+        """
+        self._require(Capability.CONSTRAINTS)
+
+        raise self._unimplemented("get_constraints", Capability.CONSTRAINTS)
+
+    def drop_constraint(self, constraint: Constraint) -> None:
+        """Drop a constraint.
+
+        Takes a Constraint as returned by `get_constraints()` rather than a name,
+        because Memgraph does not name constraints and identifies them by pattern.
+
+        Args:
+            constraint (Constraint): the constraint to drop.
+
+        Raises:
+            NotImplementedError: if the engine declares CONSTRAINTS without implementing this.
+        """
+        self._require(Capability.CONSTRAINTS)
+
+        raise self._unimplemented("drop_constraint", Capability.CONSTRAINTS)
+
+    def apply_constraints(self, node_types: Iterable[type[BaseNode]]) -> list[Constraint]:
+        """Apply uniqueness constraints for the given node types.
+
+        Constraining a node type's primary label and primary property is the same
+        decision on every backend, so it lives here rather than being repeated per
+        engine. An engine that can apply a batch in one statement can override this.
+
+        Args:
+            node_types (Iterable[type[BaseNode]]): the node classes to constrain.
+
+        Returns:
+            list[Constraint]: the constraints applied.
+
+        Raises:
+            ValueError: if a node type has no explicit primary label.
+        """
+        # guard up front rather than relying on the loop below to reach
+        # apply_uniqueness_constraint - asking an engine that has no constraints is an
+        # error even when the caller passes no node types
+        self._require(Capability.CONSTRAINTS)
+
+        constraints = []
+
+        for node_type in node_types:
+            # an "abstract" node class may not define the attribute at all
+            label = getattr(node_type, "__primarylabel__", None)
+
+            if not label:
+                raise ValueError(f"{node_type.__name__} must have an explicit primary label to apply a constraint.")
+
+            constraints.append(
+                Constraint(
+                    label=label,
+                    properties=(node_type.__primaryproperty__,),
+                    constraint_type=ConstraintType.UNIQUENESS,
+                )
+            )
+
+        for constraint in constraints:
+            self.apply_uniqueness_constraint(constraint.label, constraint.properties)
+
+        return constraints
+
+    # -- indexes -----------------------------------------------------------
+
+    def apply_index(self, label: str, properties: Union[str, Sequence[str], None] = None) -> None:
+        """Index a label/property combination, without requiring uniqueness.
+
+        Applying the same index twice is a no-op on every engine that supports
+        indexes, so callers do not have to check first.
+
+        Args:
+            label (str): the node label to index.
+            properties (Union[str, Sequence[str], None]): one property name, several for
+                a composite index, or none for a label-only index where the backend
+                supports one.
+
+        Raises:
+            NotImplementedError: if the engine declares INDEXES without implementing this.
+        """
+        self._require(Capability.INDEXES)
+
+        raise self._unimplemented("apply_index", Capability.INDEXES)
+
+    def get_indexes(self) -> list[Index]:
+        """Get the indexes defined in the database.
+
+        Only indexes a caller could manage are reported. Indexes backing a constraint
+        and indexes the database maintains for itself are excluded, because dropping
+        either is not something a caller can meaningfully do - and a teardown loop over
+        this list would otherwise destroy them.
+
+        Returns:
+            list[Index]: the manageable indexes.
+
+        Raises:
+            NotImplementedError: if the engine declares INDEXES without implementing this.
+        """
+        self._require(Capability.INDEXES)
+
+        raise self._unimplemented("get_indexes", Capability.INDEXES)
+
+    def drop_index(self, index: Index) -> None:
+        """Drop an index.
+
+        Takes an Index as returned by `get_indexes()` rather than a name, because
+        Memgraph does not name indexes and identifies them by pattern. Dropping an
+        index that does not exist is a no-op.
+
+        Args:
+            index (Index): the index to drop.
+
+        Raises:
+            NotImplementedError: if the engine declares INDEXES without implementing this.
+        """
+        self._require(Capability.INDEXES)
+
+        raise self._unimplemented("drop_index", Capability.INDEXES)
 
     def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.

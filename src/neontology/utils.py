@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict
 from typing import Optional
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
-from .graphconnection import GraphConnection
 
 
 def get_node_types(
@@ -173,23 +173,39 @@ def get_rels_by_target(
 
 
 def apply_neo4j_constraints(node_types: list[type[BaseNode]]) -> None:
-    """Apply constraints based on primary properties for arbitrary set of node types."""
-    graph = GraphConnection()
+    """Apply constraints based on primary properties for arbitrary set of node types.
 
-    for node_type in node_types:
-        label = node_type.__primarylabel__
-        if not label:
-            raise ValueError("Node must have an explicit primary label to apply a constraint.")
-        graph.engine.apply_constraint(label, node_type.__primaryproperty__)
+    Deprecated since v3.0: constraints are a backend feature, so they live on the
+    engine. Use `GraphConnection().apply_constraints()`.
+
+    Args:
+        node_types (list[type[BaseNode]]): the node classes to constrain.
+    """
+    warnings.warn(
+        "apply_neo4j_constraints is deprecated and will be removed in v4. Use GraphConnection().apply_constraints() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    # imported here rather than at module scope: graphconnection imports this module
+    # for type discovery, so a module level import would be a cycle
+    from .graphconnection import GraphConnection
+
+    GraphConnection().apply_constraints(node_types)
 
 
 def auto_constrain_neo4j() -> None:
-    """Automatically apply constraints.
+    """Automatically apply constraints for every defined node type.
 
-    Get information about all the defined nodes in the current environment.
-
-    Apply constraints based on the primary label and primary property for each node.
+    Deprecated since v3.0: the name says neo4j but the call goes to whichever engine
+    is connected. Use `GraphConnection().auto_constrain()`.
     """
-    node_types = list(get_node_types().values())
+    warnings.warn(
+        "auto_constrain_neo4j is deprecated and will be removed in v4. Use GraphConnection().auto_constrain() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
-    apply_neo4j_constraints(node_types)
+    from .graphconnection import GraphConnection
+
+    GraphConnection().auto_constrain()

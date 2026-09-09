@@ -267,6 +267,16 @@ class NetworkxEngine(GraphEngineBase):
     # the named capabilities. Everything not named in Capability works normally.
     supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
 
+    capability_hints: ClassVar[dict[Capability, str]] = {
+        Capability.CONSTRAINTS: (
+            "NetworkX nodes are keyed by a hash of (primary property, primary label), so"
+            " uniqueness on the primary property already holds structurally and there is"
+            " nothing to apply. This is the same property that makes DUPLICATE_CREATE"
+            " unsupported here."
+        ),
+        Capability.INDEXES: ("NetworkX graphs are held in memory and queried by traversal, so there is no index to build."),
+    }
+
     def __init__(self, config: "NetworkxConfig") -> None:
         """Initialise connection to the engine.
 
