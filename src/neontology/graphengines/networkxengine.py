@@ -285,46 +285,6 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
-        """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
-
-        Args:
-            filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
-                                by '__' and a lookup type (e.g., 'exact', 'contains'). The value is
-                                the filter value. If None, returns an empty WHERE clause.
-
-        Returns:
-            tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
-        """
-        supported_filters = [
-            "exact",
-            "contains",
-            "startswith",
-            # case insensitive lookups build toLower() comparisons, supported
-            # by grand-cypher from 1.2.0
-            "iexact",
-            "icontains",
-            "istartswith",
-            "gt",
-            "lt",
-            "gte",
-            "lte",
-            "in",
-            "isnull",
-        ]
-
-        if filters:
-            for key in filters.keys():
-                if "__" in key:
-                    _, lookup_type = key.split("__")
-                else:
-                    _, lookup_type = key, "exact"
-
-                if lookup_type not in supported_filters:
-                    raise NotImplementedError(f"{lookup_type} filter is not implemented for NetworkX engine.")
-
-        return super()._filters_to_where_clause(filters)
-
     def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str):
         """Swap a property in a list of dictionaries.
 

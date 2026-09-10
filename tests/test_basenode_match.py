@@ -625,3 +625,60 @@ def test_delete_node(use_graph):
     result = PracticeNode.match("Special Test Node")
 
     assert result is None
+
+
+class TestFilterKeySafety:
+    """Filter keys are interpolated into Cypher, so they must be validated.
+
+    Values are always parameterised, but the field name and lookup type end up in the
+    query string. An unchecked field name was a Cypher injection vector, and a field or
+    key containing more than one '__' crashed the split.
+    """
+
+    def test_injection_in_filter_key_is_rejected(self, use_graph):
+        """A field name that is really a Cypher fragment must not reach the server."""
+
+        class InjNode(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[str] = "FilterInjectionNode"
+            pp: str
+
+        InjNode(pp="alice").merge()
+        InjNode(pp="bob").merge()
+
+        # via the isnull branch, which never references the parameter, so an unchecked
+        # key would reach the database intact and match every node
+        evil = "pp IS NULL OR n.pp IS NOT NULL OR n.pp__isnull"
+
+        with pytest.raises((ValueError, NotImplementedError)):
+            InjNode.match_nodes(filters={evil: True})
+
+    def test_multi_underscore_key_splits_from_the_right(self, use_graph):
+        """key.split('__') raised 'too many values to unpack' on a three-part key.
+
+        `a__b__gt` is field `a__b` with the `gt` lookup: the lookup is taken from the
+        right, so the field may itself contain underscores.
+        """
+
+        class DunderNode(BaseNode):
+            __primaryproperty__: ClassVar[str] = "pp"
+            __primarylabel__: ClassVar[str] = "FilterDunderNode"
+            pp: str
+
+        DunderNode(pp="x").merge()
+
+        engine = use_graph.engine
+
+        assert engine._split_filter_key("a__b__gt") == ("a__b", "gt")
+        assert engine._split_filter_key("name") == ("name", "exact")
+        assert engine._split_filter_key("created__gte") == ("created", "gte")
+
+        # no such property, so no matches - but it must not raise
+        assert DunderNode.match_nodes(filters={"a__b__gt": 1}) == []
+
+    def test_unknown_lookup_is_rejected_rather_than_silently_matching(self, use_graph):
+        """A typo'd lookup must be an error, not an exact match that returns nothing."""
+        engine = use_graph.engine
+
+        with pytest.raises(ValueError, match="Invalid filter lookup"):
+            engine._split_filter_key("created__startswit")

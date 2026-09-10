@@ -208,6 +208,12 @@ class GraphConnection(object):
                 - {"name__iexact": "value"} → exact match (case-insensitive)
                 - {"quantity__gt": 100} → greater than
                 - {"date__lt": some_date} → less than
+                - {"tags__in": ["a", "b"]} → value in list
+                - {"name__isnull": True} → property is null (False for IS NOT NULL)
+
+                Also supported: __gte, __lte, __contains, __startswith, __istartswith.
+                A key containing "__" must end in one of these lookups; field names are
+                validated as identifiers.
                 Defaults to None.
             limit (Optional[int]): Maximum number of nodes to return.
             skip (Optional[int]): Number of nodes to skip.

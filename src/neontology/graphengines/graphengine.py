@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ValidationError, model_validator
 
 from ..gql import gql_identifier_adapter, int_adapter
 from ..result import NeontologyResult
@@ -492,13 +492,71 @@ class GraphEngineBase:
 
         self.evaluate_query_single(cypher, params)
 
+    # the lookups a filter key may end in. A key whose final `__`-segment is not one of
+    # these is treated as a plain field name (exact match), so a property whose own name
+    # contains `__` still works.
+    _FILTER_LOOKUPS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "exact",
+            "iexact",
+            "contains",
+            "icontains",
+            "startswith",
+            "istartswith",
+            "gt",
+            "lt",
+            "gte",
+            "lte",
+            "in",
+            "isnull",
+        }
+    )
+
+    def _split_filter_key(self, key: str) -> tuple[str, str]:
+        """Split a filter key into a validated field name and a lookup type.
+
+        The field name is interpolated into the query string, so it is validated as a
+        GQL identifier - this is what stops a filter key being used to inject Cypher.
+
+        A key with `__` must end in a recognised lookup: a `created__startswit` typo is
+        an error rather than a silent exact-match that quietly returns nothing. Splitting
+        from the right also means a three-part key like `a__b__gt` reads as field `a__b`
+        with the `gt` lookup, rather than crashing the old two-way split.
+
+        Args:
+            key (str): the filter key, e.g. "name" or "created__gt".
+
+        Returns:
+            tuple[str, str]: the field name and the lookup type.
+
+        Raises:
+            ValueError: if the lookup is unrecognised or the field name is not a valid identifier.
+        """
+        if "__" in key:
+            field_name, _, lookup_type = key.rpartition("__")
+
+            if lookup_type not in self._FILTER_LOOKUPS:
+                raise ValueError(
+                    f"Invalid filter lookup {lookup_type!r} in key {key!r}."
+                    f" Supported lookups: {', '.join(sorted(self._FILTER_LOOKUPS))}."
+                )
+        else:
+            field_name, lookup_type = key, "exact"
+
+        try:
+            gql_identifier_adapter.validate_strings(field_name)
+        except ValidationError as exc:
+            raise ValueError(f"Invalid filter field {field_name!r}: field names must be alphanumeric identifiers.") from exc
+
+        return field_name, lookup_type
+
     def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
             filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
-                                by '__' and a lookup type (e.g., 'exact', 'contains'). The value is
-                                the filter value. If None, returns an empty WHERE clause.
+                                by '__' and a lookup type (e.g., 'exact', 'contains', 'isnull'). The
+                                value is the filter value. If None, returns an empty WHERE clause.
 
         Returns:
             tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
@@ -508,10 +566,7 @@ class GraphEngineBase:
         where_clause = None
         if filters:
             for key, value in filters.items():
-                if "__" in key:
-                    field_name, lookup_type = key.split("__")
-                else:
-                    field_name, lookup_type = key, "exact"
+                field_name, lookup_type = self._split_filter_key(key)
                 param_name = f"filter_{field_name}_{lookup_type}"
                 params[param_name] = value
                 if lookup_type == "exact":

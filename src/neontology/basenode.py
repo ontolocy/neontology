@@ -472,6 +472,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 - {"name__iexact": "value"} → exact match (case-insensitive)
                 - {"quantity__gt": 100} → greater than
                 - {"date__lt": some_date} → less than
+                - {"tags__in": ["a", "b"]} → value in list
+                - {"name__isnull": True} → property is null (False for IS NOT NULL)
+
+                Also supported: __gte, __lte, __contains, __startswith, __istartswith.
+                A key containing "__" must end in one of these lookups; field names are
+                validated as identifiers.
                 Defaults to None.
             limit (int, optional): Maximum number of results to return. Defaults to None.
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
