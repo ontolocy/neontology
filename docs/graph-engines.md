@@ -192,6 +192,44 @@ There are a couple of reasons to use `GraphConnection`:
 
 You can access the underlying `GraphEngine` at `.engine` and you can access the native Python driver for the graph database at `.engine.driver` if you want to use functionality of the official Neo4j driver.
 
+### One connection
+
+There is a single connection, and `init_neontology(config)` is the only thing that
+establishes it. `GraphConnection()` takes no arguments - it returns the connection that
+`init_neontology` set up:
+
+```python
+init_neontology(config)     # establishes the connection
+
+gc = GraphConnection()      # returns it, anywhere in your code
+```
+
+This is deliberate. The graph driver maintains its own pool of connections and is
+designed to be created once and shared, so keeping one of them makes sure you are not
+opening more connections than you need.
+
+Calling `init_neontology(config)` again connects using the new config and closes the
+previous connection, so it is also how you point Neontology at a different database:
+
+```python
+init_neontology(Neo4jConfig(...))
+init_neontology(MemgraphConfig(...))   # now talking to Memgraph
+```
+
+The new connection is established and checked before the old one is closed, so a config
+that cannot connect leaves the existing connection working. `GraphConnection()` returns
+the same object either way, so anything holding one keeps working after a reconnect.
+
+Because `init_neontology` replaces the connection, it is an application startup call
+rather than something to call defensively - calling it repeatedly will reconnect each
+time.
+
+Use `GraphConnection().close()` to close the connection. Neontology can be initialised
+again afterwards.
+
+If you need to talk to two databases at once, work with the native driver at
+`.engine.driver` rather than trying to hold two Neontology connections.
+
 ## Neo4j
 
 If you just use `init_neontology`, Neontology will assume that you have a Neo4j backend. You can also declare this explicitly as above.

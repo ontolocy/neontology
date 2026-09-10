@@ -508,19 +508,18 @@ class TestConnectionVerification:
         finally:
             GraphConnection._instance = original
 
-    def test_change_engine_verifies_the_new_connection(self, use_graph, get_graph_config, monkeypatch):
-        """Swapping the engine establishes a connection, so that is checked."""
+    def test_reinitialising_verifies_the_new_connection(self, use_graph, get_graph_config, monkeypatch):
+        """Connecting establishes a connection, so that is checked."""
         engine_class = type(use_graph.engine)
 
         monkeypatch.setattr(engine_class, "verify_connection", lambda self: False)
 
         with pytest.raises(RuntimeError, match="could not connect"):
-            GraphConnection.change_engine(get_graph_config)
+            init_neontology(get_graph_config)
 
-        # restore a working engine for the rest of the session
         monkeypatch.undo()
 
-        GraphConnection.change_engine(get_graph_config)
+        init_neontology(get_graph_config)
 
         assert GraphConnection().engine.verify_connection() is True
 
@@ -532,7 +531,7 @@ class TestConnectionLifecycle:
     leave the previous working state intact rather than a half-built or dead one.
     """
 
-    def test_failed_change_engine_keeps_the_working_connection(self, use_graph, get_graph_config, monkeypatch):
+    def test_failed_reinitialisation_keeps_the_working_connection(self, use_graph, get_graph_config, monkeypatch):
         """Swapping used to close the live connection before verifying the new one.
 
         A failed swap then left the singleton holding an unusable engine with the
@@ -543,7 +542,7 @@ class TestConnectionLifecycle:
         monkeypatch.setattr(type(original_engine), "verify_connection", lambda self: False)
 
         with pytest.raises(RuntimeError, match="could not connect"):
-            GraphConnection.change_engine(get_graph_config)
+            init_neontology(get_graph_config)
 
         monkeypatch.undo()
 
@@ -606,10 +605,52 @@ class TestConnectionLifecycle:
         GraphConnection._instance = None
 
         try:
-            with pytest.raises(RuntimeError, match="init_neontology"):
-                GraphConnection(ExplodingConfig())
+            with pytest.raises(RuntimeError, match="could not connect"):
+                init_neontology(ExplodingConfig())
 
             assert GraphConnection._instance is None, "a failed connection must not be cached"
 
         finally:
             GraphConnection._instance = original
+
+
+class TestConnectionIsUniversal:
+    """There is one connection, and init_neontology is the only way to establish it.
+
+    GraphConnection() used to accept a config that was honoured on the first call in a
+    process and silently ignored on every later one, so the signature promised something
+    it could not deliver. It now takes nothing and is purely an accessor.
+    """
+
+    def test_graph_connection_takes_no_arguments(self, use_graph, get_graph_config):
+        """Passing a config must fail loudly, and say what to do instead."""
+        with pytest.raises(TypeError, match="init_neontology"):
+            GraphConnection(get_graph_config)
+
+    def test_init_neontology_reconnects_when_called_again(self, use_graph, get_graph_config):
+        """A second init establishes the connection rather than silently doing nothing."""
+        original_engine = GraphConnection().engine
+
+        init_neontology(get_graph_config)
+
+        assert GraphConnection().engine is not original_engine, "init_neontology must reconnect"
+        assert GraphConnection().engine.verify_connection() is True
+
+    def test_the_connection_object_survives_reinitialisation(self, use_graph, get_graph_config):
+        """The engine is swapped on the existing instance, not replaced wholesale.
+
+        Anything already holding a GraphConnection - the test fixtures included - keeps
+        working, because the identity of the connection does not change.
+        """
+        connection = GraphConnection()
+
+        init_neontology(get_graph_config)
+
+        assert GraphConnection() is connection
+
+    def test_change_engine_is_deprecated(self, use_graph, get_graph_config):
+        """Superseded by init_neontology, which now does the same thing."""
+        with pytest.warns(DeprecationWarning, match="change_engine"):
+            GraphConnection.change_engine(get_graph_config)
+
+        assert GraphConnection().engine.verify_connection() is True

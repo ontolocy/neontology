@@ -131,11 +131,13 @@ def get_graph_config(engine_id) -> object:
 def graph_db(request, tmp_path_factory, get_graph_config):
     load_dotenv()
 
+    # init_neontology connects, replacing whatever the previous engine parameter left
+    # behind - so this is all that is needed to move the suite onto the next engine.
+    # It used to need a change_engine call as well, because init alone could not
+    # re-initialise.
     init_neontology(get_graph_config)
 
     gc = GraphConnection()
-
-    gc.change_engine(get_graph_config)
 
     # confirm we're starting with an empty database
     cypher = """

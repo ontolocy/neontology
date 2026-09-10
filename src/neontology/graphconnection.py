@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, TypeVar, Union
 
 from .graphengines import MemgraphConfig, Neo4jConfig
@@ -47,48 +48,90 @@ class GraphConnection(object):
     # without __init__ having to reassign it
     engine: GraphEngineBase
 
-    def __new__(
-        cls,
-        config: Optional[GraphEngineConfig] = None,
-    ) -> "GraphConnection":
-        """Make sure we only have a single connection to the GraphDatabase.
+    def __new__(cls, *args: Any, **kwargs: Any) -> "GraphConnection":
+        """Return the connection established by `init_neontology`.
 
-        This connection then gets used by all instances.
+        Takes no arguments. It used to accept a config, which was honoured on the first
+        call in a process and silently ignored on every later one - so the signature
+        promised to define the connection and did not. Establishing a connection is
+        `init_neontology`'s job alone.
 
         Args:
-            config: GraphEngineConfig to setup the desired GraphEngine
+            *args: rejected, so a config passed here is a loud error rather than a
+                silent no-op.
+            **kwargs: rejected, as above.
 
         Returns:
-            GraphConnection: Instance of the connection
+            GraphConnection: the one connection.
+
+        Raises:
+            TypeError: if any argument is passed.
+            RuntimeError: if no connection has been established yet.
         """
-        if cls._instance is not None:
-            return cls._instance
+        if args or kwargs:
+            raise TypeError(
+                "GraphConnection() takes no arguments - it returns the connection that"
+                " init_neontology(config) established. To connect, or to reconnect with"
+                " different settings, call init_neontology(config)."
+            )
 
-        # Built on a local, and only published to cls._instance once it is known good.
-        # Rolling back after assigning meant a verify_connection that *raised* rather
-        # than returning False left the broken instance cached and handed out forever.
-        instance = object.__new__(cls)
+        if cls._instance is None:
+            raise RuntimeError("Error: connection not established. Have you run init_neontology?")
 
+        return cls._instance
+
+    @classmethod
+    def _establish(cls, config: GraphEngineConfig) -> "GraphConnection":
+        """Connect using the given config, replacing any existing connection.
+
+        The new engine is built and verified before the live one is touched, so a config
+        that cannot connect leaves the existing connection working rather than destroying
+        the one it was meant to replace. Nothing is published until it is known good, so
+        a failure part way through cannot leave a broken connection cached.
+
+        Where a connection already exists the engine is swapped on it rather than a new
+        instance being created, so anything already holding a GraphConnection keeps
+        working.
+
+        Args:
+            config (GraphEngineConfig): the engine configuration to connect with.
+
+        Returns:
+            GraphConnection: the connection.
+
+        Raises:
+            RuntimeError: if a connection could not be established.
+        """
         try:
-            instance.engine = config.engine(config)
+            new_engine = config.engine(config)
 
             # Verify here, where the connection is actually established, rather than on
             # every access. GraphConnection() is used throughout the library as a way to
-            # reach the singleton - including once per model dump - so verifying in
-            # __init__ cost a database round trip for every one of those.
-            connected = instance.engine.verify_connection()
+            # reach the singleton - including once per model dump - so verifying there
+            # cost a database round trip for every one of those.
+            connected = new_engine.verify_connection()
 
         except Exception as exc:
             raise RuntimeError(
-                (f"Error: connection not established. Have you run init_neontology? Underlying exception: {type(exc).__name__}")
+                f"Error: could not connect using the given {type(config).__name__}. Underlying exception: {type(exc).__name__}"
             ) from exc
 
         if connected is False:
-            _close_quietly(instance.engine)
+            _close_quietly(new_engine)
 
-            raise RuntimeError("Error: connection not established. Have you run init_neontology?")
+            raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
 
-        cls._instance = instance
+        if cls._instance is None:
+            instance = object.__new__(cls)
+            instance.engine = new_engine
+
+            cls._instance = instance
+
+        else:
+            previous_engine = cls._instance.engine
+            cls._instance.engine = new_engine
+
+            _close_quietly(previous_engine)
 
         # capture all currently defined types of node and relationship
         from .utils import get_node_types, get_rels_by_type
@@ -96,19 +139,7 @@ class GraphConnection(object):
         cls.global_nodes = get_node_types()
         cls.global_rels = get_rels_by_type()
 
-        return instance
-
-    def __init__(
-        self,
-        config: Optional[GraphEngineConfig] = None,
-    ) -> None:
-        # __new__ has already returned the fully built singleton, and `self` *is* that
-        # singleton, so there is nothing left to set up - this used to assign
-        # self.engine = self._instance.engine, which is self.engine = self.engine.
-        # It stays only to accept the config argument __new__ consumed, which
-        # object.__init__ would reject, and it must not talk to the database: it runs
-        # on every GraphConnection() call.
-        pass
+        return cls._instance
 
     @classmethod
     def change_engine(
@@ -117,7 +148,8 @@ class GraphConnection(object):
     ) -> None:
         """Change the graph engine used by Neontology.
 
-        This method allows changing the graph engine configuration after Neontology has been initialized.
+        Deprecated since v3.0: `init_neontology(config)` now does exactly this, so there
+        is one way to say which database to talk to rather than two.
 
         Args:
             config (GraphEngineConfig): The new configuration for the graph engine.
@@ -125,25 +157,16 @@ class GraphConnection(object):
         Raises:
             RuntimeError: If Neontology has not been initialized yet.
         """
+        warnings.warn(
+            "GraphConnection.change_engine is deprecated and will be removed in v4. Use init_neontology(config) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if not cls._instance:
             raise RuntimeError("Error: Can't change the engine without initializing Neontology first.")
 
-        # Build and verify before touching the live engine. Closing first meant a
-        # config that could not connect left the singleton holding an unusable engine
-        # with the working connection already closed - the failed swap destroyed the
-        # connection it was meant to replace.
-        new_engine = config.engine(config)
-
-        # a new connection has been established, so this is the place to check it
-        if new_engine.verify_connection() is False:
-            _close_quietly(new_engine)
-
-            raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
-
-        previous_engine = cls._instance.engine
-        cls._instance.engine = new_engine
-
-        _close_quietly(previous_engine)
+        cls._establish(config)
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query against the graph database which returns a single result.
@@ -479,5 +502,5 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
             logger.info("No GraphConfig provided and no Graph Engine specified, using Neo4j.")
             config = Neo4jConfig()
 
-    GraphConnection(config)
+    GraphConnection._establish(config)
     logger.info("Neontology initialized.")

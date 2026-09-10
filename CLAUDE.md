@@ -53,7 +53,7 @@ Graph-backed tests read connection details from env vars (a `.env` file works): 
 
 ### Connection layer
 
-`GraphConnection` ([graphconnection.py](src/neontology/graphconnection.py)) is a **singleton** (`__new__` returns `_instance`) wrapping one `GraphEngineBase`. `init_neontology(config)` constructs it; `GraphConnection.change_engine(config)` swaps the engine on the live singleton — that is how the test suite parametrises across engines. Model methods call `GraphConnection()` with no args to reach the existing connection.
+`GraphConnection` ([graphconnection.py](src/neontology/graphconnection.py)) is a **singleton** (`__new__` returns `_instance`) wrapping one `GraphEngineBase`. `init_neontology(config)` is the only thing that establishes it, and calling it again reconnects with the new config — that is how the test suite parametrises across engines. `GraphConnection()` takes **no arguments** and only ever returns the existing connection, raising `TypeError` if given one and `RuntimeError` if nothing is initialised; `GraphConnection._establish(config)` is the internal connect/reconnect path. `change_engine` is a deprecated alias for it. The new engine is always verified before the old one is closed, so a failed (re)connect leaves the working connection intact.
 
 ### Engine layer
 
