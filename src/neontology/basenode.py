@@ -238,7 +238,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             Union[str, int]: The value of the primary property.
         """
-        return self._get_merge_parameters()["pp"]
+        # only the primary property is dumped. This used to go through
+        # _get_merge_parameters(), which dumps and converts every property and builds
+        # three more dicts to reach one value - and it is called per node when query
+        # results are hydrated.
+        return self._engine_value(self.__primaryproperty__)
 
     def create(self) -> Self:
         """Create this node in the graph."""
@@ -285,7 +289,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Raises:
             TypeError: Raised if one of the nodes isn't of this type.
         """
-        node_list = [{"props": x._engine_dict(), "pp": x._engine_dict()[cls.__primaryproperty__]} for x in nodes]
+        # dumped once per node and reused: _engine_dict() dumps and converts the whole
+        # model, so calling it twice here doubled the cost of a bulk create
+        all_props = [x._engine_dict() for x in nodes]
+
+        node_list = [{"props": props, "pp": props[cls.__primaryproperty__]} for props in all_props]
 
         all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
         pp_key = cls.__primaryproperty__

@@ -46,6 +46,9 @@
 
 ### Performance
 
+- `get_pp()` now dumps only the primary property rather than the whole model. It went through `_get_merge_parameters()`, which dumps and converts every property and builds three more dictionaries to reach one value - and it is called once per node when query results are hydrated. Around 3.4x faster on a model with a dozen properties. The returned value is unchanged, including the engine type conversion that makes a UUID primary property arrive as a string.
+- `BaseNode.create_nodes()` builds each node's property dictionary once instead of twice. It called `_engine_dict()` a second time purely to read the primary property back out, doubling the cost of the dump and conversion for every node in a bulk create.
+
 Bulk operations and queries are substantially faster; behaviour is unchanged.
 
 - Model property usage (`set_on_match`, `set_on_create`, `merge_on`) is worked out once per class rather than on every object construction, where it generated the pydantic JSON schema each time. Bulk merges improve by roughly 2x on Neo4j and Memgraph, and far more on NetworkX where database I/O does not mask the cost.
