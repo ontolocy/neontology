@@ -5,7 +5,7 @@ from pydantic import Field
 
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
-from neontology.graphconnection import GraphConnection
+from neontology.graphconnection import GraphConnection, init_neontology
 from neontology.graphengines.capabilities import Capability
 
 
@@ -523,3 +523,93 @@ class TestConnectionVerification:
         GraphConnection.change_engine(get_graph_config)
 
         assert GraphConnection().engine.verify_connection() is True
+
+
+class TestConnectionLifecycle:
+    """Establishing, replacing and closing the connection.
+
+    The singleton is process-global, so a failure part way through any of these must
+    leave the previous working state intact rather than a half-built or dead one.
+    """
+
+    def test_failed_change_engine_keeps_the_working_connection(self, use_graph, get_graph_config, monkeypatch):
+        """Swapping used to close the live connection before verifying the new one.
+
+        A failed swap then left the singleton holding an unusable engine with the
+        working connection already closed, and no way back without another swap.
+        """
+        original_engine = GraphConnection().engine
+
+        monkeypatch.setattr(type(original_engine), "verify_connection", lambda self: False)
+
+        with pytest.raises(RuntimeError, match="could not connect"):
+            GraphConnection.change_engine(get_graph_config)
+
+        monkeypatch.undo()
+
+        # the live engine is untouched - not merely equivalent, the same object
+        assert GraphConnection().engine is original_engine
+        assert GraphConnection().engine.verify_connection() is True
+
+    def test_close_allows_reinitialisation(self, get_graph_config):
+        """close() used to leave the singleton holding a closed driver.
+
+        Nothing could reconnect after that: init_neontology returned the dead instance
+        and every query raised "Driver closed".
+
+        Works on its own throwaway connection rather than the session one: closing is
+        now final for the instance that was closed, and the session fixture holds a
+        reference to its own.
+        """
+        session_instance = GraphConnection._instance
+
+        GraphConnection._instance = None
+
+        try:
+            init_neontology(get_graph_config)
+
+            GraphConnection().close()
+
+            assert GraphConnection._instance is None, "close() must clear the singleton"
+
+            # a fresh connection can now be established, which was impossible before
+            init_neontology(get_graph_config)
+
+            assert GraphConnection().engine.verify_connection() is True
+
+            GraphConnection().close()
+
+        finally:
+            GraphConnection._instance = session_instance
+
+    def test_a_failed_connection_is_not_cached(self):
+        """A verify_connection that raises used to leave the broken instance cached.
+
+        Only a False return was rolled back, so an engine raising from
+        verify_connection poisoned every later GraphConnection() call.
+        """
+
+        class ExplodingConfig:
+            """Stands in for an engine whose verify_connection raises."""
+
+            class engine:  # noqa: N801 - mimics the config.engine(config) call
+                def __init__(self, config):
+                    pass
+
+                def verify_connection(self):
+                    raise OSError("boom")
+
+                def close_connection(self):
+                    pass
+
+        original = GraphConnection._instance
+        GraphConnection._instance = None
+
+        try:
+            with pytest.raises(RuntimeError, match="init_neontology"):
+                GraphConnection(ExplodingConfig())
+
+            assert GraphConnection._instance is None, "a failed connection must not be cached"
+
+        finally:
+            GraphConnection._instance = original

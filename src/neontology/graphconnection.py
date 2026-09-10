@@ -21,10 +21,31 @@ BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
 BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
 
 
-class GraphConnection(object):
-    """Class for managing connections to Neo4j."""
+def _close_quietly(engine: GraphEngineBase) -> None:
+    """Close an engine that never became the live one, without masking the real error.
 
-    _instance = None
+    An engine that failed to verify has usually still opened a driver. It is discarded
+    either way, so a failure to close it is logged rather than raised - the caller needs
+    the connection error, not this one.
+
+    Args:
+        engine (GraphEngineBase): the engine to close.
+    """
+    try:
+        engine.close_connection()
+
+    except Exception:  # pragma: no cover - depends on the driver's failure mode
+        logger.debug("Failed to close a discarded engine.", exc_info=True)
+
+
+class GraphConnection(object):
+    """Class for managing the connection to the graph database."""
+
+    _instance: Optional["GraphConnection"] = None
+
+    # set in __new__ on the instance it publishes, declared here so it is annotated
+    # without __init__ having to reassign it
+    engine: GraphEngineBase
 
     def __new__(
         cls,
@@ -40,47 +61,54 @@ class GraphConnection(object):
         Returns:
             GraphConnection: Instance of the connection
         """
-        if cls._instance is None:
-            cls._instance = object.__new__(cls)
+        if cls._instance is not None:
+            return cls._instance
 
-            try:
-                cls._instance.engine = config.engine(config)
+        # Built on a local, and only published to cls._instance once it is known good.
+        # Rolling back after assigning meant a verify_connection that *raised* rather
+        # than returning False left the broken instance cached and handed out forever.
+        instance = object.__new__(cls)
 
-            except Exception as exc:
-                cls._instance = None
-
-                raise RuntimeError(
-                    (
-                        "Error: connection not established. Have you run init_neontology?"
-                        f" Underlying exception: {type(exc).__name__}"
-                    )
-                ) from exc
+        try:
+            instance.engine = config.engine(config)
 
             # Verify here, where the connection is actually established, rather than on
             # every access. GraphConnection() is used throughout the library as a way to
             # reach the singleton - including once per model dump - so verifying in
             # __init__ cost a database round trip for every one of those.
-            if cls._instance.engine.verify_connection() is False:
-                cls._instance = None
+            connected = instance.engine.verify_connection()
 
-                raise RuntimeError("Error: connection not established. Have you run init_neontology?")
+        except Exception as exc:
+            raise RuntimeError(
+                (f"Error: connection not established. Have you run init_neontology? Underlying exception: {type(exc).__name__}")
+            ) from exc
 
-            # capture all currently defined types of node and relationship
-            from .utils import get_node_types, get_rels_by_type
+        if connected is False:
+            _close_quietly(instance.engine)
 
-            cls.global_nodes = get_node_types()
-            cls.global_rels = get_rels_by_type()
+            raise RuntimeError("Error: connection not established. Have you run init_neontology?")
 
-        return cls._instance
+        cls._instance = instance
+
+        # capture all currently defined types of node and relationship
+        from .utils import get_node_types, get_rels_by_type
+
+        cls.global_nodes = get_node_types()
+        cls.global_rels = get_rels_by_type()
+
+        return instance
 
     def __init__(
         self,
         config: Optional[GraphEngineConfig] = None,
     ) -> None:
-        # __new__ returns the singleton, so this runs on every GraphConnection() call.
-        # Keep it free of anything that talks to the database.
-        if self._instance:
-            self.engine: GraphEngineBase = self._instance.engine
+        # __new__ has already returned the fully built singleton, and `self` *is* that
+        # singleton, so there is nothing left to set up - this used to assign
+        # self.engine = self._instance.engine, which is self.engine = self.engine.
+        # It stays only to accept the config argument __new__ consumed, which
+        # object.__init__ would reject, and it must not talk to the database: it runs
+        # on every GraphConnection() call.
+        pass
 
     @classmethod
     def change_engine(
@@ -100,12 +128,22 @@ class GraphConnection(object):
         if not cls._instance:
             raise RuntimeError("Error: Can't change the engine without initializing Neontology first.")
 
-        cls._instance.engine.close_connection()
-        cls._instance.engine = config.engine(config)
+        # Build and verify before touching the live engine. Closing first meant a
+        # config that could not connect left the singleton holding an unusable engine
+        # with the working connection already closed - the failed swap destroyed the
+        # connection it was meant to replace.
+        new_engine = config.engine(config)
 
         # a new connection has been established, so this is the place to check it
-        if cls._instance.engine.verify_connection() is False:
+        if new_engine.verify_connection() is False:
+            _close_quietly(new_engine)
+
             raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
+
+        previous_engine = cls._instance.engine
+        cls._instance.engine = new_engine
+
+        _close_quietly(previous_engine)
 
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query against the graph database which returns a single result.
@@ -303,8 +341,16 @@ class GraphConnection(object):
         )
 
     def close(self) -> None:
-        """Close the connection to the graph database."""
+        """Close the connection to the graph database.
+
+        The singleton is cleared as well as the driver, so `init_neontology()` can
+        establish a fresh connection afterwards. Leaving it in place meant a closed
+        connection could never be replaced: `init_neontology()` handed back the same
+        dead instance and every query raised from the closed driver.
+        """
         self.engine.close_connection()
+
+        GraphConnection._instance = None
 
     def supports(self, capability: Capability) -> bool:
         """Report whether the current engine supports a capability.
