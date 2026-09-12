@@ -15,7 +15,13 @@ from .registry import (
     Registry,
     registry,
 )
-from .utils import auto_constrain_neo4j
+from .utils import (
+    auto_constrain_neo4j,
+    get_node_types,
+    get_rels_by_source,
+    get_rels_by_target,
+    get_rels_by_type,
+)
 
 __all__ = [
     # BaseNode
@@ -36,6 +42,10 @@ __all__ = [
     # Deprecated, removed in v4
     "auto_constrain_neo4j",
     # Model registry
+    "get_node_types",
+    "get_rels_by_type",
+    "get_rels_by_source",
+    "get_rels_by_target",
     "registry",
     "Registry",
     "DuplicateLabelWarning",

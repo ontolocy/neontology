@@ -10,6 +10,7 @@ test files for repeated literal labels.
 """
 
 import gc
+import warnings
 from typing import ClassVar, Optional
 
 import pytest
@@ -304,3 +305,103 @@ class _no_registry_warnings:
         assert not registry_warnings, f"unexpected registry warnings: {[str(w.message) for w in registry_warnings]}"
 
         return False
+
+
+class TestAbstractModels:
+    """Abstract models cannot be instantiated, however they are spelled."""
+
+    def test_both_spellings_of_abstract_node_raise_the_same_error(self):
+        """Never declaring a label used to raise AttributeError instead."""
+        explicit = _node("AbstractRaisesExplicit", __primarylabel__=None)
+        implicit = _node("AbstractRaisesImplicit")
+
+        for abstract in (explicit, implicit):
+            with pytest.raises(NotImplementedError, match="abstract node"):
+                abstract(pp="x")
+
+    def test_abstract_node_does_not_warn_about_its_label(self):
+        """The label is absent by design, not malformed.
+
+        Instantiating one used to warn that the primary label was not alphanumeric,
+        which described the wrong problem.
+        """
+        abstract = _node("AbstractQuiet", __primarylabel__=None)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            with pytest.raises(NotImplementedError):
+                abstract(pp="x")
+
+        assert [w for w in caught if "alphanumeric" in str(w.message)] == []
+
+    def test_abstract_relationship_raises_and_does_not_warn(self):
+        node = _node("AbstractRelHome", __primarylabel__="RegistryAbstractRelHome")
+        abstract = _rel("AbstractRelRaises", node, node, None)
+
+        source = node(pp="a")
+        target = node(pp="b")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            with pytest.raises(NotImplementedError, match="abstract"):
+                abstract(source=source, target=target)
+
+        assert [w for w in caught if "alphanumeric" in str(w.message)] == []
+
+    def test_a_malformed_primary_label_still_warns(self):
+        """Skipping the check for abstract models must not skip it for real ones."""
+        node = _node("MalformedLabelNode", __primarylabel__="Not A Valid Label!")
+
+        with pytest.warns(UserWarning, match="Primary Label should contain"):
+            node(pp="x")
+
+    def test_a_malformed_relationship_type_still_warns(self):
+        node = _node("MalformedRelHome", __primarylabel__="RegistryMalformedRelHome")
+        rel = _rel("MalformedRel", node, node, "Not A Valid Type!")
+
+        with pytest.warns(UserWarning, match="Relationship type should contain"):
+            rel(source=node(pp="a"), target=node(pp="b"))
+
+
+class TestConnectionPropertiesAreDeprecated:
+    """Which models you have defined is not a property of the connection."""
+
+    def test_global_nodes_is_deprecated(self, use_graph):
+        with pytest.warns(DeprecationWarning, match="global_nodes"):
+            result = use_graph.global_nodes
+
+        assert result == get_node_types()
+
+    def test_global_rels_is_deprecated(self, use_graph):
+        with pytest.warns(DeprecationWarning, match="global_rels"):
+            result = use_graph.global_rels
+
+        assert result == get_rels_by_type()
+
+    def test_querying_does_not_use_the_deprecated_properties(self, use_graph):
+        """Internal use had to move off them, or every query would warn."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            use_graph.evaluate_query("MATCH (n:RegistryNeverCreatedNode) RETURN n")
+
+        assert [w for w in caught if issubclass(w.category, DeprecationWarning)] == []
+
+
+class TestPackageExports:
+    """The recommended API should be reachable from the package root."""
+
+    def test_type_lookups_are_importable_from_neontology(self):
+        import neontology
+
+        for name in ("get_node_types", "get_rels_by_type", "get_rels_by_source", "get_rels_by_target"):
+            assert hasattr(neontology, name), f"{name} should be exported from neontology"
+            assert name in neontology.__all__
+
+    def test_looking_up_models_does_not_need_a_connection(self):
+        """The point of keeping these as functions rather than connection properties."""
+        import neontology
+
+        assert callable(neontology.get_node_types)

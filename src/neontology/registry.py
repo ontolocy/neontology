@@ -139,12 +139,12 @@ class Registry:
         Args:
             cls (type[BaseNode]): the node class being defined.
         """
-        # an "abstract" node has no label and never goes in the graph. Both spellings
-        # count: __primarylabel__ = None, and never declaring it at all.
-        label = getattr(cls, "__primarylabel__", None)
-
-        if label is None:
+        # an "abstract" node never goes in the graph. Both spellings of it count, and
+        # BaseNode._is_abstract is the single place that decides which those are.
+        if cls._is_abstract():
             return
+
+        label = cls.__primarylabel__
 
         existing = self._nodes.get(label)
 
@@ -181,10 +181,10 @@ class Registry:
         Args:
             cls (type[BaseRelationship]): the relationship class being defined.
         """
-        rel_type = getattr(cls, "__relationshiptype__", None)
-
-        if rel_type is None:
+        if cls._is_abstract():
             return
+
+        rel_type = cls.__relationshiptype__
 
         existing = self._relationships.get(rel_type)
 

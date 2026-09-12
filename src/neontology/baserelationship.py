@@ -31,6 +31,17 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     _merge_on: list[str] = PrivateAttr()  # what relationship properties should we merge on
 
     @classmethod
+    def _is_abstract(cls) -> bool:
+        """Whether this is an abstract relationship, never written to the graph.
+
+        Abstract relationships exist to share properties with subclasses.
+
+        Returns:
+            bool: True if this class has no relationship type.
+        """
+        return getattr(cls, "__relationshiptype__", None) is None
+
+    @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         """Register this relationship class as it is defined.
 
@@ -50,8 +61,12 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         # we can define 'abstract' relationships which don't have a label
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph or even instantiated
-        if self.__relationshiptype__ is None:
-            raise NotImplementedError("Relationships to be used in the graph must define a relationship type.")
+        if self._is_abstract():
+            raise NotImplementedError(
+                f"{type(self).__name__} has no __relationshiptype__, so it is an abstract"
+                " relationship: it exists to share properties with subclasses and is never"
+                " written to the graph. Give it a __relationshiptype__ to use it directly."
+            )
 
     @classmethod
     def _set_prop_usage(cls) -> None:
@@ -76,17 +91,18 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         Returns:
             BaseRelationship: The instance of the relationship after validation.
         """
-        try:
-            gql_identifier_adapter.validate_strings(self.__relationshiptype__)
-        except AttributeError:
-            pass
-        except ValidationError:
-            warnings.warn(
-                (
-                    "Relationship type should contain only alphanumeric characters and underscores."
-                    " It should begin with an alphabetic character."
+        # as for abstract nodes, a missing relationship type is deliberate rather than
+        # malformed, so it is not reported as a bad identifier
+        if not self._is_abstract():
+            try:
+                gql_identifier_adapter.validate_strings(self.__relationshiptype__)
+            except ValidationError:
+                warnings.warn(
+                    (
+                        "Relationship type should contain only alphanumeric characters and underscores."
+                        " It should begin with an alphabetic character."
+                    )
                 )
-            )
 
         return self
 

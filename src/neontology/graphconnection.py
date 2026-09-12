@@ -166,12 +166,19 @@ class GraphConnection(object):
     def global_nodes(self) -> dict:
         """Every node class currently registered, keyed by primary label.
 
-        Read from the registry, which model classes populate as they are defined, so
-        this is always current and never needs refreshing.
+        Deprecated since v3.0: which models you have defined is not a property of the
+        connection, and reading it should not require one. Use `get_node_types()`.
 
         Returns:
             dict: node classes by primary label.
         """
+        warnings.warn(
+            "GraphConnection.global_nodes is deprecated and will be removed in v4."
+            " Use neontology.get_node_types() instead, which does not need a connection.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         from .utils import get_node_types
 
         return get_node_types()
@@ -180,9 +187,18 @@ class GraphConnection(object):
     def global_rels(self) -> dict:
         """Every relationship type currently registered, keyed by relationship type.
 
+        Deprecated since v3.0: use `get_rels_by_type()`.
+
         Returns:
             dict: relationship type data by relationship type.
         """
+        warnings.warn(
+            "GraphConnection.global_rels is deprecated and will be removed in v4."
+            " Use neontology.get_rels_by_type() instead, which does not need a connection.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         from .utils import get_rels_by_type
 
         return get_rels_by_type()
@@ -231,11 +247,13 @@ class GraphConnection(object):
                 stacklevel=2,
             )
 
+        from .utils import get_node_types, get_rels_by_type
+
         if not node_classes:
-            node_classes = self.global_nodes
+            node_classes = get_node_types()
 
         if not relationship_classes:
-            relationship_classes = self.global_rels
+            relationship_classes = get_rels_by_type()
 
         return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes)
 

@@ -36,8 +36,24 @@ before a query runs for its results to come back typed**. If you keep your model
 `models.py`, importing that module during application startup is enough. Nodes whose
 label Neontology does not recognise are left out of `result.nodes` with a warning.
 
-Abstract classes - those with `__primarylabel__ = None` - exist to share properties
-between models and are never registered, because they are never written to the graph.
+Abstract classes - those with `__primarylabel__ = None`, or which never declare a
+`__primarylabel__` at all - exist to share properties between models. They are never
+registered, because they are never written to the graph, and instantiating one raises
+`NotImplementedError`.
+
+To look up the models Neontology knows about, use `get_node_types()` and
+`get_rels_by_type()`. They do not need a database connection, so they work anywhere your
+models have been imported:
+
+```python
+from neontology import get_node_types, get_rels_by_type
+
+get_node_types()      # {"Person": <class 'Person'>, ...}
+get_rels_by_type()    # {"FOLLOWS": RelationshipTypeData(...), ...}
+```
+
+Pass an abstract class to either to scope the lookup to that branch of your models -
+`get_node_types(MyAbstractBase)`.
 
 ### Duplicate labels
 

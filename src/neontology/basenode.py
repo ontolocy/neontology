@@ -152,6 +152,19 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         registry.register_node(cls)
 
     @classmethod
+    def _is_abstract(cls) -> bool:
+        """Whether this is an abstract node, which is never written to the graph.
+
+        Abstract nodes exist to share properties with subclasses. There are two ways to
+        spell one - `__primarylabel__ = None`, and never declaring it at all - and this
+        is the single place that decides, so both behave identically.
+
+        Returns:
+            bool: True if this class has no primary label.
+        """
+        return getattr(cls, "__primarylabel__", None) is None
+
+    @classmethod
     def _all_labels(cls) -> list[str]:
         """Every label this node carries in the graph, primary first.
 
@@ -169,8 +182,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         # we can define 'abstract' nodes which don't have a label
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph or even instantiated
-        if self.__primarylabel__ is None:
-            raise NotImplementedError("Nodes to be used in the graph must define a primary label.")
+        if self._is_abstract():
+            raise NotImplementedError(
+                f"{type(self).__name__} has no __primarylabel__, so it is an abstract node:"
+                " it exists to share properties with subclasses and is never written to the"
+                " graph. Give it a __primarylabel__ to use it directly."
+            )
 
     def __str__(self) -> str:
         """String representation of the node, showing the primary property value by default."""
@@ -233,18 +250,19 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     @model_validator(mode="after")
     def validate_identifiers(self) -> Self:
         """Validate data provided for primary label and primary property."""
-        try:
-            gql_identifier_adapter.validate_strings(self.__primarylabel__)
+        # an abstract node deliberately has no primary label, so there is nothing to
+        # check here - warning that it was not alphanumeric described the wrong problem
+        if not self._is_abstract():
+            try:
+                gql_identifier_adapter.validate_strings(self.__primarylabel__)
 
-        except AttributeError:
-            pass
-        except ValidationError:
-            warnings.warn(
-                (
-                    "Primary Label should contain only alphanumeric characters and underscores."
-                    " It should begin with an alphabetic character."
+            except ValidationError:
+                warnings.warn(
+                    (
+                        "Primary Label should contain only alphanumeric characters and underscores."
+                        " It should begin with an alphabetic character."
+                    )
                 )
-            )
 
         try:
             gql_identifier_adapter.validate_strings(self.__primaryproperty__)

@@ -55,6 +55,10 @@ Registration is where clashes are caught: a primary label or relationship type c
 
 Relationship source/target are resolved lazily by `Registry.relationships()`, not at registration: a relationship may be defined before the nodes it points at, leaving unresolved `ForwardRef`s until `model_rebuild()` runs. Unresolved ones are skipped and retried, and resolved ones are cached until a new node class registers (which can change what subclasses expand to). `refresh_classes` on `evaluate_query` is deprecated and ignored — the registry is never stale.
 
+The four `get_*` lookups are exported from the package root and are the public read API; `Registry.nodes()`/`relationships()` are the implementation they wrap, and `registry` is public mainly for `registry.strict`. `GraphConnection.global_nodes`/`global_rels` are deprecated aliases (removed in v4) — don't use them internally, or every query warns.
+
+Abstract models — no label/type, whether set to `None` or never declared — are decided in one place, `BaseNode._is_abstract()` / `BaseRelationship._is_abstract()`, used by both the registry and `__init__`. Instantiating one raises `NotImplementedError`; a missing label is deliberate, so it is not also reported as a malformed identifier.
+
 ### Connection layer
 
 `GraphConnection` ([graphconnection.py](src/neontology/graphconnection.py)) is a **singleton** (`__new__` returns `_instance`) wrapping one `GraphEngineBase`. `init_neontology(config)` is the only thing that establishes it, and calling it again reconnects with the new config — that is how the test suite parametrises across engines. `GraphConnection()` takes **no arguments** and only ever returns the existing connection, raising `TypeError` if given one and `RuntimeError` if nothing is initialised; `GraphConnection._establish(config)` is the internal connect/reconnect path. `change_engine` is a deprecated alias for it. The new engine is always verified before the old one is closed, so a failed (re)connect leaves the working connection intact.
