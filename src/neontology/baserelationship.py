@@ -12,6 +12,7 @@ from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
 from .optional_deps import require_pandas
+from .registry import registry
 from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
 
 if TYPE_CHECKING:
@@ -28,6 +29,20 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
     __relationshiptype__: ClassVar[Optional[str]] = None
 
     _merge_on: list[str] = PrivateAttr()  # what relationship properties should we merge on
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Register this relationship class as it is defined.
+
+        Source and target are not resolved here: a relationship may be defined before
+        the node classes it points at, so the registry resolves them on demand instead.
+
+        Args:
+            **kwargs (Any): class keyword arguments, passed through to pydantic.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        registry.register_relationship(cls)
 
     def __init__(self, **data: dict):
         super().__init__(**data)

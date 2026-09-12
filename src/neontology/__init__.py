@@ -8,6 +8,13 @@ from .graphengines.capabilities import Capability, CapabilityNotSupportedError
 from .graphengines.dbschema import Constraint, ConstraintType, Index
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
+from .registry import (
+    DuplicateLabelError,
+    DuplicateLabelWarning,
+    InheritedLabelWarning,
+    Registry,
+    registry,
+)
 from .utils import auto_constrain_neo4j
 
 __all__ = [
@@ -28,6 +35,12 @@ __all__ = [
     "CapabilityNotSupportedError",
     # Deprecated, removed in v4
     "auto_constrain_neo4j",
+    # Model registry
+    "registry",
+    "Registry",
+    "DuplicateLabelWarning",
+    "InheritedLabelWarning",
+    "DuplicateLabelError",
     # GQL
     "GQLIdentifier",
     "gql_identifier_adapter",

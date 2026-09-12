@@ -6,6 +6,7 @@ from typing import Optional
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
+from .registry import registry
 
 
 def get_node_types(
@@ -23,18 +24,10 @@ def get_node_types(
     Returns:
         dict[str, type[BaseNode]]: Dictionary of node types keyed by primary label.
     """
-    node_types = {}
-
-    # if we're starting with a node type that has a primary label, include this in results
-    if getattr(base_type, "__primarylabel__", None):
-        node_types[base_type.__primarylabel__] = base_type
-
-    # each subclass is handled by its own recursive call, which starts by looking at
-    # its own label above - handling it here as well would process every class twice
-    for subclass in base_type.__subclasses__():
-        node_types.update(get_node_types(subclass))
-
-    return node_types
+    # classes register themselves as they are defined, so this is a lookup rather than
+    # a walk of the class hierarchy. Passing BaseNode means "everything", which needs no
+    # filtering at all.
+    return registry.nodes(None if base_type is BaseNode else base_type)
 
 
 def generate_relationship_type_data(
@@ -102,21 +95,8 @@ def get_rels_by_type(
 
     Optionally pass in a relationship class to only retrieve classes and subclasses of that type.
     """
-    rel_types: dict = defaultdict(dict)
-
-    # an 'abstract' relationship has no type and isn't put in the graph
-    if getattr(base_type, "__relationshiptype__", None):
-        nodes = _resolved_relationship_nodes(base_type)
-
-        if nodes is not None:
-            rel_types[base_type.__relationshiptype__] = generate_relationship_type_data(base_type, nodes)
-
-    # as above: the recursive call builds each subclass's own type data, so doing it
-    # here as well would build it twice for every class
-    for rel_subclass in base_type.__subclasses__():
-        rel_types.update(get_rels_by_type(rel_subclass))
-
-    return rel_types
+    # as with get_node_types, this reads the registry rather than walking the hierarchy
+    return registry.relationships(None if base_type is BaseRelationship else base_type)
 
 
 def all_subclasses(cls: type) -> set:

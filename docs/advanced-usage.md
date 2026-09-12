@@ -16,6 +16,81 @@ ellie = ElephantNode(name="Ellie")
 
 Note that methods such as `.match` use only the primary label.
 
+## How Neontology finds your models
+
+Neontology needs to know your model classes in order to turn query results back into
+them. You do not have to declare or register anything: **defining a class is what
+registers it**.
+
+```python
+class Person(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Person"
+    name: str
+```
+
+From that point on, any query returning a `Person` node comes back as a `Person`.
+
+Because registration happens when the class is defined, **a model has to be imported
+before a query runs for its results to come back typed**. If you keep your models in a
+`models.py`, importing that module during application startup is enough. Nodes whose
+label Neontology does not recognise are left out of `result.nodes` with a warning.
+
+Abstract classes - those with `__primarylabel__ = None` - exist to share properties
+between models and are never registered, because they are never written to the graph.
+
+### Duplicate labels
+
+Two model classes claiming the same primary label is a problem: only one of them can be
+used to build results, so data written as one comes back as the other. Neontology warns
+as soon as the second class is defined, naming both:
+
+```text
+DuplicateLabelWarning: primary label 'Person' is claimed by both myapp.models.Person
+and myapp.other.Person. Only one of them can be used to build query results, so data
+written as one will come back as the other. Give them distinct names.
+```
+
+To make that an error instead, turn on strict mode before your models are imported:
+
+```python
+from neontology import registry
+
+registry.strict = True   # raises DuplicateLabelError instead of warning
+```
+
+You can also escalate the warning with Python's own machinery:
+
+```python
+import warnings
+
+from neontology import DuplicateLabelWarning
+
+warnings.simplefilter("error", DuplicateLabelWarning)
+```
+
+Re-running a notebook cell or reloading a module is not treated as a clash - that is the
+same model being defined again, not two models fighting over one label.
+
+### Inherited labels
+
+A subclass which does not declare its own `__primarylabel__` inherits its parent's and
+takes over that label, so nodes written as the parent come back as the subclass with
+defaults invented for any fields that were never stored. That is rarely intended, so
+Neontology raises an `InheritedLabelWarning`. Give the subclass its own label, or set
+`__primarylabel__ = None` to make it abstract:
+
+```python
+class Animal(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Animal"
+    name: str
+
+
+class Dog(Animal):
+    __primarylabel__: ClassVar[Optional[str]] = "Dog"   # its own label
+```
+
 ## Type Conversion / Serialization
 
 Not all graph databases natively support the same range of types as Python/Pydantic. Therefore, model fields annotated with complex types may need to go through some level of conversion before being written to the database. This can be achieved with Pydantic's [custom serializers](https://docs.pydantic.dev/2.9/concepts/serialization/#custom-serializers).

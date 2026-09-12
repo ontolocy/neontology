@@ -133,12 +133,6 @@ class GraphConnection(object):
 
             _close_quietly(previous_engine)
 
-        # capture all currently defined types of node and relationship
-        from .utils import get_node_types, get_rels_by_type
-
-        cls.global_nodes = get_node_types()
-        cls.global_rels = get_rels_by_type()
-
         return cls._instance
 
     @classmethod
@@ -168,6 +162,31 @@ class GraphConnection(object):
 
         cls._establish(config)
 
+    @property
+    def global_nodes(self) -> dict:
+        """Every node class currently registered, keyed by primary label.
+
+        Read from the registry, which model classes populate as they are defined, so
+        this is always current and never needs refreshing.
+
+        Returns:
+            dict: node classes by primary label.
+        """
+        from .utils import get_node_types
+
+        return get_node_types()
+
+    @property
+    def global_rels(self) -> dict:
+        """Every relationship type currently registered, keyed by relationship type.
+
+        Returns:
+            dict: relationship type data by relationship type.
+        """
+        from .utils import get_rels_by_type
+
+        return get_rels_by_type()
+
     def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query against the graph database which returns a single result.
 
@@ -188,7 +207,7 @@ class GraphConnection(object):
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
-        refresh_classes: bool = True,
+        refresh_classes: Optional[bool] = None,
     ) -> NeontologyResult:
         """Evaluate a Cypher query against the graph database.
 
@@ -197,17 +216,20 @@ class GraphConnection(object):
             params (dict): Parameters to pass to the Cypher query.
             node_classes (dict): Optional dictionary of node classes to use.
             relationship_classes (dict): Optional dictionary of relationship classes to use.
-            refresh_classes (bool): Whether to refresh the global node and relationship types.
+            refresh_classes (Optional[bool]): Deprecated and ignored. Model classes register
+                themselves as they are defined, so the type maps are never stale.
 
         Returns:
             NeontologyResult: The result of the query execution.
         """
-        if refresh_classes is True:
-            from .utils import get_node_types, get_rels_by_type
-
-            # capture all currently defined types of node and relationship
-            self.global_nodes = get_node_types()
-            self.global_rels = get_rels_by_type()
+        if refresh_classes is not None:
+            warnings.warn(
+                "The refresh_classes argument to evaluate_query is deprecated, has no effect,"
+                " and will be removed in v4. Model classes register themselves as they are"
+                " defined, so the node and relationship type maps are always current.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if not node_classes:
             node_classes = self.global_nodes

@@ -10,6 +10,7 @@ from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
 from .optional_deps import require_pandas
+from .registry import registry
 from .result import NeontologyResult
 from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
 
@@ -135,6 +136,33 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     __primarylabel__: ClassVar[Optional[str]]
     __secondarylabels__: ClassVar[list[str]] = []
 
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Register this node class as it is defined.
+
+        Pydantic calls this once the model class is fully built, so `model_fields` and
+        the class' own namespace are both populated - which registration needs in order
+        to tell a declared primary label from an inherited one.
+
+        Args:
+            **kwargs (Any): class keyword arguments, passed through to pydantic.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        registry.register_node(cls)
+
+    @classmethod
+    def _all_labels(cls) -> list[str]:
+        """Every label this node carries in the graph, primary first.
+
+        Args:
+            None.
+
+        Returns:
+            list[str]: the primary label followed by any secondary labels.
+        """
+        return [cls.__primarylabel__] + list(cls.__secondarylabels__)
+
     def __init__(self, **data: dict):
         super().__init__(**data)
 
@@ -230,6 +258,19 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 )
             )
 
+        # secondary labels are interpolated into cypher alongside the primary one, so
+        # they are held to the same standard
+        for secondary_label in getattr(self, "__secondarylabels__", None) or []:
+            try:
+                gql_identifier_adapter.validate_strings(secondary_label)
+            except ValidationError:
+                warnings.warn(
+                    (
+                        f"Secondary Label {secondary_label!r} should contain only alphanumeric"
+                        " characters and underscores. It should begin with an alphabetic character."
+                    )
+                )
+
         return self
 
     def get_pp(self) -> Union[str, int]:
@@ -252,7 +293,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         node_details = [{"pp": pp_value, "props": all_props}]
 
-        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+        all_labels = self._all_labels()
 
         pp_key = self.__primaryproperty__
 
@@ -266,7 +307,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """Merge this node into the graph."""
         node_list = [self._get_merge_parameters()]
 
-        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+        all_labels = self._all_labels()
 
         pp_key = self.__primaryproperty__
 
@@ -295,7 +336,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         node_list = [{"props": props, "pp": props[cls.__primaryproperty__]} for props in all_props]
 
-        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+        all_labels = cls._all_labels()
         pp_key = cls.__primaryproperty__
 
         gc = GraphConnection()
@@ -319,7 +360,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
         node_list = [x._get_merge_parameters() for x in nodes]
 
-        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+        all_labels = cls._all_labels()
 
         pp_key = cls.__primaryproperty__
 

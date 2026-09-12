@@ -49,7 +49,11 @@ Graph-backed tests read connection details from env vars (a `.env` file works): 
 
 ### Type discovery
 
-[utils.py](src/neontology/utils.py) walks `__subclasses__()` recursively to build `{primary_label: NodeClass}` and `{rel_type: RelationshipTypeData}` maps. This is how query results get rehydrated into the right model classes — **a class must be imported/defined before a query runs for its results to come back typed**. `GraphConnection.evaluate_query` refreshes these maps by default (`refresh_classes=True`). Source/target annotations that are still unresolved `ForwardRef`s are filtered out by `_validate_relationship_nodes` rather than raising.
+Model classes register themselves as they are defined, via `__pydantic_init_subclass__` on `BaseNode` and `BaseRelationship`, into the `Registry` in [registry.py](src/neontology/registry.py). `get_node_types()` / `get_rels_by_type()` in [utils.py](src/neontology/utils.py) keep their signatures but now read that registry rather than walking `__subclasses__()` — **a class must still be imported/defined before a query runs for its results to come back typed**, because defining it is what registers it.
+
+Registration is where clashes are caught: a primary label or relationship type claimed by two different classes warns (`DuplicateLabelWarning`, or raises `DuplicateLabelError` when `registry.strict` is set), and a subclass inheriting a concrete `__primarylabel__` rather than declaring its own warns (`InheritedLabelWarning`). Redefining the same class — a reloaded module, a re-run notebook cell — is matched on `__module__` + `__qualname__` and is not a clash. Abstract classes (no label, either `None` or never declared) are not registered.
+
+Relationship source/target are resolved lazily by `Registry.relationships()`, not at registration: a relationship may be defined before the nodes it points at, leaving unresolved `ForwardRef`s until `model_rebuild()` runs. Unresolved ones are skipped and retried, and resolved ones are cached until a new node class registers (which can change what subclasses expand to). `refresh_classes` on `evaluate_query` is deprecated and ignored — the registry is never stale.
 
 ### Connection layer
 
