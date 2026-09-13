@@ -23,10 +23,11 @@ First we need to define models for the different types of node we want to store.
 
 ```python
 # main.py
+from contextlib import asynccontextmanager
 from typing import ClassVar, Optional
 
 from fastapi import FastAPI, HTTPException
-from neontology import BaseNode, BaseRelationship, init_neontology, Neo4jConfig
+from neontology import BaseNode, BaseRelationship, GraphConnection, init_neontology, Neo4jConfig
 
 class TeamNode(BaseNode):
     __primaryproperty__: ClassVar[str] = "teamname"
@@ -55,14 +56,13 @@ class BelongsTo(BaseRelationship):
 
 ## Our first root
 
-Now we need to initialise FastAPI and Neontology, and let's create a root route to try things:
+Now we need to initialise FastAPI and Neontology, and let's create a root route to try things.
+
+Neontology should connect once, when the app starts, and close the connection when it stops. FastAPI's [lifespan](https://fastapi.tiangolo.com/advanced/events/) handles both:
 
 ```python
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_event():
-
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # here we declare the neo4j connection details explicitly (this can be bad for security)
     # you could instead define them as environment variables or in a .env file
     NEO4J_URI="neo4j+s://<database id>.databases.neo4j.io"  # neo4j Aura example
@@ -76,11 +76,20 @@ async def startup_event():
     )
     init_neontology(config)
 
+    yield
+
+    GraphConnection().close()
+
+
+app = FastAPI(lifespan=lifespan)
+
 
 @app.get("/")
 def read_root():
     return {"foo": "bar"}
 ```
+
+The lifespan has to be declared `async`, and that is fine here: connecting happens once, before the app serves any requests, so there is nothing for it to hold up.
 
 ## What we have so far
 
@@ -98,15 +107,15 @@ But for a much more comprehensive view, you can checkout `http://127.0.0.1:8000/
 
 Now lets start actually interacting with our Neo4j graph.
 
-We'll define a `POST` rout for adding a new team.
+We'll define a `POST` route for adding a new team.
 
 Because FastAPI and Neontology both use Pydantic models, we just need to give our node type as a type hint on the route so that FastAPI knows that data it receives should map to the TeamNode type.
 
-Then we use Neontology's `create()` method to create that team in the database.
+Then we use Neontology's `create()` method to create that team in the database. `create()` waits for the database, so the route is a plain `def` - see the note at the top of this page.
 
 ```python
 @app.post("/teams/")
-async def create_team(team: TeamNode):
+def create_team(team: TeamNode):
 
     team.create()
 
@@ -125,7 +134,7 @@ Here we'll add some more routes to get the teams that have been created.
 
 ```python
 @app.get("/teams/")
-async def get_teams() -> list[TeamNode]:
+def get_teams() -> list[TeamNode]:
     return TeamNode.match_nodes()
 ```
 
@@ -135,7 +144,7 @@ async def get_teams() -> list[TeamNode]:
 
 ```python
 @app.get("/teams/{pp}")
-async def get_team(pp: str) -> Optional[TeamNode]:
+def get_team(pp: str) -> Optional[TeamNode]:
 
     return TeamNode.match(pp)
 ```
@@ -247,10 +256,11 @@ In full, this becomes:
 
 ```python
 # main.py
+from contextlib import asynccontextmanager
 from typing import ClassVar, Optional
 
 from fastapi import FastAPI, HTTPException
-from neontology import BaseNode, BaseRelationship, init_neontology
+from neontology import BaseNode, BaseRelationship, GraphConnection, init_neontology
 
 
 class TeamNode(BaseNode):
@@ -273,14 +283,21 @@ class BelongsTo(BaseRelationship):
     target: TeamNode
 
 
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # make sure you've set NEO4J_URI, NEO4J_USERNAME and NEO4J_PASSWORD environment variables
     # they could be defined in a .env file
     init_neontology()
+
+    yield
+
+    GraphConnection().close()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+# routes that use Neontology are plain def, so FastAPI runs them in worker threads
 
 
 @app.get("/")
@@ -289,7 +306,7 @@ def read_root():
 
 
 @app.post("/teams/")
-async def create_team(team: TeamNode):
+def create_team(team: TeamNode):
 
     team.create()
 
@@ -297,19 +314,19 @@ async def create_team(team: TeamNode):
 
 
 @app.get("/teams/")
-async def get_teams() -> list[TeamNode]:
+def get_teams() -> list[TeamNode]:
 
     return TeamNode.match_nodes()
 
 
 @app.get("/teams/{pp}")
-async def get_team(pp: str) -> Optional[TeamNode]:
+def get_team(pp: str) -> Optional[TeamNode]:
 
     return TeamNode.match(pp)
 
 
 @app.post("/team-members/")
-async def create_team_member(member: TeamMemberNode, team_name: str):
+def create_team_member(member: TeamMemberNode, team_name: str):
 
     team = TeamNode.match(team_name)
 
@@ -325,13 +342,13 @@ async def create_team_member(member: TeamMemberNode, team_name: str):
 
 
 @app.get("/team-members/")
-async def get_team_members() -> list[TeamMemberNode]:
+def get_team_members() -> list[TeamMemberNode]:
 
     return TeamMemberNode.match_nodes()
 
 
 @app.get("/team-members/{pp}")
-async def get_team_member(pp: str) -> Optional[TeamMemberNode]:
+def get_team_member(pp: str) -> Optional[TeamMemberNode]:
 
     return TeamMemberNode.match(pp)
 ```
