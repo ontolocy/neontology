@@ -127,7 +127,12 @@ class SchemaPerson(SchemaThing):
     __primarylabel__: ClassVar[Optional[str]] = "SchemaPerson"
     __inheritablelabels__: ClassVar[list[str]] = ["SchemaPerson"]
 
-    name: str | None = Field(default=None, description="Full name.\n\nAs they prefer it written.", examples=["Ada Lovelace"])
+    name: str | None = Field(
+        default=None,
+        description="Full name.\n\nAs they prefer it written.",
+        examples=["Ada Lovelace"],
+        json_schema_extra={"index": True},
+    )
     nickname: Optional[str] = Field(default=None, alias="known_as")
     favourite: Colour = Colour.RED
     created: datetime = Field(default_factory=datetime.now, json_schema_extra={"set_on_create": True})
@@ -139,7 +144,7 @@ class SchemaEmployee(SchemaPerson):
 
     __primarylabel__: ClassVar[Optional[str]] = "SchemaEmployee"
 
-    staff_number: Annotated[int, Field(gt=0)]
+    staff_number: Annotated[int, Field(gt=0, json_schema_extra={"unique": True})]
 
 
 class SchemaWorksFor(BaseRelationship):
@@ -204,6 +209,37 @@ class TestOntology:
         assert SchemaWorksFor.neontology_schema() == relationship(schema, "SCHEMA_WORKS_FOR")
 
 
+class TestSchemaOfModels:
+    """A schema of exactly the classes given, as a library exporting its models would be described."""
+
+    def test_the_models_given_in_order_without_repeats(self):
+        schema = get_ontology_schema(models=[SchemaPerson, SchemaWorksFor, SchemaOrganisation, SchemaPerson])
+
+        assert [n.class_name for n in schema.nodes] == ["SchemaPerson", "SchemaOrganisation"]
+        assert [r.relationship_type for r in schema.relationships] == ["SCHEMA_WORKS_FOR"]
+
+    def test_node_relationships_are_limited_to_those_in_the_schema(self):
+        schema = get_ontology_schema(models=[SchemaPerson, SchemaOrganisation, SchemaWorksFor])
+
+        person = node(schema, SchemaPerson)
+
+        assert (person.outgoing_relationships, person.incoming_relationships) == (["SCHEMA_WORKS_FOR"], [])
+
+    def test_entries_otherwise_match_the_full_schema(self, schema):
+        subset = get_ontology_schema(models=[SchemaOrganisation, SchemaWorksFor])
+
+        assert subset.nodes[0].properties == node(schema, SchemaOrganisation).properties
+        assert subset.relationships[0] == relationship(schema, "SCHEMA_WORKS_FOR")
+
+    def test_base_type_and_models_cannot_both_be_given(self):
+        with pytest.raises(ValueError):
+            get_ontology_schema(SchemaThing, models=[SchemaPerson])
+
+    def test_models_must_be_node_or_relationship_classes(self):
+        with pytest.raises(TypeError, match="str"):
+            get_ontology_schema(models=[str])
+
+
 class TestNodes:
     def test_descriptions_come_from_docstrings(self, schema):
         assert node(schema, SchemaPerson).description == "Anyone we know about."
@@ -266,6 +302,13 @@ class TestProperties:
 
         assert (prop(person, "created").set_on_create, prop(person, "created").set_on_match) == (True, False)
         assert (prop(person, "updated").set_on_create, prop(person, "updated").set_on_match) == (False, True)
+
+    def test_index_and_unique_are_flagged(self, schema):
+        name = prop(node(schema, SchemaPerson), "name")
+        staff_number = prop(node(schema, SchemaEmployee), "staff_number")
+
+        assert (name.index, name.unique) == (True, False)
+        assert (staff_number.index, staff_number.unique) == (False, True)
 
     def test_a_property_is_named_as_the_graph_stores_it(self, schema):
         assert "known_as" in [p.name for p in node(schema, SchemaPerson).properties]

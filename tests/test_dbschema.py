@@ -9,8 +9,9 @@ tests say what they need rather than naming engines.
 from typing import ClassVar, Optional
 
 import pytest
+from pydantic import Field
 
-from neontology import GraphConnection
+from neontology import BaseRelationship, GraphConnection, get_ontology_schema
 from neontology.basenode import BaseNode
 from neontology.graphengines.capabilities import Capability, CapabilityNotSupportedError
 from neontology.graphengines.dbschema import Constraint, ConstraintType, Index
@@ -26,6 +27,20 @@ class DBSchemaOtherNode(BaseNode):
     __primaryproperty__: ClassVar[str] = "identifier"
     __primarylabel__: ClassVar[Optional[str]] = "DBSchemaOtherNode"
     identifier: str
+
+
+class DBSchemaTaggedBase(BaseNode):
+    """Abstract, so its tagged property applies to the classes inheriting it."""
+
+    __primaryproperty__: ClassVar[str] = "pp"
+    pp: str
+    email: str = Field(json_schema_extra={"unique": True})
+
+
+class DBSchemaTaggedNode(DBSchemaTaggedBase):
+    __primarylabel__: ClassVar[Optional[str]] = "DBSchemaTaggedNode"
+    name: str = Field(json_schema_extra={"index": True})
+    code: Optional[str] = Field(default=None, alias="ref_code", json_schema_extra={"unique": True, "index": True})
 
 
 # --------------------------------------------------------------------------
@@ -157,24 +172,13 @@ def test_apply_constraints_rejects_abstract_node_types(use_graph):
         use_graph.engine.apply_constraints([DBSchemaAbstractNode])
 
 
-def test_auto_constrain_raises_on_unsupported_engines_even_with_no_nodes(use_graph, engine):
+def test_apply_constraints_raises_on_unsupported_engines_even_with_no_nodes(use_graph, engine):
     """The guard fires on the request, not on whether there was anything to do."""
     if engine.supports(Capability.CONSTRAINTS):
         pytest.skip("engine supports constraints")
 
     with pytest.raises(CapabilityNotSupportedError):
         use_graph.engine.apply_constraints([])
-
-
-@pytest.mark.requires_capability(Capability.CONSTRAINTS)
-def test_auto_constrain_covers_defined_nodes(use_graph):
-    """auto_constrain discovers node types rather than being handed them."""
-    use_graph.auto_constrain()
-
-    labels = {c.label for c in use_graph.engine.get_constraints()}
-
-    assert "DBSchemaNode" in labels
-    assert "DBSchemaOtherNode" in labels
 
 
 @pytest.mark.requires_capability(Capability.CONSTRAINTS)
@@ -306,3 +310,163 @@ def test_graph_connection_forwards_index_methods(use_graph):
         gc.drop_index(index)
 
     assert gc.get_indexes() == []
+
+
+# --------------------------------------------------------------------------
+# Properties tagged unique or index on a model
+# --------------------------------------------------------------------------
+
+
+def schema_objects(objects):
+    return {(o.label, o.properties) for o in objects}
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS)
+def test_apply_constraints_includes_properties_tagged_unique(use_graph):
+    """Inherited tags count, and a property is constrained under the key the graph stores it by."""
+    applied = use_graph.engine.apply_constraints([DBSchemaTaggedNode])
+
+    expected = {
+        ("DBSchemaTaggedNode", ("pp",)),
+        ("DBSchemaTaggedNode", ("email",)),
+        ("DBSchemaTaggedNode", ("ref_code",)),
+    }
+
+    assert schema_objects(applied) == expected
+    assert schema_objects(use_graph.engine.get_constraints()) == expected
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS)
+def test_a_property_tagged_unique_is_enforced(use_graph):
+    use_graph.initialise_graph()
+
+    DBSchemaTaggedNode(pp="first", email="same@example.com", name="First").create()
+
+    with pytest.raises(Exception):
+        DBSchemaTaggedNode(pp="second", email="same@example.com", name="Second").create()
+
+
+@pytest.mark.requires_capability(Capability.INDEXES)
+def test_apply_indexes_includes_properties_tagged_index_and_unique_ones(use_graph, engine):
+    """A unique property is indexed too, by its constraint where the database's constraints carry one."""
+    applied = use_graph.engine.apply_indexes([DBSchemaTaggedNode])
+
+    if engine.uniqueness_constraints_are_indexed:
+        expected = {("DBSchemaTaggedNode", ("name",))}
+
+    else:
+        expected = {("DBSchemaTaggedNode", (prop,)) for prop in ("pp", "email", "ref_code", "name")}
+
+    assert schema_objects(applied) == expected
+    assert schema_objects(use_graph.engine.get_indexes()) == expected
+
+
+@pytest.mark.requires_capability(Capability.INDEXES)
+def test_apply_indexes_is_idempotent(use_graph):
+    use_graph.engine.apply_indexes([DBSchemaTaggedNode])
+    applied = use_graph.engine.apply_indexes([DBSchemaTaggedNode])
+
+    assert len(use_graph.engine.get_indexes()) == len(applied)
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS, Capability.INDEXES)
+@pytest.mark.parametrize("indexes_first", [False, True], ids=["constraints-first", "indexes-first"])
+def test_tagged_constraints_and_indexes_apply_in_either_order(use_graph, indexes_first):
+    """Neo4j refuses a uniqueness constraint where a plain index already covers the property."""
+    steps = [use_graph.apply_constraints, use_graph.apply_indexes]
+
+    for step in reversed(steps) if indexes_first else steps:
+        step([DBSchemaTaggedNode])
+
+    assert ("DBSchemaTaggedNode", ("ref_code",)) in schema_objects(use_graph.get_constraints())
+
+
+@pytest.mark.requires_capability(Capability.INDEXES)
+def test_apply_indexes_rejects_abstract_node_types(use_graph):
+    with pytest.raises(ValueError):
+        use_graph.engine.apply_indexes([DBSchemaTaggedBase])
+
+
+def test_apply_indexes_raises_on_unsupported_engines_even_with_no_nodes(use_graph, engine):
+    if engine.supports(Capability.INDEXES):
+        pytest.skip("engine supports indexes")
+
+    with pytest.raises(CapabilityNotSupportedError):
+        use_graph.apply_indexes([])
+
+
+def test_a_tagged_model_works_on_every_engine(use_graph):
+    """Tags only take effect when applied, so a tagged model can be used on any backend."""
+    DBSchemaTaggedNode(pp="tagged", email="tagged@example.com", name="Tagged").merge()
+
+    assert DBSchemaTaggedNode.match("tagged").email == "tagged@example.com"
+
+
+def test_tagging_a_relationship_property_raises_when_the_class_is_defined():
+    with pytest.raises(TypeError, match="DBSchemaTaggedRel.since"):
+
+        class DBSchemaTaggedRel(BaseRelationship):
+            __relationshiptype__: ClassVar[Optional[str]] = "DBSCHEMA_TAGGED_REL"
+
+            source: DBSchemaNode
+            target: DBSchemaNode
+
+            since: str = Field(json_schema_extra={"index": True})
+
+
+# --------------------------------------------------------------------------
+# Initialising a graph
+# --------------------------------------------------------------------------
+
+
+def split(applied):
+    """The constraints and the indexes among what was applied."""
+    constraints = schema_objects(o for o in applied if isinstance(o, Constraint))
+    indexes = schema_objects(o for o in applied if isinstance(o, Index))
+
+    return constraints, indexes
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS, Capability.INDEXES)
+def test_initialise_graph_applies_what_the_schema_declares(use_graph, engine):
+    """The abstract base is in the schema too, but has no label to apply anything under."""
+    constraints, indexes = split(use_graph.initialise_graph(get_ontology_schema(DBSchemaTaggedBase)))
+
+    assert constraints == {("DBSchemaTaggedNode", (prop,)) for prop in ("pp", "email", "ref_code")}
+
+    if engine.uniqueness_constraints_are_indexed:
+        assert indexes == {("DBSchemaTaggedNode", ("name",))}
+
+    else:
+        assert indexes == {("DBSchemaTaggedNode", (prop,)) for prop in ("pp", "email", "ref_code", "name")}
+
+    assert schema_objects(use_graph.get_constraints()) == constraints
+    assert schema_objects(use_graph.get_indexes()) == indexes
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS)
+def test_initialise_graph_defaults_to_every_model_defined(use_graph):
+    use_graph.initialise_graph()
+
+    labels = {c.label for c in use_graph.get_constraints()}
+
+    assert {"DBSchemaNode", "DBSchemaOtherNode", "DBSchemaTaggedNode"} <= labels
+
+
+@pytest.mark.requires_capability(Capability.CONSTRAINTS, Capability.INDEXES)
+def test_initialise_graph_is_safe_to_run_again(use_graph):
+    schema = get_ontology_schema(models=[DBSchemaTaggedNode])
+
+    use_graph.initialise_graph(schema)
+    constraints, indexes = split(use_graph.initialise_graph(schema))
+
+    assert schema_objects(use_graph.get_constraints()) == constraints
+    assert schema_objects(use_graph.get_indexes()) == indexes
+
+
+def test_initialise_graph_applies_only_what_the_backend_supports(use_graph, engine):
+    """Where apply_constraints and apply_indexes raise, initialising skips what the backend cannot do."""
+    constraints, indexes = split(use_graph.initialise_graph(get_ontology_schema(models=[DBSchemaTaggedNode])))
+
+    assert bool(constraints) == engine.supports(Capability.CONSTRAINTS)
+    assert bool(indexes) == engine.supports(Capability.INDEXES)

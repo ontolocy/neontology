@@ -7,13 +7,14 @@ from typing import TYPE_CHECKING, Any, Iterable, Optional, Sequence, TypeVar, Un
 
 from .graphengines import MemgraphConfig, Neo4jConfig
 from .graphengines.capabilities import Capability
-from .graphengines.dbschema import Constraint, Index
+from .graphengines.dbschema import Constraint, Index, SchemaObject
 from .graphengines.graphengine import GraphEngineBase, GraphEngineConfig
 from .result import NeontologyResult
 
 if TYPE_CHECKING:
     from .basenode import BaseNode
     from .baserelationship import BaseRelationship
+    from .schema import OntologySchema
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +431,9 @@ class GraphConnection(object):
         return self.engine.supports(capability)
 
     def apply_constraints(self, node_types: Iterable[type[BaseNodeT]]) -> list[Constraint]:
-        """Apply uniqueness constraints for the given node types.
+        """Apply the uniqueness constraints the given node types declare.
+
+        That is each one's primary property, and every property tagged `unique`.
 
         Args:
             node_types (Iterable[type[BaseNode]]): the node classes to constrain.
@@ -439,20 +442,6 @@ class GraphConnection(object):
             list[Constraint]: the constraints applied.
         """
         return self.engine.apply_constraints(node_types)
-
-    def auto_constrain(self) -> list[Constraint]:
-        """Apply a uniqueness constraint for every node type currently defined.
-
-        Node types are discovered from the class hierarchy, so a class has to be
-        imported or defined before this runs to be covered. Only primary labels are
-        constrained - secondary labels are not.
-
-        Returns:
-            list[Constraint]: the constraints applied.
-        """
-        from .utils import get_node_types
-
-        return self.apply_constraints(list(get_node_types().values()))
 
     def get_constraints(self) -> list[Constraint]:
         """Get the constraints defined in the graph database.
@@ -495,6 +484,44 @@ class GraphConnection(object):
             index (Index): an index as returned by `get_indexes()`.
         """
         self.engine.drop_index(index)
+
+    def apply_indexes(self, node_types: Iterable[type[BaseNodeT]]) -> list[Index]:
+        """Apply the indexes the given node types declare.
+
+        That is every property tagged `index` and, where the database's uniqueness
+        constraints carry no index of their own, every property required to be unique.
+
+        Args:
+            node_types (Iterable[type[BaseNode]]): the node classes to index.
+
+        Returns:
+            list[Index]: the indexes applied.
+        """
+        return self.engine.apply_indexes(node_types)
+
+    def initialise_graph(self, schema: Optional[OntologySchema] = None) -> list[SchemaObject]:
+        """Prepare the database for your models.
+
+        Applies everything the models declare that this backend supports - on Neo4j and
+        Memgraph, the uniqueness constraints and indexes `apply_constraints()` and
+        `apply_indexes()` apply - and skips anything it does not, so it can be called on any
+        engine. It only ever adds, so it is safe to run again after changing your models.
+
+        Args:
+            schema (Optional[OntologySchema]): the models to prepare the database for, such
+                as `get_ontology_schema(models=[...])`. Defaults to every model defined, so
+                import your models first.
+
+        Returns:
+            list[SchemaObject]: the constraints and indexes applied.
+        """
+        if schema is None:
+            # imported here: the schema module builds on the models, which import this one
+            from .schema import get_ontology_schema
+
+            schema = get_ontology_schema()
+
+        return self.engine.initialise_graph(schema)
 
 
 def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:

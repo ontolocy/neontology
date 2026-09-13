@@ -84,7 +84,7 @@ already written, and is reported as unexpected when they are read back.
 
 A class carrying its parent's label shares its parent's identity: `Person` nodes are
 identified by the `Person` label and `name`, and employees carry both. A uniqueness
-constraint on `Person.name` - such as `auto_constrain()` applies - therefore covers employees
+constraint on `Person.name` - such as `initialise_graph()` applies - therefore covers employees
 as well. Merging an `Employee` does not turn an existing `Person` with the same name into
 one: it creates a new node, which that constraint will reject.
 

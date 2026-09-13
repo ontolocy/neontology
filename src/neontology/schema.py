@@ -14,13 +14,13 @@ from __future__ import annotations
 import inspect
 import types
 import warnings
-from typing import Any, Callable, Literal, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Iterable, Literal, Optional, Union, get_args, get_origin
 
 from pydantic import BaseModel
-from pydantic.json_schema import GenerateJsonSchema
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
+from .commonmodel import _LenientJsonSchema
 from .utils import generate_relationship_type_data, get_node_types, get_rels_by_type
 
 
@@ -43,6 +43,8 @@ class PropertySchema(BaseModel):
         set_on_create (bool): whether it is only set when the node or relationship is created.
         set_on_match (bool): whether it is only set when an existing one is matched.
         merge_on (bool): whether a relationship is merged on it.
+        unique (bool): whether it is tagged `unique`, for `initialise_graph()` to constrain.
+        index (bool): whether it is tagged `index`, for `initialise_graph()` to index.
         json_schema (dict[str, Any]): the property's JSON Schema from pydantic, including any
             constraints and any custom keys given with `json_schema_extra`.
     """
@@ -59,6 +61,8 @@ class PropertySchema(BaseModel):
     set_on_create: bool = False
     set_on_match: bool = False
     merge_on: bool = False
+    unique: bool = False
+    index: bool = False
     json_schema: dict[str, Any] = {}
 
 
@@ -186,7 +190,11 @@ class OntologySchema(BaseModel):
     relationships: list[RelationshipSchema] = []
 
 
-def get_ontology_schema(base_type: Optional[type[BaseNode]] = None) -> OntologySchema:
+def get_ontology_schema(
+    base_type: Optional[type[BaseNode]] = None,
+    *,
+    models: Optional[Iterable[type[Union[BaseNode, BaseRelationship]]]] = None,
+) -> OntologySchema:
     """Describe the ontology your models define.
 
     Models are known once they are defined, so import them first.
@@ -196,10 +204,24 @@ def get_ontology_schema(base_type: Optional[type[BaseNode]] = None) -> OntologyS
             inheriting from it - pass an abstract node class to describe one branch of your
             models. A relationship is included when a node class described can be either end
             of it.
+        models (Optional[Iterable[type[Union[BaseNode, BaseRelationship]]]]): if given,
+            describe exactly these node and relationship classes, in the order given - such
+            as the models a library exports. Each node's relationships are limited to those
+            among them, and a class given twice is described once.
 
     Returns:
         OntologySchema: the node and relationship classes.
+
+    Raises:
+        ValueError: if both `base_type` and `models` are given.
+        TypeError: if a model is not a node or relationship class.
     """
+    if models is not None:
+        if base_type is not None:
+            raise ValueError("Give get_ontology_schema() a base_type or models, not both.")
+
+        return _schema_of_models(models)
+
     concrete = list(get_node_types(base_type or BaseNode).values())
 
     classes: list[type[BaseNode]] = []
@@ -228,26 +250,29 @@ def get_ontology_schema(base_type: Optional[type[BaseNode]] = None) -> OntologyS
     )
 
 
+def _schema_of_models(models: Iterable[type]) -> OntologySchema:
+    """Describe exactly the node and relationship classes given."""
+    nodes: list[type[BaseNode]] = []
+    relationships: list[tuple[str, RelationshipTypeData]] = []
+    described: list[RelationshipSchema] = []
+
+    # a class given twice - as libraries re-exporting one another's models may - is described once
+    for model in dict.fromkeys(models):
+        if isinstance(model, type) and issubclass(model, BaseNode):
+            nodes.append(model)
+
+        elif isinstance(model, type) and issubclass(model, BaseRelationship):
+            # described first, which raises if it is abstract, with no relationship type
+            described.append(_relationship_schema(model))
+            relationships.append((model.__relationshiptype__, generate_relationship_type_data(model)))
+
+        else:
+            raise TypeError(f"{model!r} is not a node or relationship class.")
+
+    return OntologySchema(nodes=[_node_schema(cls, relationships) for cls in nodes], relationships=described)
+
+
 # --- building the schema -----------------------------------------------------------------
-
-
-class _LenientJsonSchema(GenerateJsonSchema):
-    """Describe what pydantic cannot put in JSON Schema as {}, rather than raising.
-
-    Neontology models allow arbitrary types, which pydantic validates but cannot describe.
-    """
-
-    def handle_invalid_for_json_schema(self, schema: Any, error_info: str) -> dict:
-        """Describe a type JSON Schema cannot express as an empty schema.
-
-        Args:
-            schema (Any): the pydantic core schema.
-            error_info (str): why it cannot be expressed.
-
-        Returns:
-            dict: an empty schema.
-        """
-        return {}
 
 
 def _qualified_name(cls: type) -> str:
@@ -361,6 +386,8 @@ def _properties(model: type[BaseModel], primary_property: Optional[str] = None, 
                 set_on_create=fragment.get("set_on_create") is True,
                 set_on_match=fragment.get("set_on_match") is True,
                 merge_on=fragment.get("merge_on") is True,
+                unique=fragment.get("unique") is True,
+                index=fragment.get("index") is True,
                 json_schema=fragment,
             )
         )

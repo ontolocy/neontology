@@ -84,7 +84,7 @@ def test_auto_constrain_neo4j_is_deprecated(use_graph, engine):
     if not engine.supports(Capability.CONSTRAINTS):
         pytest.skip("engine does not support constraints")
 
-    with pytest.warns(DeprecationWarning, match="auto_constrain"):
+    with pytest.warns(DeprecationWarning, match="initialise_graph"):
         auto_constrain_neo4j()
 
     assert len(GraphConnection().get_constraints()) >= 2

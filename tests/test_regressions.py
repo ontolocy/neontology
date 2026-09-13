@@ -28,6 +28,25 @@ class RegressionRel(BaseRelationship):
     target: RegressionNode
 
 
+class Opaque:
+    """A type pydantic validates with isinstance, but cannot describe in JSON Schema."""
+
+
+class RegressionArbitraryTypeNode(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "RegressionArbitraryTypeNode"
+
+    pp: str
+    thing: Opaque
+
+
+def test_a_node_with_an_arbitrary_type_can_be_instantiated():
+    """Models allow arbitrary types, but reading field flags from the JSON Schema raised on them."""
+    thing = Opaque()
+
+    assert RegressionArbitraryTypeNode(pp="x", thing=thing).thing is thing
+
+
 class TestRemovedDeprecations:
     """Deprecated API removed in v3.
 

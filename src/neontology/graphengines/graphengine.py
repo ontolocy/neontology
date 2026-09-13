@@ -11,11 +11,12 @@ from ..gql import gql_identifier_adapter, int_adapter
 from ..registry import registry
 from ..result import NeontologyResult
 from .capabilities import Capability, CapabilityNotSupportedError
-from .dbschema import Constraint, ConstraintType, Index
+from .dbschema import Constraint, ConstraintType, Index, SchemaObject
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
     from ..baserelationship import BaseRelationship
+    from ..schema import NodeSchema, OntologySchema
 
 BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
 BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
@@ -29,6 +30,10 @@ class GraphEngineBase:
     # extra context for the error raised when an unsupported capability is asked for,
     # so an engine can explain *why* rather than only that it cannot
     capability_hints: ClassVar[dict[Capability, str]] = {}
+
+    # whether a uniqueness constraint carries an index of its own, as Neo4j's do. Where it
+    # does, apply_indexes() leaves unique properties to the constraint
+    uniqueness_constraints_are_indexed: ClassVar[bool] = False
 
     _supported_types: ClassVar[Any] = (
         list,
@@ -269,12 +274,49 @@ class GraphEngineBase:
 
         raise self._unimplemented("drop_constraint", Capability.CONSTRAINTS)
 
-    def apply_constraints(self, node_types: Iterable[type[BaseNode]]) -> list[Constraint]:
-        """Apply uniqueness constraints for the given node types.
+    @staticmethod
+    def _describe(node_types: Iterable[type[BaseNode]], action: str) -> list[NodeSchema]:
+        """Describe node classes to constrain or index, checking them all before anything is applied.
 
-        Constraining a node type's primary label and primary property is the same
-        decision on every backend, so it lives here rather than being repeated per
-        engine. An engine that can apply a batch in one statement can override this.
+        Args:
+            node_types (Iterable[type[BaseNode]]): the node classes.
+            action (str): what they are described for, to explain the error.
+
+        Returns:
+            list[NodeSchema]: their descriptions.
+
+        Raises:
+            ValueError: if a node type is abstract, with no primary label.
+        """
+        nodes = []
+
+        for node_type in node_types:
+            if node_type._is_abstract():
+                raise ValueError(f"{node_type.__name__} is abstract, so it has no primary label to {action}.")
+
+            nodes.append(node_type.neontology_schema())
+
+        return nodes
+
+    @staticmethod
+    def _unique_properties(node: NodeSchema) -> list[str]:
+        """Get the properties a described node requires to be unique.
+
+        Args:
+            node (NodeSchema): the node class, described.
+
+        Returns:
+            list[str]: its primary property, then any property tagged `unique`.
+        """
+        return list(dict.fromkeys([node.primary_property, *(prop.name for prop in node.properties if prop.unique)]))
+
+    def apply_constraints(self, node_types: Iterable[type[BaseNode]]) -> list[Constraint]:
+        """Apply the uniqueness constraints the given node types declare.
+
+        Each node type's primary property is constrained to be unique under its primary
+        label, and so is every property tagged `unique` with `json_schema_extra`. That is
+        the same decision on every backend, so it lives here rather than being repeated
+        per engine. An engine that can apply a batch in one statement can override this.
 
         Args:
             node_types (Iterable[type[BaseNode]]): the node classes to constrain.
@@ -283,29 +325,29 @@ class GraphEngineBase:
             list[Constraint]: the constraints applied.
 
         Raises:
-            ValueError: if a node type has no explicit primary label.
+            ValueError: if a node type is abstract, with no primary label.
         """
         # guard up front rather than relying on the loop below to reach
         # apply_uniqueness_constraint - asking an engine that has no constraints is an
         # error even when the caller passes no node types
         self._require(Capability.CONSTRAINTS)
 
-        constraints = []
+        return self._apply_constraints(self._describe(node_types, "constrain"))
 
-        for node_type in node_types:
-            # an "abstract" node class may not define the attribute at all
-            label = getattr(node_type, "__primarylabel__", None)
+    def _apply_constraints(self, nodes: Iterable[NodeSchema]) -> list[Constraint]:
+        """Apply the uniqueness constraints described node classes declare.
 
-            if not label:
-                raise ValueError(f"{node_type.__name__} must have an explicit primary label to apply a constraint.")
+        Args:
+            nodes (Iterable[NodeSchema]): concrete node classes, described.
 
-            constraints.append(
-                Constraint(
-                    label=label,
-                    properties=(node_type.__primaryproperty__,),
-                    constraint_type=ConstraintType.UNIQUENESS,
-                )
-            )
+        Returns:
+            list[Constraint]: the constraints applied.
+        """
+        constraints = [
+            Constraint(label=node.label, properties=(prop,), constraint_type=ConstraintType.UNIQUENESS)
+            for node in nodes
+            for prop in self._unique_properties(node)
+        ]
 
         for constraint in constraints:
             self.apply_uniqueness_constraint(constraint.label, constraint.properties)
@@ -367,6 +409,90 @@ class GraphEngineBase:
         self._require(Capability.INDEXES)
 
         raise self._unimplemented("drop_index", Capability.INDEXES)
+
+    def apply_indexes(self, node_types: Iterable[type[BaseNode]]) -> list[Index]:
+        """Apply the indexes the given node types declare.
+
+        Each property tagged `index` with `json_schema_extra` is indexed under its node
+        type's primary label, and so is each property required to be unique - the primary
+        property and any tagged `unique` - so looking one up is fast too. Where the
+        database's uniqueness constraints carry their own index, unique properties are
+        left to `apply_constraints()`: Neo4j refuses a constraint on a property a plain
+        index already covers.
+
+        Args:
+            node_types (Iterable[type[BaseNode]]): the node classes to index.
+
+        Returns:
+            list[Index]: the indexes applied.
+
+        Raises:
+            ValueError: if a node type is abstract, with no primary label.
+        """
+        # guarded up front, as in apply_constraints
+        self._require(Capability.INDEXES)
+
+        return self._apply_indexes(self._describe(node_types, "index"))
+
+    def _apply_indexes(self, nodes: Iterable[NodeSchema]) -> list[Index]:
+        """Apply the indexes described node classes declare.
+
+        Args:
+            nodes (Iterable[NodeSchema]): concrete node classes, described.
+
+        Returns:
+            list[Index]: the indexes applied.
+        """
+        indexes = []
+
+        for node in nodes:
+            unique = self._unique_properties(node)
+            tagged = [prop.name for prop in node.properties if prop.index]
+
+            if self.uniqueness_constraints_are_indexed:
+                properties = [prop for prop in tagged if prop not in unique]
+
+            else:
+                properties = list(dict.fromkeys([*unique, *tagged]))
+
+            indexes += [Index(label=node.label, properties=(prop,)) for prop in properties]
+
+        for index in indexes:
+            self.apply_index(index.label, index.properties)
+
+        return indexes
+
+    # -- initialising a graph ------------------------------------------------
+
+    def initialise_graph(self, schema: OntologySchema) -> list[SchemaObject]:
+        """Prepare the database for an ontology.
+
+        Everything the ontology declares that this engine supports is applied - here, the
+        constraints and indexes `apply_constraints()` and `apply_indexes()` apply, for each
+        concrete node class - and anything it does not support is skipped, so this can be
+        called on any engine. It only ever adds, so it is safe to run again.
+
+        The ontology is passed as its description, relationships included, so an engine
+        whose database must be given its schema before it can be used can override this to
+        build that schema from the same data.
+
+        Args:
+            schema (OntologySchema): the ontology to prepare the database for.
+
+        Returns:
+            list[SchemaObject]: what was applied.
+        """
+        nodes = [node for node in schema.nodes if not node.abstract]
+
+        applied: list[SchemaObject] = []
+
+        if self.supports(Capability.CONSTRAINTS):
+            applied += self._apply_constraints(nodes)
+
+        if self.supports(Capability.INDEXES):
+            applied += self._apply_indexes(nodes)
+
+        return applied
 
     def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes with specified labels and properties.

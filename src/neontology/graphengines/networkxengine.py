@@ -192,7 +192,7 @@ class NetworkxEngine(GraphEngineBase):
             "NetworkX nodes are keyed by a hash of (primary property, primary label), so"
             " uniqueness on the primary property already holds structurally and there is"
             " nothing to apply. This is the same property that makes DUPLICATE_CREATE"
-            " unsupported here."
+            " unsupported here. Other properties tagged unique are not enforced."
         ),
         Capability.INDEXES: ("NetworkX graphs are held in memory and queried by traversal, so there is no index to build."),
     }

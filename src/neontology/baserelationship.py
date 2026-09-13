@@ -51,8 +51,27 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         Args:
             **kwargs (Any): class keyword arguments, passed through to pydantic.
+
+        Raises:
+            TypeError: if a property is tagged `index` or `unique`, which only node
+                properties can be.
         """
         super().__pydantic_init_subclass__(**kwargs)
+
+        # read from the fields, as the JSON Schema cannot be generated until any forward
+        # reference to a source or target class resolves
+        tagged = [
+            f"{cls.__name__}.{name}"
+            for name, field in cls.model_fields.items()
+            if isinstance(field.json_schema_extra, dict)
+            and (field.json_schema_extra.get("index") is True or field.json_schema_extra.get("unique") is True)
+        ]
+
+        if tagged:
+            raise TypeError(
+                f"Cannot tag {', '.join(tagged)} as index or unique: Neontology only indexes and constrains"
+                " node properties. Remove the tag, or create the index or constraint on the relationship yourself."
+            )
 
         registry.register_relationship(cls)
 

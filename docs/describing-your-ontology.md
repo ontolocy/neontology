@@ -104,6 +104,7 @@ Each **property** (`PropertySchema`) has:
 | `allowed_values` | The values an `Enum` or `Literal` allows - for a list, each of its items. |
 | `primary_property` | Whether it is the node's primary property. |
 | `set_on_create`, `set_on_match`, `merge_on` | Whether it is [only set on create or match](advanced-usage.md#set-properties-on-match-or-on-create), or a relationship is [merged on it](advanced-usage.md#controlling-merge-relationships). |
+| `unique`, `index` | Whether it is [tagged to be unique or indexed](graph-engines.md#declaring-them-on-your-models). |
 | `json_schema` | Its JSON Schema, as pydantic generates it, including constraints such as `Field(gt=0)` and any keys you add with `json_schema_extra`. |
 
 Types, defaults, allowed values and constraints are all read from pydantic's JSON Schema for the model, so a property is described exactly as pydantic validates it.
@@ -136,6 +137,8 @@ The `size` property of `Organisation`, for example, is described as:
   "set_on_create": false,
   "set_on_match": false,
   "merge_on": false,
+  "unique": false,
+  "index": false,
   "json_schema": {
     "anyOf": [
       {
@@ -164,6 +167,16 @@ schema = get_ontology_schema(Entity)
 ```
 
 A relationship is included when a node class described can be at either end of it, even if the class at the other end is not described.
+
+To describe exactly the classes you choose, pass them as `models` - node and relationship classes alike:
+
+```python
+schema = get_ontology_schema(models=[Person, Organisation, WorksFor])
+```
+
+Each node's relationships are then limited to those among the classes given, and a class given twice is described once. The same schema can [initialise a database](graph-engines.md#initialising-a-graph) for just those models.
+
+A library defining models of its own is best exporting them as a list - `MODELS = [Person, Organisation, WorksFor]` - rather than a schema of them. A schema describes the models defined when it is built, so one built by the library would miss what the application using it defines later, and lists of models combine where schemas do not: `get_ontology_schema(models=[*library.MODELS, Employee])`.
 
 To describe one class, call `neontology_schema()` on it. It returns the same `NodeSchema` or `RelationshipSchema` as the class' entry in the full schema:
 

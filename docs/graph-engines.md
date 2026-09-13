@@ -101,24 +101,66 @@ Constraints and indexes are backend features, so they live on the graph engine a
 gated by the `constraints` and `indexes` capabilities above. Neo4j and Memgraph support
 both; the NetworkX backend supports neither.
 
-#### Constraints
+#### Initialising a graph
 
-The common case is constraining every model's primary label and primary property to be
-unique. `auto_constrain()` does that for all node types currently defined:
+To prepare a database for your models - a new database, or one whose models have changed -
+initialise it once the models are defined:
 
 ```python
 from neontology import GraphConnection, init_neontology
 
 init_neontology()
 
-# ... define your models ...
+# ... define or import your models ...
 
-GraphConnection().auto_constrain()
+GraphConnection().initialise_graph()
 ```
 
-A class has to be imported or defined before this runs to be covered, and only primary
-labels are constrained - secondary labels are not. To constrain a specific set of node
-types instead, use `GraphConnection().apply_constraints([MyNode, MyOtherNode])`.
+This applies everything your models declare that the backend supports: a uniqueness
+constraint on each node class' primary property, and the constraints and indexes
+[declared on your models](#declaring-them-on-your-models). Anything the backend cannot do
+is skipped, so the same call works on every engine - on the NetworkX backend it does
+nothing. It only ever adds, so it is safe to run again, and it returns the `Constraint` and
+`Index` objects it applied.
+
+It is a separate step from `init_neontology()` on purpose. It only covers the models
+defined when it runs, creating a constraint fails if data already in the database breaks
+it, and changing a database's schema is usually a decision for deployment rather than
+something to happen every time an application starts.
+
+To initialise a database for only some of your models - such as those a library exports,
+alongside your own - pass a [schema](describing-your-ontology.md) of them:
+
+```python
+from neontology import get_ontology_schema
+
+schema = get_ontology_schema(models=[*library.MODELS, Employee, EmployedBy])
+
+GraphConnection().initialise_graph(schema)
+```
+
+To start again from a bare schema, drop what the database holds before initialising it.
+`get_constraints()` and `get_indexes()` report constraints and indexes Neontology did not
+create, too:
+
+```python
+gc = GraphConnection()
+
+for constraint in gc.get_constraints():
+    gc.drop_constraint(constraint)
+
+for index in gc.get_indexes():
+    gc.drop_index(index)
+
+gc.initialise_graph()
+```
+
+#### Constraints
+
+To apply uniqueness constraints for particular node types, use
+`GraphConnection().apply_constraints([MyNode, MyOtherNode])`. Each one's primary property is
+constrained, along with any properties [tagged `unique`](#declaring-them-on-your-models).
+Only primary labels are constrained - secondary labels are not.
 
 Constraints can also be applied directly, by label and property:
 
@@ -158,10 +200,60 @@ Note that Memgraph indexes either a label on its own (`gc.apply_index("Person")`
 single label/property pair - it has no composite index, and raises a `ValueError` if
 given more than one property. Neo4j requires at least one property.
 
+#### Declaring them on your models
+
+Tag a node property as `unique` or `index` with `json_schema_extra`, as for
+[setting properties on match or on create](advanced-usage.md#set-properties-on-match-or-on-create):
+
+```python
+from typing import ClassVar, Optional
+
+from pydantic import Field
+
+from neontology import BaseNode
+
+
+class PersonNode(BaseNode):
+    __primaryproperty__: ClassVar[str] = "slug"
+    __primarylabel__: ClassVar[Optional[str]] = "Person"
+
+    slug: str
+    email: str = Field(json_schema_extra={"unique": True})
+    name: str = Field(json_schema_extra={"index": True})
+```
+
+Tags have no effect until you [initialise the graph](#initialising-a-graph):
+
+```python
+GraphConnection().initialise_graph()  # slug and email are unique, and name is indexed
+```
+
+To apply only the constraints or only the indexes, for the node types you pass, use
+`apply_constraints([...])` or `apply_indexes([...])`. Unlike `initialise_graph()`, they
+raise on a backend without constraints or indexes.
+
+- **A unique property is indexed too**: by its constraint on Neo4j, and on Memgraph, whose
+  uniqueness constraints carry no index, by an index of its own. So on Memgraph every
+  primary property is indexed as well.
+- **Constraints and indexes apply under each class' primary label**, the label `merge()`
+  matches on. A property tagged on an abstract class applies to every class inheriting it,
+  but uniqueness is per label: it is unique among each class' nodes, not across all of
+  them. An `Employee(Person)` carrying `Person` as an
+  [inheritable label](advanced-usage.md#inheritable-labels) is covered by `Person`'s
+  constraints as well as its own.
+- **Only single node properties can be tagged.** Tagging a relationship property raises a
+  `TypeError` when the class is defined. Apply composite constraints and indexes directly,
+  as above.
+- **Removing a tag leaves what it created in place** - drop it with `drop_constraint()` or
+  `drop_index()`. On Neo4j, a property that was indexed and is now tagged `unique` needs
+  that index dropped before it can be constrained.
+
 #### Unsupported backends
 
-Asking an engine for something it cannot do raises `CapabilityNotSupportedError`, which
-subclasses `NotImplementedError`. Portable code can check first:
+`initialise_graph()` applies only what the backend supports. Otherwise, asking an engine
+for something it cannot do - `apply_constraints()` and `apply_indexes()` included - raises
+`CapabilityNotSupportedError`, which subclasses `NotImplementedError`. Portable code can
+check first:
 
 ```python
 from neontology import Capability, GraphConnection
@@ -169,8 +261,12 @@ from neontology import Capability, GraphConnection
 gc = GraphConnection()
 
 if gc.supports(Capability.CONSTRAINTS):
-    gc.auto_constrain()
+    gc.apply_constraints([MyNode])
 ```
+
+A model with tagged properties works on every backend, since tags only take effect when
+they are applied. The NetworkX backend enforces none of them, though: only the primary
+property is unique there, because nodes are keyed by it.
 
 ```python
 from neontology import GraphConnection, init_neontology

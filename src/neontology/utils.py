@@ -178,14 +178,15 @@ def auto_constrain_neo4j() -> None:
     """Automatically apply constraints for every defined node type.
 
     Deprecated since v3.0: the name says neo4j but the call goes to whichever engine
-    is connected. Use `GraphConnection().auto_constrain()`.
+    is connected. Use `GraphConnection().initialise_graph()`, which applies indexes too.
     """
     warnings.warn(
-        "auto_constrain_neo4j is deprecated and will be removed in v4. Use GraphConnection().auto_constrain() instead.",
+        "auto_constrain_neo4j is deprecated and will be removed in v4."
+        " Use GraphConnection().initialise_graph() instead, which applies indexes too.",
         DeprecationWarning,
         stacklevel=2,
     )
 
     from .graphconnection import GraphConnection
 
-    GraphConnection().auto_constrain()
+    GraphConnection().apply_constraints(list(get_node_types().values()))

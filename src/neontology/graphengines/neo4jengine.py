@@ -28,6 +28,10 @@ class Neo4jEngine(BoltEngine):
     BoltEngine. Schema management differs, and lives here.
     """
 
+    # a uniqueness constraint is backed by an index of its own, and cannot be created
+    # where a plain index already covers the property
+    uniqueness_constraints_are_indexed: ClassVar[bool] = True
+
     @staticmethod
     def _match_name(existing: Sequence[Any], wanted: Any) -> Optional[str]:
         """Find the database's name for a schema object described by label and properties.
