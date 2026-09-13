@@ -11,10 +11,10 @@ from ..gql import gql_identifier_adapter
 from ..result import NeontologyResult
 from .capabilities import Capability
 from .graphengine import GraphEngineBase, GraphEngineConfig
+from .hydration import RawNode, RawPath, RawRelationship, build_result
 
 if TYPE_CHECKING:
     from ..basenode import BaseNode
-    from ..baserelationship import BaseRelationship, RelationshipTypeData
 
 
 BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
@@ -65,200 +65,120 @@ def substitute_cypher(query, params):
     return Template(template_query).substitute(escaped_params).replace("'", '"')
 
 
-def grand_node_to_neontology_node(grand_node: dict, node_classes: dict[str, type[BaseNodeT]]) -> Optional[BaseNodeT]:
-    """Convert a GrandCypher node to a Neontology node.
+# attributes the engine keeps on nodes and edges for itself, which are not model properties
+_INTERNAL_NODE_KEYS = frozenset({"__labels__"})
+_INTERNAL_EDGE_KEYS = frozenset({"__labels__", "__neograndrel__", "__sourcepp__", "__targetpp__"})
 
-    Args:
-        grand_node (dict): A dictionary representing a GrandCypher node.
-        node_classes (dict[str, type[BaseNodeT]]): Mapping of labels to node classes.
 
-    Returns:
-        Optional[BaseNodeT]: An instance of the corresponding Neontology node class, or None if not found.
+def _is_node(value: Any) -> bool:
+    """Whether a grand-cypher value is a node: attributes carrying labels, not marked as an edge."""
+    return isinstance(value, dict) and "__labels__" in value and "__neograndrel__" not in value
+
+
+def _is_edge(value: Any) -> bool:
+    """Whether a grand-cypher value is an edge: attributes the engine marked as a relationship."""
+    return isinstance(value, dict) and "__neograndrel__" in value
+
+
+def _is_path(value: Any) -> bool:
+    """Whether a grand-cypher value is a named path.
+
+    A path is a list alternating node ids with hops, each hop mapping edge keys to edges. A
+    variable length relationship is returned as a list too, but of edges on their own, and
+    is not a path.
     """
-    node_labels = grand_node["__labels__"]
-
-    primary_labels = node_labels.intersection(set(node_classes.keys()))
-
-    secondary_labels = node_labels.difference(set(node_classes.keys()))
-
-    if len(primary_labels) == 1:
-        primary_label = primary_labels.pop()
-
-        node_dict = {k: v for k, v in grand_node.items() if k not in ["__labels__"]}
-
-        node = node_classes[primary_label](**node_dict)
-
-        # warn if the secondary labels aren't what's expected
-
-        if set(node.__secondarylabels__) != secondary_labels:
-            warnings.warn(f"Unexpected secondary labels returned: {secondary_labels}")
-
-        return node
-
-    # gracefully handle cases where we don't have a class defined
-    # for the identified label or where we get more than one valid primary label
-    elif len(primary_labels) == 0:
-        warnings.warn(f"Labels {node_labels} do not match any known node classes.")
-
-        return None
-
-    else:
-        warnings.warn(
-            f"Multiple primary labels found: {primary_labels}. Please ensure that the node has a unique primary label."
-        )
-        return None
-
-
-def grand_relationship_to_neontology_relationship(
-    grand_relationship: dict,
-    source_node,
-    target_node,
-    relationship_classes: dict[str, "RelationshipTypeData"],
-) -> Optional["BaseRelationship"]:
-    """Convert a GrandCypher relationship to a Neontology relationship.
-
-    Args:
-        grand_relationship (dict): A dictionary representing a GrandCypher relationship.
-        source_node (BaseNodeT): The source node of the relationship.
-        target_node (BaseNodeT): The target node of the relationship.
-        relationship_classes (dict[str, type[BaseNodeT]]): Mapping of relationship types to classes.
-
-    Returns:
-        Optional["BaseRelationship"]: An instance of the corresponding Neontology relationship class, or None if not found.
-    """
-    rel_type = next(iter(grand_relationship["__labels__"]))
-
-    if rel_type in relationship_classes:
-        rel_dict = {
-            k: v
-            for k, v in grand_relationship.items()
-            if k not in ["__neograndrel__", "__sourcepp__", "__targetpp__", "__labels__"]
-        }
-
-        return relationship_classes[rel_type].relationship_class(source=source_node, target=target_node, **rel_dict)
-
-    warnings.warn(
-        f"Relationship type {rel_type} does not match any known classes."
-        " Did you define the class before initializing Neontology?"
-        " Are source and target node classes valid and resolved?"
+    return (
+        isinstance(value, list)
+        and len(value) % 2 == 1
+        and not isinstance(value[0], dict)
+        and all(isinstance(hop, dict) and hop and all(_is_edge(edge) for edge in hop.values()) for hop in value[1::2])
     )
-    return None
 
 
-def grand_cypher_to_neontology_records(records: dict, node_classes: dict, relationship_classes: dict):
-    """Convert GrandCypher records to Neontology records.
+def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
+    """Read a grand-cypher result as rows of engine-neutral values, for `build_result`.
+
+    grand-cypher returns columns rather than rows, and returns each node and edge as the
+    graph's own attribute dictionary. That dictionary is what identifies it: values which
+    are the same dictionary are the same node or edge, while parallel edges with equal
+    attributes are still different dictionaries.
+
+    As on the other engines, a relationship's source and target are only known when the
+    result also returns those nodes, anywhere in it. A path carries its own nodes.
 
     Args:
-        records (dict): Records from GrandCypher.
-        node_classes (dict): Mapping of labels to node classes.
-        relationship_classes (dict): Mapping of relationship types to classes.
+        raw_result (dict): grand-cypher's result, from column to a list of values.
+        graph (nx.MultiDiGraph): the graph the query ran against.
 
     Returns:
-        tuple: A tuple containing Neontology records, nodes, relationships, and paths.
+        list[dict[str, Any]]: one dictionary per row, from column name to the nodes,
+            relationships and paths in it.
     """
-    new_records = []
-    all_nodes = {}
-    all_rels = []
-    all_paths = []
+    # the nodes the result includes - returned as nodes, or along a path - by attributes
+    included: set[int] = set()
 
-    # grand dict represents each key returned, with a list of records for that key
-    for key, entries in records.items():
-        for idx, entry in enumerate(entries):
-            # skip relationships and handle nodes first so that relationships can reference them.
-            # both carry __labels__, so relationships are identified by their own marker
-            if isinstance(entry, dict) and "__labels__" in entry and "__neograndrel__" not in entry:
-                # handle nodes
-                node = grand_node_to_neontology_node(entry, node_classes)
+    for values in raw_result.values():
+        for value in values:
+            if _is_node(value):
+                included.add(id(value))
 
-                if node:
-                    all_nodes[generate_node_id(node.get_pp(), node.__primarylabel__)] = node
+            elif _is_path(value):
+                included.update(id(graph.nodes[node_id]) for node_id in value[::2] if node_id in graph)
 
-                if len(new_records) == idx:
-                    new_records.append({"nodes": {}, "relationships": {}, "paths": {}})
+    raw_nodes: dict[int, RawNode] = {}
+    raw_relationships: dict[int, RawRelationship] = {}
 
-                new_records[idx]["nodes"][key.value] = node
+    def node(data: dict) -> RawNode:
+        raw = raw_nodes.get(id(data))
 
-    for key, entries in records.items():
-        for idx, entry in enumerate(entries):
-            # process relationships
-            if isinstance(entry, dict) and "__neograndrel__" in entry:
-                source_node = all_nodes.get(entry["__sourcepp__"])
-                target_node = all_nodes.get(entry["__targetpp__"])
+        if raw is None:
+            raw = raw_nodes[id(data)] = RawNode(
+                key=id(data),
+                labels=data["__labels__"],
+                properties={k: v for k, v in data.items() if k not in _INTERNAL_NODE_KEYS},
+            )
 
-                rel_type = next(iter(entry["__labels__"]))
+        return raw
 
-                if not source_node or not target_node:
-                    warnings.warn(
-                        (
-                            f"{rel_type} relationship type query did not include nodes."
-                            " To get neontology relationships, return source and target "
-                            "nodes as part of result."
-                        )
-                    )
-                    rel = None
+    def endpoint(node_id: Any) -> Optional[RawNode]:
+        if node_id not in graph:
+            return None
 
-                else:
-                    rel = grand_relationship_to_neontology_relationship(entry, source_node, target_node, relationship_classes)
+        data = graph.nodes[node_id]
 
-                if rel:
-                    all_rels.append(rel)
+        return node(data) if id(data) in included else None
 
-                try:
-                    new_records[idx]["relationships"][key.value] = rel
+    def relationship(data: dict) -> RawRelationship:
+        raw = raw_relationships.get(id(data))
 
-                except IndexError:
-                    new_records.append(
-                        {
-                            "nodes": {},
-                            "relationships": {key.value: rel},
-                            "paths": {},
-                        }
-                    )
+        if raw is None:
+            raw = raw_relationships[id(data)] = RawRelationship(
+                key=id(data),
+                type=next(iter(data["__labels__"])),
+                properties={k: v for k, v in data.items() if k not in _INTERNAL_EDGE_KEYS},
+                source=endpoint(data["__sourcepp__"]),
+                target=endpoint(data["__targetpp__"]),
+            )
 
-            # handle paths
-            elif isinstance(entry, list):
-                this_path = []
-                for entity in entry:
-                    if isinstance(entity, dict):
-                        # a named path alternates node ids with relationships wrapped as
-                        # {hop: {...}}, while a variable length match yields the
-                        # relationship dict directly
-                        if "__neograndrel__" in entity:
-                            path_rel_record = entity
+        return raw
 
-                        else:
-                            nested = next((v for v in entity.values() if isinstance(v, dict)), None)
+    rows: list[dict[str, Any]] = [{} for _ in range(max((len(values) for values in raw_result.values()), default=0))]
 
-                            if nested is None:
-                                continue
+    for column, values in raw_result.items():
+        name = getattr(column, "value", str(column))
 
-                            path_rel_record = nested
+        for index, value in enumerate(values):
+            if _is_node(value):
+                rows[index][name] = node(value)
 
-                        source_node = all_nodes.get(path_rel_record["__sourcepp__"])
-                        target_node = all_nodes.get(path_rel_record["__targetpp__"])
+            elif _is_edge(value):
+                rows[index][name] = relationship(value)
 
-                        if not source_node or not target_node:
-                            warnings.warn(f"Source or target node not found for '{key.value}'")
-                            path_rel = None
+            elif _is_path(value):
+                # each hop holds the edge taken between two nodes along the path
+                rows[index][name] = RawPath(relationships=[relationship(next(iter(hop.values()))) for hop in value[1::2]])
 
-                        else:
-                            path_rel = grand_relationship_to_neontology_relationship(
-                                path_rel_record,
-                                all_nodes[path_rel_record["__sourcepp__"]],
-                                all_nodes[path_rel_record["__targetpp__"]],
-                                relationship_classes,
-                            )
-                        if path_rel:
-                            this_path.append(path_rel)
-
-                if this_path:
-                    all_paths.append(this_path)
-
-                new_records[idx]["paths"][key.value] = this_path
-
-    unique_nodes = list(all_nodes.values())
-
-    return new_records, unique_nodes, all_rels, all_paths
+    return rows
 
 
 class NetworkxEngine(GraphEngineBase):
@@ -432,7 +352,8 @@ class NetworkxEngine(GraphEngineBase):
                     **x.get("always_set", {}),
                     **x.get("set_on_match", {}),
                     **x.get("previously_set_on_create", {}),
-                    "__labels__": set(label_identifiers),
+                    # labels are added as cypher's SET does, never removing one the node has
+                    "__labels__": set(label_identifiers) | existing_node_records[x["pp"]].get("__labels__", set()),
                 },
             )
             for x in merge_props
@@ -461,12 +382,24 @@ class NetworkxEngine(GraphEngineBase):
     ) -> None:
         """Delete nodes with a specific label and primary property value.
 
+        Nodes are matched on the label as a query would match them, rather than looked up
+        by the id derived from their primary label. A subclass node carrying the label is
+        deleted too, as it is on the other engines.
+
         Args:
-            label (str): The primary label of the nodes to delete.
+            label (str): The label of the nodes to delete.
             pp_key (str): The primary property key to match on.
             pp_values (list[Any]): A list of primary property values to match on for deletion.
         """
-        self.driver.remove_nodes_from([generate_node_id(x, label) for x in pp_values])
+        wanted = set(pp_values)
+
+        matched = [
+            node_id
+            for node_id, data in self.driver.nodes(data=True)
+            if label in data.get("__labels__", ()) and data.get(pp_key) in wanted
+        ]
+
+        self.driver.remove_nodes_from(matched)
 
     def _existing_edges(self, node1, node2, **attributes):
         """Find matching edges in the graph."""
@@ -596,17 +529,7 @@ class NetworkxEngine(GraphEngineBase):
 
         raw_result = GrandCypher(self.driver).run(subbed_cypher)
 
-        neontology_records, nodes, rels, paths = grand_cypher_to_neontology_records(
-            raw_result, node_classes, relationship_classes
-        )
-
-        return NeontologyResult(
-            records_raw=raw_result,
-            records=neontology_records,
-            nodes=nodes,
-            relationships=rels,
-            paths=paths,
-        )
+        return build_result(raw_result, networkx_rows(raw_result, self.driver), node_classes, relationship_classes)
 
     def evaluate_query_single(self, cypher: LiteralString, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.

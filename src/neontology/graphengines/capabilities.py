@@ -66,6 +66,12 @@ class Capability(str, Enum):
     # from CONSTRAINTS because an engine could offer one without the other.
     INDEXES = "indexes"
 
+    # A named path in a query matching more than one pattern - two MATCH clauses, say -
+    # holding only its own nodes and relationships. grand-cypher builds a named path from
+    # every node the query matched, so it joins the other patterns onto it, through
+    # whatever edges lie between them or with a gap where none do.
+    MULTI_PATTERN_PATHS = "multi_pattern_paths"
+
 
 def render_capability_matrix() -> str:
     """Render the engine capability matrix as a markdown table.

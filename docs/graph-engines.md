@@ -90,6 +90,7 @@ for what each one means.
 | `relationship_property_queries` | Yes | Yes | No |
 | `constraints` | Yes | Yes | No |
 | `indexes` | Yes | Yes | No |
+| `multi_pattern_paths` | Yes | Yes | No |
 <!-- END CAPABILITY MATRIX -->
 
 ### Constraints and indexes

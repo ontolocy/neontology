@@ -1,5 +1,4 @@
 import json
-from hashlib import sha1
 from typing import Any
 
 from pydantic import BaseModel, computed_field
@@ -12,7 +11,9 @@ class NeontologyResult(BaseModel):
     relationships: list
     paths: list
 
-    @computed_field  # type: ignore[misc]
+    # built on demand by dumping every node and relationship, so it is left out of the
+    # repr - printing or logging a result should not pay for it
+    @computed_field(repr=False)  # type: ignore[misc]
     @property
     def node_link_data(self) -> dict:
         """Get the result as a dictionary with 'nodes' and 'edges' keys.
@@ -21,6 +22,7 @@ class NeontologyResult(BaseModel):
             dict: Dictionary with 'nodes' and 'edges' keys, suitable for use with
             networkx or network visualisation libraries like D3.js or Cytoscape.js.
         """
+        # the format identifies a node by its label and primary property
         nodes = {
             f"{x.__primarylabel__}:{str(x.get_pp())}": {
                 **x.neontology_dump(),
@@ -32,13 +34,13 @@ class NeontologyResult(BaseModel):
             for x in self.nodes
         }
 
-        links = {sha1(x.neontology_dump_json().encode("utf-8")).hexdigest(): x.neontology_dump() for x in self.relationships}
+        # relationships are already distinct by database identity, so none are merged here:
+        # parallel relationships with equal properties are separate edges
+        links = [x.neontology_dump() for x in self.relationships]
 
-        # deduplicate nodes and links
         unique_nodes = list(nodes.values())
-        unique_links = list(links.values())
 
-        data = {"nodes": unique_nodes, "edges": unique_links, "directed": True}
+        data = {"nodes": unique_nodes, "edges": links, "directed": True}
 
         return data
 

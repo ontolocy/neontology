@@ -136,6 +136,10 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     __primarylabel__: ClassVar[Optional[str]]
     __secondarylabels__: ClassVar[list[str]] = []
 
+    # labels carried by the declaring class and every class inheriting from it. Unlike
+    # __secondarylabels__, a subclass cannot replace these - it can only add its own.
+    __inheritablelabels__: ClassVar[list[str]] = []
+
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
         """Register this node class as it is defined.
@@ -168,13 +172,25 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     def _all_labels(cls) -> list[str]:
         """Every label this node carries in the graph, primary first.
 
+        That is the primary label, then secondary labels, then the inheritable labels
+        declared by this class or any class it inherits from. Secondary labels are an
+        ordinary class attribute, so a subclass declaring its own replaces its parent's.
+        Inheritable labels are read from every class in the hierarchy, so a subclass can
+        only add to them. Repeats are dropped, which lets a class list its own primary
+        label as inheritable in order to pass it down.
+
         Args:
             None.
 
         Returns:
-            list[str]: the primary label followed by any secondary labels.
+            list[str]: every label this node carries, primary label first, without repeats.
         """
-        return [cls.__primarylabel__] + list(cls.__secondarylabels__)
+        inheritable = [label for klass in cls.__mro__ for label in vars(klass).get("__inheritablelabels__") or []]
+
+        # read as _is_abstract does: an abstract class may never have declared a label
+        labels = [getattr(cls, "__primarylabel__", None), *(cls.__secondarylabels__ or []), *inheritable]
+
+        return list(dict.fromkeys(labels))
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -276,9 +292,9 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 )
             )
 
-        # secondary labels are interpolated into cypher alongside the primary one, so
-        # they are held to the same standard
-        for secondary_label in getattr(self, "__secondarylabels__", None) or []:
+        # secondary and inheritable labels are interpolated into cypher alongside the
+        # primary one, so they are held to the same standard
+        for secondary_label in self._all_labels()[1:]:
             try:
                 gql_identifier_adapter.validate_strings(secondary_label)
             except ValidationError:
@@ -490,7 +506,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        result = gc.evaluate_query(cypher, params, node_classes={cls.__primarylabel__: cls})
+        # a subclass node carrying this label matches too, and comes back as itself
+        result = gc.evaluate_query(cypher, params, node_classes=registry.result_classes(cls))
 
         if result.nodes:
             return result.nodes[0]
@@ -738,7 +755,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         schema_dict: dict = {}
         schema_dict["label"] = cls.__primarylabel__
         schema_dict["title"] = cls.__name__
-        schema_dict["secondary_labels"] = cls.__secondarylabels__
+        schema_dict["secondary_labels"] = cls._all_labels()[1:]
 
         model_properties: list = []
 

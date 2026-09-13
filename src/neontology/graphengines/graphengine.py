@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError, model_validator
 
 from ..gql import gql_identifier_adapter, int_adapter
+from ..registry import registry
 from ..result import NeontologyResult
 from .capabilities import Capability, CapabilityNotSupportedError
 from .dbschema import Constraint, ConstraintType, Index
@@ -412,14 +413,23 @@ class GraphEngineBase:
         Returns:
             list: list of merged Nodes
         """
-        label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+        primary_label = gql_identifier_adapter.validate_strings(node_class.__primarylabel__)
+
+        other_labels = [gql_identifier_adapter.validate_strings(x) for x in labels if x != node_class.__primarylabel__]
+
+        # MERGE on the primary label alone: with the primary property, that is what
+        # identifies a node. Merging on every label stopped matching existing nodes as soon
+        # as a model's other labels changed, and created duplicates instead. The other
+        # labels are added afterwards, which never removes a label already on the node.
+        set_labels = f"SET n:{':'.join(other_labels)}" if other_labels else ""
 
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        MERGE (n:{primary_label} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
         ON MATCH SET n += node.set_on_match
         ON CREATE SET n += node.set_on_create
         SET n += node.always_set
+        {set_labels}
         RETURN n
         """
 
@@ -628,7 +638,8 @@ class GraphEngineBase:
             cypher += " LIMIT $limit"
             params["limit"] = limit
 
-        result = self.evaluate_query(cypher, params, node_classes={node_class.__primarylabel__: node_class})
+        # subclasses carrying this label match the query too, and come back as themselves
+        result = self.evaluate_query(cypher, params, node_classes=registry.result_classes(node_class))
 
         return result.nodes
 

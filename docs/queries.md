@@ -207,9 +207,26 @@ print(results.nodes[0].name)
 
 The returned `NeontologyResult` object has the following properties:
 
-- `records_raw` - the raw records returned by the Neo4j driver
-- `records` - the records converted into equivalent Neontology objects
-- `nodes` - a list of all the Neontology/Pydantic nodes returned
-- `paths` - any paths returned, represented as a list of relationships
-- `relationships` - a list of all the Neontology/Pydantic relationships returned
+- `records_raw` - the raw records returned by the engine's driver, unchanged
+- `records` - one entry per row returned, holding that row's `nodes`, `relationships` and `paths` as Neontology objects, keyed by the name each was returned as
+- `nodes` - each distinct Neontology/Pydantic node returned, once, in the order first seen
+- `relationships` - each distinct Neontology/Pydantic relationship returned, once, in the order first seen
+- `paths` - each distinct path returned, once, represented as a list of relationships
 - `node_link_data` - a dictionary with 'nodes' and 'edges' keys and corresponding values which can be used with other tools such as NetworkX and D3.
+
+`nodes`, `relationships` and `paths` describe *what* the query returned, so something on
+several rows is listed once. Distinct means distinct in the database: two parallel
+relationships with the same properties are both listed. Each node and relationship is built
+once per result, so a relationship's `source` and `target` are the same objects as the nodes
+in `nodes`. Use `records` to see what each row held, or `records_raw` for the engine's own
+result.
+
+Anything which cannot be built as a Neontology object is left out, with a warning:
+
+- a node whose labels do not match a single defined class
+- a relationship whose type has no defined class, or whose source or target node is not
+  returned by the query, or cannot be built
+- a path including a relationship which cannot be built
+
+Values which are not nodes, relationships or paths - `RETURN n.name`, say - are only in
+`records_raw`.

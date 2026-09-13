@@ -84,6 +84,23 @@ def _is_redefinition(existing: type, new: type) -> bool:
     return existing.__module__ == new.__module__ and existing.__qualname__ == new.__qualname__
 
 
+def _inherits_from(cls: type, ancestor: type) -> bool:
+    """Report whether a class inherits from another, or is it.
+
+    A redefinition of the ancestor counts as the ancestor. Re-running a notebook cell that
+    defines a parent leaves the subclasses defined earlier inheriting from the previous
+    definition, and they are still subclasses of that same model.
+
+    Args:
+        cls (type): the class which may inherit.
+        ancestor (type): the class it may inherit from.
+
+    Returns:
+        bool: True if `ancestor`, or a redefinition of it, is in the class' MRO.
+    """
+    return any(base is ancestor or _is_redefinition(base, ancestor) for base in cls.__mro__)
+
+
 class Registry:
     """The model classes Neontology knows about, keyed by label and relationship type."""
 
@@ -105,7 +122,30 @@ class Registry:
         # hierarchy, so it is built on demand and dropped whenever a node registers
         self._rel_data: dict[str, RelationshipTypeData] = {}
 
+        # the classes to build a scoped query's results as, which likewise depends on the
+        # node hierarchy. Asked on every match(), so it is built once per class.
+        self._result_classes: dict[type[BaseNode], dict[str, type[BaseNode]]] = {}
+
+        # the node classes carrying each label other than as their primary label, keyed by
+        # definition so redefining a class replaces it. Checking a new class against only
+        # the carriers of its own label keeps registration from growing with every model.
+        self._carriers: dict[str, dict[tuple[str, str], type[BaseNode]]] = defaultdict(dict)
+
         self.strict = False
+
+    def _report(self, message: str) -> None:
+        """Warn, or raise in strict mode, that model classes disagree about a label.
+
+        Args:
+            message (str): what the clash is, naming the classes involved.
+
+        Raises:
+            DuplicateLabelError: if the registry is in strict mode.
+        """
+        if self.strict:
+            raise DuplicateLabelError(message)
+
+        warnings.warn(message, DuplicateLabelWarning, stacklevel=3)
 
     def _report_clash(self, kind: str, key: str, existing: type, new: type) -> None:
         """Warn, or raise in strict mode, that two classes claim the same key.
@@ -115,20 +155,56 @@ class Registry:
             key (str): the label or relationship type claimed twice.
             existing (type): the class already registered.
             new (type): the class claiming it now.
-
-        Raises:
-            DuplicateLabelError: if the registry is in strict mode.
         """
-        message = (
+        self._report(
             f"{kind} {key!r} is claimed by both {_describe(existing)} and {_describe(new)}."
             f" Only one of them can be used to build query results, so data written as one"
             f" will come back as the other. Give them distinct names."
         )
 
-        if self.strict:
-            raise DuplicateLabelError(message)
+    def _report_carried_label(self, label: str, owner: type, carrier: type) -> None:
+        """Warn, or raise in strict mode, that a class carries a label it has no claim to.
 
-        warnings.warn(message, DuplicateLabelWarning, stacklevel=2)
+        Args:
+            label (str): the label carried.
+            owner (type): the class whose primary label it is.
+            carrier (type): the class carrying it without inheriting from the owner.
+        """
+        self._report(
+            f"label {label!r} is the primary label of {_describe(owner)}, but is also carried by"
+            f" {_describe(carrier)}, which does not inherit from it. Nodes written as"
+            f" {carrier.__name__} would match queries for {owner.__name__} without being one."
+            f" Make {carrier.__name__} a subclass of {owner.__name__}, or use a different label."
+        )
+
+    def _check_carried_labels(self, cls: type[BaseNode]) -> None:
+        """Report a class carrying the primary label of a class it does not inherit from.
+
+        A class may carry another class' primary label only if it inherits from it: an
+        employee may also be a :Person, and is built as the most derived class its labels
+        allow. A class carrying the label of an unrelated class makes its nodes match
+        queries for that class without being one, so no single class can be built for them.
+
+        Both directions are checked, because the class owning a label may be defined after
+        a class carrying it.
+
+        Args:
+            cls (type[BaseNode]): the node class being registered.
+        """
+        for label in cls._all_labels()[1:]:
+            owner = self._nodes.get(label)
+
+            if owner is not None and not _inherits_from(cls, owner):
+                self._report_carried_label(label, owner, cls)
+
+        for carrier in self._carriers.get(cls.__primarylabel__, {}).values():
+            # a class since redefined is no longer registered under its label, and the
+            # definition that replaced it may not carry this one
+            if self._nodes.get(carrier.__primarylabel__) is not carrier or _is_redefinition(carrier, cls):
+                continue
+
+            if not _inherits_from(carrier, cls):
+                self._report_carried_label(cls.__primarylabel__, cls, carrier)
 
     def register_node(self, cls: type[BaseNode]) -> None:
         """Register a node class under its primary label.
@@ -166,11 +242,17 @@ class Registry:
         elif existing is not None and existing is not cls and not _is_redefinition(existing, cls):
             self._report_clash("primary label", label, existing, cls)
 
+        self._check_carried_labels(cls)
+
         self._nodes[label] = cls
+
+        for carried in cls._all_labels()[1:]:
+            self._carriers[carried][(cls.__module__, cls.__qualname__)] = cls
 
         # a new node class can change which subclasses a relationship's source and
         # target expand to, so anything derived from the hierarchy is now stale
         self._rel_data.clear()
+        self._result_classes.clear()
 
     def register_relationship(self, cls: type[BaseRelationship]) -> None:
         """Register a relationship class under its relationship type.
@@ -208,6 +290,30 @@ class Registry:
             return dict(self._nodes)
 
         return {label: cls for label, cls in self._nodes.items() if issubclass(cls, base_type)}
+
+    def result_classes(self, cls: type[BaseNode]) -> dict[str, type[BaseNode]]:
+        """Get the node classes to build results as, for a query on a class' primary label.
+
+        Subclasses carrying the class' label match that query too, so they are included and
+        each node comes back as the class it was written as. The class always keeps its own
+        label, whatever else is registered under it.
+
+        Args:
+            cls (type[BaseNode]): the class being queried.
+
+        Returns:
+            dict[str, type[BaseNode]]: node classes by primary label.
+        """
+        cached = self._result_classes.get(cls)
+
+        if cached is None:
+            cached = {label: node_class for label, node_class in self._nodes.items() if _inherits_from(node_class, cls)}
+            cached[cls.__primarylabel__] = cls
+
+            self._result_classes[cls] = cached
+
+        # a copy, so a caller changing the map cannot corrupt the cache
+        return dict(cached)
 
     def relationships(self, base_type: Optional[type] = None) -> dict[str, RelationshipTypeData]:
         """Get the registered relationship types, keyed by relationship type.

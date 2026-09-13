@@ -2,7 +2,12 @@
 
 ## Use multiple labels
 
-Sometimes you may want to apply additional labels to nodes, beyond just the primary label. Where this is the case, you can add those labels as a list using the class variable `__secondarylabels__`.
+Nodes can carry labels beyond their primary label. There are two ways to add them, which
+differ in what happens when a class is subclassed.
+
+### Secondary labels
+
+`__secondarylabels__` lists extra labels for a class:
 
 ```python
 class ElephantNode(BaseNode):
@@ -14,7 +19,74 @@ class ElephantNode(BaseNode):
 ellie = ElephantNode(name="Ellie")
 ```
 
-Note that methods such as `.match` use only the primary label.
+This is an ordinary class attribute: a subclass which does not declare its own inherits its
+parent's, and a subclass which declares its own **replaces** its parent's.
+
+### Inheritable labels
+
+`__inheritablelabels__` lists labels carried by the class *and every class that inherits
+from it*. A subclass cannot replace them - its own labels are added alongside.
+
+This is how to build a hierarchy which reads naturally in the graph itself. A class listing
+its own primary label as inheritable passes that label down to all of its subclasses:
+
+```python
+class Person(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Person"
+    __inheritablelabels__: ClassVar[list[str]] = ["Person"]
+    name: str
+
+
+class Employee(Person):
+    __primarylabel__: ClassVar[Optional[str]] = "Employee"   # written as :Employee:Person
+    employer: str
+
+
+class Manager(Employee):
+    __primarylabel__: ClassVar[Optional[str]] = "Manager"    # written as :Manager:Person
+```
+
+`Manager` is not labelled `:Employee`, because `Employee` does not list its own label as
+inheritable: each class decides whether its label passes down. An abstract class can declare
+inheritable labels too, which labels a whole branch of your models without the abstract
+class needing a label of its own.
+
+### Querying a hierarchy
+
+A node is built as the most derived class its labels allow, so a `:Employee:Person` node
+comes back as an `Employee` however you query it - `MATCH (p:Person)`, `get_related()`, or
+a method on `Person`. Queries on a parent class therefore return its subclasses as
+themselves:
+
+```python
+Person.match_nodes()   # [Person(name='bob'), Employee(name='alice', employer='Acme')]
+Person.match("alice")  # Employee(name='alice', employer='Acme')
+Person.get_count()     # 2
+```
+
+`delete()` follows the same rule, so `Person.delete("alice")` deletes the employee named
+alice.
+
+Only a class which inherits from `Person` may carry the `Person` label. A class carrying the
+primary label of a class it does not inherit from - through either kind of label - raises a
+`DuplicateLabelWarning` when it is defined, or a `DuplicateLabelError` in
+[strict mode](#duplicate-labels), because its nodes would match queries for `Person`
+without being people.
+
+### How labels affect identity
+
+A node is identified by its primary label and primary property. `merge()` finds an existing
+node on those alone and then adds the class' other labels, so adding a label to a model
+updates the nodes already in the graph the next time they are merged, rather than
+duplicating them. Merging never removes a label: one taken out of a model stays on nodes
+already written, and is reported as unexpected when they are read back.
+
+A class carrying its parent's label shares its parent's identity: `Person` nodes are
+identified by the `Person` label and `name`, and employees carry both. A uniqueness
+constraint on `Person.name` - such as `auto_constrain()` applies - therefore covers employees
+as well. Merging an `Employee` does not turn an existing `Person` with the same name into
+one: it creates a new node, which that constraint will reject.
 
 ## How Neontology finds your models
 
