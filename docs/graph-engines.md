@@ -69,6 +69,8 @@ pip install neontology[grand]
 
 Cypher / GQL support with this engine is limited compared to Neo4j so some features of the language may not work and raw query result structures are different. Certain Neontology features are also not implemented with this backend, most notably writing to the graph with a raw query and datetime functionality - see the capability matrix below.
 
+The NetworkX graph is held in memory with no locking, so a query running while another thread writes to the graph can fail with `RuntimeError: dictionary changed size during iteration`. If several threads use the NetworkX engine, don't let them query while another is writing.
+
 ### Engine capability matrix
 
 Where an engine cannot offer something, it is named as a capability and declared on the

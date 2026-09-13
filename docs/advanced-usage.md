@@ -108,6 +108,11 @@ before a query runs for its results to come back typed**. If you keep your model
 `models.py`, importing that module during application startup is enough. Nodes whose
 label Neontology does not recognise are left out of `result.nodes` with a warning.
 
+If your application queries from several threads - a web server's worker threads, say -
+import your models before those threads start. Defining a model class while other threads
+are querying is not supported: a query running at that moment may keep the classes it
+already knew about, and go on building results without the new one.
+
 Abstract classes - those with `__primarylabel__ = None`, or which never declare a
 `__primarylabel__` at all - exist to share properties between models. They are never
 registered, because they are never written to the graph, and instantiating one raises

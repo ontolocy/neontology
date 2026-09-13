@@ -405,3 +405,43 @@ class TestPackageExports:
         import neontology
 
         assert callable(neontology.get_node_types)
+
+
+class TestDefiningAModelDuringALookup:
+    """A model class defined while a lookup is running must not break the lookup.
+
+    With threads, another thread's import can define a class while a query is looking up
+    models. Here the class is defined from inside the lookup itself, which does the same
+    thing to the registry, deterministically.
+    """
+
+    @staticmethod
+    def _base_type_defining(define):
+        """A base type to scope a lookup with, which defines a model the first time it is asked."""
+
+        class DefinesAModel:
+            defined = False
+
+            def __subclasscheck__(self, subclass):
+                if not DefinesAModel.defined:
+                    DefinesAModel.defined = True
+                    define()
+
+                return False
+
+        return DefinesAModel()
+
+    def test_node_lookup(self):
+        _node("LookupExistingNode", __primarylabel__="RegistryLookupExistingNode")
+
+        base = self._base_type_defining(lambda: _node("LookupNewNode", __primarylabel__="RegistryLookupNewNode"))
+
+        assert get_node_types(base) == {}
+
+    def test_relationship_lookup(self):
+        node = _node("LookupRelHome", __primarylabel__="RegistryLookupRelHome")
+        _rel("LookupExistingRel", node, node, "REGISTRY_LOOKUP_EXISTING_REL")
+
+        base = self._base_type_defining(lambda: _rel("LookupNewRel", node, node, "REGISTRY_LOOKUP_NEW_REL"))
+
+        assert get_rels_by_type(base) == {}

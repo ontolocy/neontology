@@ -115,6 +115,8 @@ class Registry:
     strict: bool
 
     def __init__(self) -> None:
+        # a model class can be defined on one thread while another is looking classes up,
+        # so every loop over these dicts runs over a copy, which the definition cannot change
         self._nodes: dict[str, type[BaseNode]] = {}
         self._relationships: dict[str, type[BaseRelationship]] = {}
 
@@ -197,7 +199,7 @@ class Registry:
             if owner is not None and not _inherits_from(cls, owner):
                 self._report_carried_label(label, owner, cls)
 
-        for carrier in self._carriers.get(cls.__primarylabel__, {}).values():
+        for carrier in dict(self._carriers.get(cls.__primarylabel__, {})).values():
             # a class since redefined is no longer registered under its label, and the
             # definition that replaced it may not carry this one
             if self._nodes.get(carrier.__primarylabel__) is not carrier or _is_redefinition(carrier, cls):
@@ -289,7 +291,7 @@ class Registry:
         if base_type is None:
             return dict(self._nodes)
 
-        return {label: cls for label, cls in self._nodes.items() if issubclass(cls, base_type)}
+        return {label: cls for label, cls in dict(self._nodes).items() if issubclass(cls, base_type)}
 
     def result_classes(self, cls: type[BaseNode]) -> dict[str, type[BaseNode]]:
         """Get the node classes to build results as, for a query on a class' primary label.
@@ -307,7 +309,7 @@ class Registry:
         cached = self._result_classes.get(cls)
 
         if cached is None:
-            cached = {label: node_class for label, node_class in self._nodes.items() if _inherits_from(node_class, cls)}
+            cached = {label: node_class for label, node_class in dict(self._nodes).items() if _inherits_from(node_class, cls)}
             cached[cls.__primarylabel__] = cls
 
             self._result_classes[cls] = cached
@@ -336,7 +338,7 @@ class Registry:
         # that is not defined gives an empty entry rather than a KeyError
         resolved: dict[str, RelationshipTypeData] = defaultdict(dict)  # type: ignore[arg-type]
 
-        for rel_type, cls in self._relationships.items():
+        for rel_type, cls in dict(self._relationships).items():
             if base_type is not None and not issubclass(cls, base_type):
                 continue
 
