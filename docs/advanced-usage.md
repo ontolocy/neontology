@@ -223,7 +223,7 @@ If no arguments are given, this function will return all nodes with a direct out
 * `outgoing` - whether to include outgoing relationships.
 * `limit` - the maximum number of nodes to return.
 
-The return type is a [NeontologyResult object](/queries/#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
+The return type is a [NeontologyResult object](queries.md#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
 
 ### @related_nodes Decorator
 

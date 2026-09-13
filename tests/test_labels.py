@@ -236,7 +236,7 @@ class TestInheritableLabels:
             node(pp="x")
 
     def test_schema_lists_every_label(self):
-        schema = LblPuppy.neontology_schema(include_outgoing_rels=False)
+        schema = LblPuppy.neontology_schema()
 
         assert set(schema.secondary_labels) == {"LblYoung", "LblAnimal", "LblOrganism"}
 

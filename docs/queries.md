@@ -176,7 +176,7 @@ print(result)
 
 If you want to run a cypher query and get back the nodes and relationships directly as Neontology Pydantic objects, you can use the `evaluate_query` method on a `GraphConnection`.
 
-This uses the node and relationship classes you have defined to 'rehydrate' your query results. Model classes register themselves as they are defined, so this works as long as the class has been imported - see [How Neontology finds your models](/advanced-usage/#how-neontology-finds-your-models).
+This uses the node and relationship classes you have defined to 'rehydrate' your query results. Model classes register themselves as they are defined, so this works as long as the class has been imported - see [How Neontology finds your models](advanced-usage.md#how-neontology-finds-your-models).
 
 ```python
 from neontology import init_neontology, GraphConnection, BaseNode

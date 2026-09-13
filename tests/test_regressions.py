@@ -11,7 +11,6 @@ from typing import ClassVar, Optional
 import pytest
 
 from neontology import BaseNode, BaseRelationship, init_neontology
-from neontology.schema_utils import extract_type_mapping
 
 
 class RegressionNode(BaseNode):
@@ -78,29 +77,3 @@ class TestResultDumping:
         result = use_graph.evaluate_query("MATCH (n:RegressionNode) RETURN n")
 
         assert result.neontology_dump() == json.loads(result.neontology_dump_json())
-
-
-class TestSchemaTypeMapping:
-    """extract_type_mapping's error paths, which had no coverage."""
-
-    def test_plain_type(self):
-        assert extract_type_mapping(str).representation == "str"
-
-    def test_optional_type_is_marked_optional(self):
-        assert "Optional" in extract_type_mapping(Optional[str]).representation
-
-    def test_optional_can_be_hidden(self):
-        assert "Optional" not in extract_type_mapping(Optional[str], show_optional=False).representation
-
-    def test_list_of_one_type(self):
-        assert extract_type_mapping(list[str]).core_type == list[str]
-
-    def test_list_of_multiple_types_is_rejected(self):
-        with pytest.raises(TypeError, match="lists of multiple types"):
-            extract_type_mapping(list[str, int])
-
-    def test_union_of_multiple_concrete_types_is_rejected(self):
-        from typing import Union
-
-        with pytest.raises(TypeError):
-            extract_type_mapping(Union[str, int])

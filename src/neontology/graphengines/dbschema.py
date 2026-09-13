@@ -1,8 +1,8 @@
 """Descriptions of the schema objects a graph database can hold.
 
 These are *database* schema objects - constraints and indexes that live in the
-backend - as opposed to the model schemas in `neontology.schema_utils`, which
-describe Pydantic classes.
+backend - as opposed to the ontology schemas in `neontology.schema`, which
+describe the model classes.
 
 They are read types. Callers ask for a constraint or an index through a named
 method (`apply_uniqueness_constraint`, `apply_index`), and get these back from

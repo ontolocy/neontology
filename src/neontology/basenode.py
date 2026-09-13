@@ -12,10 +12,11 @@ from .graphconnection import GraphConnection
 from .optional_deps import require_pandas
 from .registry import registry
 from .result import NeontologyResult
-from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from .schema import NodeSchema
 
 
 P = ParamSpec("P")
@@ -736,62 +737,16 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return json.dumps(self._prep_dump_dict(model_dict))
 
     @classmethod
-    def neontology_schema(cls, include_outgoing_rels: bool = True) -> NodeSchema:
-        """Generate a schema for this node class.
+    def neontology_schema(cls) -> "NodeSchema":
+        """Describe this node class: its labels, properties and relationships.
 
-        Args:
-            include_outgoing_rels (bool, optional): If True, include outgoing relationships in the schema.
-                Defaults to True.
+        Abstract classes can be described too. `neontology.get_ontology_schema()`
+        describes every model at once.
 
         Returns:
-            NodeSchema: A schema object representing the node class.
-
-        Raises:
-            ValueError: If the node class does not have a primary label defined.
+            NodeSchema: the description.
         """
-        if not cls.__primarylabel__:
-            raise ValueError("Node does not have a primary label defined for generating schema.")
+        # imported here: the schema module builds on this one
+        from .schema import _node_schema
 
-        schema_dict: dict = {}
-        schema_dict["label"] = cls.__primarylabel__
-        schema_dict["title"] = cls.__name__
-        schema_dict["secondary_labels"] = cls._all_labels()[1:]
-
-        model_properties: list = []
-
-        for field_name, field_props in cls.model_fields.items():
-            field_type = extract_type_mapping(field_props.annotation, show_optional=True)
-
-            node_property = SchemaProperty(
-                type_annotation=field_type,
-                name=field_name,
-                required=field_props.is_required(),
-            )
-
-            if field_props.is_required() is True:
-                model_properties.insert(0, node_property)
-
-            # put optional fields at the end
-            else:
-                model_properties.append(node_property)
-
-        schema_dict["properties"] = model_properties
-        schema_dict["outgoing_relationships"] = []
-
-        if include_outgoing_rels is False:
-            return NodeSchema(**schema_dict)
-
-        else:
-            from .utils import get_rels_by_source, get_rels_by_type
-
-            outgoing_rels = get_rels_by_source().get(cls.__primarylabel__, set())
-            all_rel_types = get_rels_by_type()
-
-            for rel in outgoing_rels:
-                rel_class = all_rel_types[rel].relationship_class
-
-                rel_schema = rel_class.neontology_schema(source_labels=[schema_dict["label"]])
-
-                schema_dict["outgoing_relationships"].append(rel_schema)
-
-        return NodeSchema(**schema_dict)
+        return _node_schema(cls)

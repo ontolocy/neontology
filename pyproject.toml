@@ -29,7 +29,6 @@ dependencies = [
     "neo4j>=6.0,<7",
     "pydantic>=2.7,<3",
     "python-dotenv>=1.0,<2",
-    "Jinja2>=3.0,<4",
     "typing-extensions>=4.0,<5",
     "PyYAML>=6.0,<7",
 ]

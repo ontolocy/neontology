@@ -389,7 +389,6 @@ name = "neontology"
 version = "3.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "jinja2" },
     { name = "neo4j" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -432,7 +431,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "grand-cypher", marker = "extra == 'grand'", specifier = ">=1.2.0" },
-    { name = "jinja2", specifier = ">=3.0,<4" },
     { name = "neo4j", specifier = ">=6.0,<7" },
     { name = "neo4j-rust-ext", marker = "extra == 'rust'", specifier = ">=6.0,<7" },
     { name = "neontology", extras = ["grand", "pandas"], marker = "extra == 'all'" },

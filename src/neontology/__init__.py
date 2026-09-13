@@ -15,6 +15,7 @@ from .registry import (
     Registry,
     registry,
 )
+from .schema import get_ontology_schema
 from .utils import (
     auto_constrain_neo4j,
     get_node_types,
@@ -51,6 +52,8 @@ __all__ = [
     "DuplicateLabelWarning",
     "InheritedLabelWarning",
     "DuplicateLabelError",
+    # Describing the ontology
+    "get_ontology_schema",
     # GQL
     "GQLIdentifier",
     "gql_identifier_adapter",
