@@ -2,7 +2,12 @@
 
 ## Use multiple labels
 
-Sometimes you may want to apply additional labels to nodes, beyond just the primary label. Where this is the case, you can add those labels as a list using the class variable `__secondarylabels__`.
+Nodes can carry labels beyond their primary label. There are two ways to add them, which
+differ in what happens when a class is subclassed.
+
+### Secondary labels
+
+`__secondarylabels__` lists extra labels for a class:
 
 ```python
 class ElephantNode(BaseNode):
@@ -14,7 +19,170 @@ class ElephantNode(BaseNode):
 ellie = ElephantNode(name="Ellie")
 ```
 
-Note that methods such as `.match` use only the primary label.
+This is an ordinary class attribute: a subclass which does not declare its own inherits its
+parent's, and a subclass which declares its own **replaces** its parent's.
+
+### Inheritable labels
+
+`__inheritablelabels__` lists labels carried by the class *and every class that inherits
+from it*. A subclass cannot replace them - its own labels are added alongside.
+
+This is how to build a hierarchy which reads naturally in the graph itself. A class listing
+its own primary label as inheritable passes that label down to all of its subclasses:
+
+```python
+class Person(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Person"
+    __inheritablelabels__: ClassVar[list[str]] = ["Person"]
+    name: str
+
+
+class Employee(Person):
+    __primarylabel__: ClassVar[Optional[str]] = "Employee"   # written as :Employee:Person
+    employer: str
+
+
+class Manager(Employee):
+    __primarylabel__: ClassVar[Optional[str]] = "Manager"    # written as :Manager:Person
+```
+
+`Manager` is not labelled `:Employee`, because `Employee` does not list its own label as
+inheritable: each class decides whether its label passes down. An abstract class can declare
+inheritable labels too, which labels a whole branch of your models without the abstract
+class needing a label of its own.
+
+### Querying a hierarchy
+
+A node is built as the most derived class its labels allow, so a `:Employee:Person` node
+comes back as an `Employee` however you query it - `MATCH (p:Person)`, `get_related()`, or
+a method on `Person`. Queries on a parent class therefore return its subclasses as
+themselves:
+
+```python
+Person.match_nodes()   # [Person(name='bob'), Employee(name='alice', employer='Acme')]
+Person.match("alice")  # Employee(name='alice', employer='Acme')
+Person.get_count()     # 2
+```
+
+`delete()` follows the same rule, so `Person.delete("alice")` deletes the employee named
+alice.
+
+Only a class which inherits from `Person` may carry the `Person` label. A class carrying the
+primary label of a class it does not inherit from - through either kind of label - raises a
+`DuplicateLabelWarning` when it is defined, or a `DuplicateLabelError` in
+[strict mode](#duplicate-labels), because its nodes would match queries for `Person`
+without being people.
+
+### How labels affect identity
+
+A node is identified by its primary label and primary property. `merge()` finds an existing
+node on those alone and then adds the class' other labels, so adding a label to a model
+updates the nodes already in the graph the next time they are merged, rather than
+duplicating them. Merging never removes a label: one taken out of a model stays on nodes
+already written, and is reported as unexpected when they are read back.
+
+A class carrying its parent's label shares its parent's identity: `Person` nodes are
+identified by the `Person` label and `name`, and employees carry both. A uniqueness
+constraint on `Person.name` - such as `initialise_graph()` applies - therefore covers employees
+as well. Merging an `Employee` does not turn an existing `Person` with the same name into
+one: it creates a new node, which that constraint will reject.
+
+## How Neontology finds your models
+
+Neontology needs to know your model classes in order to turn query results back into
+them. You do not have to declare or register anything: **defining a class is what
+registers it**.
+
+```python
+class Person(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Person"
+    name: str
+```
+
+From that point on, any query returning a `Person` node comes back as a `Person`.
+
+Because registration happens when the class is defined, **a model has to be imported
+before a query runs for its results to come back typed**. If you keep your models in a
+`models.py`, importing that module during application startup is enough. Nodes whose
+label Neontology does not recognise are left out of `result.nodes` with a warning.
+
+If your application queries from several threads - a web server's worker threads, say -
+import your models before those threads start. Defining a model class while other threads
+are querying is not supported: a query running at that moment may keep the classes it
+already knew about, and go on building results without the new one.
+
+Abstract classes - those with `__primarylabel__ = None`, or which never declare a
+`__primarylabel__` at all - exist to share properties between models. They are never
+registered, because they are never written to the graph, and instantiating one raises
+`NotImplementedError`.
+
+To look up the models Neontology knows about, use `get_node_types()` and
+`get_rels_by_type()`. They do not need a database connection, so they work anywhere your
+models have been imported:
+
+```python
+from neontology import get_node_types, get_rels_by_type
+
+get_node_types()      # {"Person": <class 'Person'>, ...}
+get_rels_by_type()    # {"FOLLOWS": RelationshipTypeData(...), ...}
+```
+
+Pass an abstract class to either to scope the lookup to that branch of your models -
+`get_node_types(MyAbstractBase)`.
+
+### Duplicate labels
+
+Two model classes claiming the same primary label is a problem: only one of them can be
+used to build results, so data written as one comes back as the other. Neontology warns
+as soon as the second class is defined, naming both:
+
+```text
+DuplicateLabelWarning: primary label 'Person' is claimed by both myapp.models.Person
+and myapp.other.Person. Only one of them can be used to build query results, so data
+written as one will come back as the other. Give them distinct names.
+```
+
+To make that an error instead, turn on strict mode before your models are imported:
+
+```python
+from neontology import registry
+
+registry.strict = True   # raises DuplicateLabelError instead of warning
+```
+
+You can also escalate the warning with Python's own machinery:
+
+```python
+import warnings
+
+from neontology import DuplicateLabelWarning
+
+warnings.simplefilter("error", DuplicateLabelWarning)
+```
+
+Re-running a notebook cell or reloading a module is not treated as a clash - that is the
+same model being defined again, not two models fighting over one label.
+
+### Inherited labels
+
+A subclass which does not declare its own `__primarylabel__` inherits its parent's and
+takes over that label, so nodes written as the parent come back as the subclass with
+defaults invented for any fields that were never stored. That is rarely intended, so
+Neontology raises an `InheritedLabelWarning`. Give the subclass its own label, or set
+`__primarylabel__ = None` to make it abstract:
+
+```python
+class Animal(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "Animal"
+    name: str
+
+
+class Dog(Animal):
+    __primarylabel__: ClassVar[Optional[str]] = "Dog"   # its own label
+```
 
 ## Type Conversion / Serialization
 
@@ -55,7 +223,7 @@ If no arguments are given, this function will return all nodes with a direct out
 * `outgoing` - whether to include outgoing relationships.
 * `limit` - the maximum number of nodes to return.
 
-The return type is a [NeontologyResult object](/queries/#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
+The return type is a [NeontologyResult object](queries.md#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
 
 ### @related_nodes Decorator
 

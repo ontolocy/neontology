@@ -47,11 +47,12 @@ def test_rel_schema():
     schema = PracticeRelationship.neontology_schema()
 
     assert schema.relationship_type == "PRACTICE_RELATIONSHIP"
-    assert schema.source_labels == ["PracticeNodeRel"]
+    # SubclassNode, below, inherits from PracticeNode, so it can be the source too
+    assert schema.source_labels == ["PracticeNodeRel", "SubclassNode"]
 
     practice_rel_prop = [x for x in schema.properties if x.name == "practice_rel_prop"][0]
 
-    assert practice_rel_prop.type_annotation.representation == "str"
+    assert practice_rel_prop.type == "str"
 
 
 def test_source_target_type():

@@ -72,7 +72,7 @@ def test_node_schema():
 
     assert schema.properties[0].name == "name"
     assert schema.properties[0].required is True
-    assert schema.outgoing_relationships[0].name == "AUGMENTED_PERSON_FOLLOWS"
+    assert "AUGMENTED_PERSON_FOLLOWS" in schema.outgoing_relationships
 
 
 def test_node_schema_json():
@@ -80,9 +80,9 @@ def test_node_schema_json():
 
     schema_dict = json.loads(schema_json)
 
-    assert schema_dict["properties"][1]["type_annotation"]["core_type"] == "SampleEnum"
+    assert schema_dict["properties"][1]["type"] == "SampleEnum | None"
 
-    assert schema_dict["properties"][1]["type_annotation"]["enum_values"] == [
+    assert schema_dict["properties"][1]["allowed_values"] == [
         "value1",
         "value2",
         "value3",
@@ -92,19 +92,21 @@ def test_node_schema_json():
 def test_node_schema_md():
     schema = AugmentedPerson.neontology_schema()
 
-    schema_md = schema.md_node_table()
+    with pytest.warns(DeprecationWarning):
+        schema_md = schema.md_node_table()
 
-    assert "| Property Name | Type | Required |" in schema_md
-    assert "| name | str | True |" in schema_md
+    assert "| Property | Type | Required | Description |" in schema_md
+    assert "| name | str | Yes |  |" in schema_md
 
 
 def test_rels_schema_md():
     schema = AugmentedPerson.neontology_schema()
 
-    schema_md = schema.md_rel_tables(heading_level=4)
+    with pytest.warns(DeprecationWarning):
+        schema_md = schema.md_rel_tables(heading_level=4)
 
     assert "#### AUGMENTED_PERSON_FOLLOWS" in schema_md
-    assert "| follow_tag | Optional[str] | False |" in schema_md
+    assert "| follow_tag | str \\| None | No |  |" in schema_md
 
 
 def test_related_nodes(engine, use_graph):

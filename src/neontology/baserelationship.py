@@ -12,10 +12,12 @@ from .basenode import BaseNode
 from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter
 from .optional_deps import require_pandas
-from .schema_utils import RelationshipSchema, SchemaProperty, extract_type_mapping
+from .registry import registry
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from .schema import RelationshipSchema
 
 
 R = TypeVar("R", bound="BaseRelationship")
@@ -29,14 +31,62 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
     _merge_on: list[str] = PrivateAttr()  # what relationship properties should we merge on
 
+    @classmethod
+    def _is_abstract(cls) -> bool:
+        """Whether this is an abstract relationship, never written to the graph.
+
+        Abstract relationships exist to share properties with subclasses.
+
+        Returns:
+            bool: True if this class has no relationship type.
+        """
+        return getattr(cls, "__relationshiptype__", None) is None
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Register this relationship class as it is defined.
+
+        Source and target are not resolved here: a relationship may be defined before
+        the node classes it points at, so the registry resolves them on demand instead.
+
+        Args:
+            **kwargs (Any): class keyword arguments, passed through to pydantic.
+
+        Raises:
+            TypeError: if a property is tagged `index` or `unique`, which only node
+                properties can be.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        # read from the fields, as the JSON Schema cannot be generated until any forward
+        # reference to a source or target class resolves
+        tagged = [
+            f"{cls.__name__}.{name}"
+            for name, field in cls.model_fields.items()
+            if isinstance(field.json_schema_extra, dict)
+            and (field.json_schema_extra.get("index") is True or field.json_schema_extra.get("unique") is True)
+        ]
+
+        if tagged:
+            raise TypeError(
+                f"Cannot tag {', '.join(tagged)} as index or unique: Neontology only indexes and constrains"
+                " node properties. Remove the tag, or create the index or constraint on the relationship yourself."
+            )
+
+        registry.register_relationship(cls)
+
     def __init__(self, **data: dict):
         super().__init__(**data)
 
         # we can define 'abstract' relationships which don't have a label
         # these are to provide common properties to be used by subclassed relationships
         # but shouldn't be put in the graph or even instantiated
-        if self.__relationshiptype__ is None:
-            raise NotImplementedError("Relationships to be used in the graph must define a relationship type.")
+        if self._is_abstract():
+            raise NotImplementedError(
+                f"{type(self).__name__} has no __relationshiptype__, so it is an abstract"
+                " relationship: it exists to share properties with subclasses and is never"
+                " written to the graph. Give it a __relationshiptype__ to use it directly."
+            )
 
     @classmethod
     def _set_prop_usage(cls) -> None:
@@ -61,17 +111,18 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         Returns:
             BaseRelationship: The instance of the relationship after validation.
         """
-        try:
-            gql_identifier_adapter.validate_strings(self.__relationshiptype__)
-        except AttributeError:
-            pass
-        except ValidationError:
-            warnings.warn(
-                (
-                    "Relationship type should contain only alphanumeric characters and underscores."
-                    " It should begin with an alphabetic character."
+        # as for abstract nodes, a missing relationship type is deliberate rather than
+        # malformed, so it is not reported as a bad identifier
+        if not self._is_abstract():
+            try:
+                gql_identifier_adapter.validate_strings(self.__relationshiptype__)
+            except ValidationError:
+                warnings.warn(
+                    (
+                        "Relationship type should contain only alphanumeric characters and underscores."
+                        " It should begin with an alphabetic character."
+                    )
                 )
-            )
 
         return self
 
@@ -445,79 +496,21 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         return json.dumps(self._prep_dump_dict(model_dict, exclude_node_props))
 
     @classmethod
-    def neontology_schema(
-        cls,
-        source_labels: Optional[list[str]] = None,
-        target_labels: Optional[list[str]] = None,
-    ) -> RelationshipSchema:
-        """Generate a schema for this relationship type.
+    def neontology_schema(cls) -> "RelationshipSchema":
+        """Describe this relationship class: its type, the nodes at each end, and its properties.
 
-        Args:
-            source_labels (Optional[list[str]]): Labels for the source node type.
-            target_labels (Optional[list[str]]): Labels for the target node type.
+        `neontology.get_ontology_schema()` describes every model at once.
 
         Returns:
-            RelationshipSchema: A schema object representing the relationship type.
+            RelationshipSchema: the description.
+
+        Raises:
+            ValueError: if the class is abstract, with no relationship type.
         """
-        schema_properties: list[SchemaProperty] = []
-        rel_type = cls.__relationshiptype__
+        # imported here: the schema module builds on this one
+        from .schema import _relationship_schema
 
-        if not rel_type:
-            raise ValueError("Relationship doesn't have a relationship type.")
-
-        for field_name, field_props in cls.model_fields.items():
-            if field_name in ["source", "target"]:
-                continue
-
-            field_type = extract_type_mapping(field_props.annotation, show_optional=True)
-
-            required_field = field_props.is_required()
-
-            rel_prop = SchemaProperty(
-                type_annotation=field_type,
-                name=field_name,
-                required=required_field,
-            )
-
-            if required_field is True:
-                schema_properties.insert(0, rel_prop)
-
-            else:
-                schema_properties.append(rel_prop)
-
-        source_type = cls.model_fields["source"].annotation
-        target_type = cls.model_fields["target"].annotation
-
-        if not target_labels:
-            if getattr(target_type, "__primarylabel__", None):
-                target_labels = [target_type.__primarylabel__]
-
-        if not source_labels:
-            if getattr(source_type, "__primarylabel__", None):
-                source_labels = [source_type.__primarylabel__]
-
-        if not source_labels or not target_labels:
-            from neontology.utils import get_node_types
-
-            if not target_labels:
-                # return concrete subclasses of the abstract node class given
-                retrieved_node_types = get_node_types(target_type)
-                target_labels = list(retrieved_node_types.keys())
-
-            if not source_labels:
-                # return concrete subclasses of the abstract node class given
-                retrieved_node_types = get_node_types(source_type)
-                source_labels = list(retrieved_node_types.keys())
-
-        schema = RelationshipSchema(
-            name=rel_type,
-            relationship_type=rel_type,
-            properties=schema_properties,
-            target_labels=target_labels,
-            source_labels=source_labels,
-        )
-
-        return schema
+        return _relationship_schema(cls)
 
 
 class RelationshipTypeData(BaseModel):

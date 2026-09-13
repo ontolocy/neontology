@@ -1,11 +1,11 @@
 from typing import ClassVar, Optional
 
+import pytest
+
 from neontology import GraphConnection
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.utils import (
-    apply_neo4j_constraints,
-    auto_constrain_neo4j,
     get_node_types,
     get_rels_by_source,
     get_rels_by_type,
@@ -76,61 +76,32 @@ class SpecialPracticeNodeAC(BaseNode):
     pp: str
 
 
-def test_auto_constrain_neo4j(use_graph):
-    gc = GraphConnection()
+def test_auto_constrain_neo4j_is_deprecated(use_graph, engine):
+    """The old name still works, but warns. Removed in v4."""
+    from neontology.graphengines.capabilities import Capability
+    from neontology.utils import auto_constrain_neo4j
 
-    # make sure we start with no constraints
+    if not engine.supports(Capability.CONSTRAINTS):
+        pytest.skip("engine does not support constraints")
 
-    try:
-        constraints = gc.engine.get_constraints()
-
-        for constraint_name in constraints:
-            gc.engine.drop_constraint(constraint_name)
-
-        result = gc.engine.get_constraints()
-
-        assert len(result) == 0
-
+    with pytest.warns(DeprecationWarning, match="initialise_graph"):
         auto_constrain_neo4j()
 
-        result2 = gc.engine.get_constraints()
-
-        assert len(result2) >= 2
-
-    # not all graph engines do constraints
-    except NotImplementedError:
-        pass
+    assert len(GraphConnection().get_constraints()) >= 2
 
 
-def test_apply_neo4j_constraints(use_graph):
-    class SpecialPracticeNode(BaseNode):
-        __primaryproperty__: ClassVar[str] = "pp"
-        __primarylabel__: ClassVar[str] = "SpecialPracticeNode"
-        pp: str
+def test_apply_neo4j_constraints_is_deprecated(use_graph, engine):
+    """The old name still works, but warns. Removed in v4."""
+    from neontology.graphengines.capabilities import Capability
+    from neontology.utils import apply_neo4j_constraints
 
-    gc = GraphConnection()
+    if not engine.supports(Capability.CONSTRAINTS):
+        pytest.skip("engine does not support constraints")
 
-    try:
-        # make sure we start with no constraints
+    with pytest.warns(DeprecationWarning, match="apply_neo4j_constraints"):
+        apply_neo4j_constraints([SpecialPracticeNodeAC])
 
-        constraints = gc.engine.get_constraints()
-
-        for constraint_name in constraints:
-            gc.engine.drop_constraint(constraint_name)
-
-        result = gc.engine.get_constraints()
-
-        assert len(result) == 0
-
-        apply_neo4j_constraints([SpecialPracticeNode])
-
-        result2 = gc.engine.get_constraints()
-
-        assert len(result2) == 1
-
-    # not all graph engines do constraints
-    except NotImplementedError:
-        pass
+    assert [c.label for c in GraphConnection().get_constraints()] == ["SpecialPracticeNodeAC"]
 
 
 class TestForwardRefRelationships:

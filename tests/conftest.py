@@ -77,17 +77,23 @@ ENGINE_PARAMS = [
 logger = logging.getLogger(__name__)
 
 
-def reset_constraints():
+def reset_schema():
+    """Drop every constraint and index, so each test starts from a bare schema.
+
+    Capability-guarded rather than wrapped in try/except: an engine that starts
+    supporting these should be reset, not silently skipped.
+    """
     gc = GraphConnection()
 
-    try:
-        constraints = gc.engine.get_constraints()
+    if gc.supports(Capability.CONSTRAINTS):
+        for constraint in gc.get_constraints():
+            gc.drop_constraint(constraint)
 
-    except NotImplementedError:
-        return
-
-    for constraint_name in constraints:
-        gc.engine.drop_constraint(constraint_name)
+    if gc.supports(Capability.INDEXES):
+        # get_indexes() excludes constraint-backed and database-owned indexes, so this
+        # cannot drop neo4j's own token LOOKUP indexes
+        for index in gc.get_indexes():
+            gc.drop_index(index)
 
 
 @pytest.fixture(scope="session", params=ENGINE_PARAMS)
@@ -125,11 +131,13 @@ def get_graph_config(engine_id) -> object:
 def graph_db(request, tmp_path_factory, get_graph_config):
     load_dotenv()
 
+    # init_neontology connects, replacing whatever the previous engine parameter left
+    # behind - so this is all that is needed to move the suite onto the next engine.
+    # It used to need a change_engine call as well, because init alone could not
+    # re-initialise.
     init_neontology(get_graph_config)
 
     gc = GraphConnection()
-
-    gc.change_engine(get_graph_config)
 
     # confirm we're starting with an empty database
     cypher = """
@@ -171,7 +179,10 @@ def pytest_collection_modifyitems(config, items):
     capability that starts working fails the build instead of passing unnoticed.
     """
     for item in items:
-        if "use_graph" in item.fixturenames:
+        # keyed on the fixture that needs database credentials rather than on use_graph,
+        # so a test connecting by itself is deselected by -m "not uses_graph" too.
+        # fixturenames includes the fixtures a fixture requests, so use_graph tests count
+        if "get_graph_config" in item.fixturenames:
             item.add_marker("uses_graph")
 
         marker = item.get_closest_marker("requires_capability")
@@ -231,6 +242,4 @@ def use_graph(request, graph_db):
         # underlying graph directly
         graph_db.engine.driver.clear()
 
-    # not all engines will implement constraints, so we don't always have to reset them
-
-    reset_constraints()
+    reset_schema()

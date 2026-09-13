@@ -1,8 +1,28 @@
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic.json_schema import GenerateJsonSchema
 
 from .graphconnection import GraphConnection
+
+
+class _LenientJsonSchema(GenerateJsonSchema):
+    """Describe what pydantic cannot put in JSON Schema as {}, rather than raising.
+
+    Neontology models allow arbitrary types, which pydantic validates but cannot describe.
+    """
+
+    def handle_invalid_for_json_schema(self, schema: Any, error_info: str) -> dict:
+        """Describe a type JSON Schema cannot express as an empty schema.
+
+        Args:
+            schema (Any): the pydantic core schema.
+            error_info (str): why it cannot be expressed.
+
+        Returns:
+            dict: an empty schema.
+        """
+        return {}
 
 
 class CommonModel(BaseModel):
@@ -17,6 +37,7 @@ class CommonModel(BaseModel):
     _set_on_match: list[str] = PrivateAttr()
     _set_on_create: list[str] = PrivateAttr()
     _always_set: list[str] = PrivateAttr()
+    _field_names_by_key: ClassVar[dict[str, str]]
 
     def __init__(self, **data: dict):
         super().__init__(**data)
@@ -49,6 +70,11 @@ class CommonModel(BaseModel):
             for x, v in cls.model_fields.items()
             if x not in cls._set_on_match + cls._set_on_create + ["source", "target"]
         ]
+        # Dumps are taken by_alias, so a property is addressed by its alias where it has
+        # one - `__primaryproperty__` is the alias, not the field name. pydantic's
+        # `include=` works on field names only (an alias there silently selects
+        # nothing), so dumping a single property needs this mapping back.
+        cls._field_names_by_key = {(v.alias if v.alias else k): k for k, v in cls.model_fields.items()}
 
     @classmethod
     def _get_prop_usage(cls, usage_type: str) -> list[str]:
@@ -57,13 +83,13 @@ class CommonModel(BaseModel):
         These enable complex creation and merging use cases based on model metadata.
 
         Args:
-            usage_type (str): The type of usage to filter properties by.
-                              Can be 'set_on_match', 'set_on_create', or 'always_set'.
+            usage_type (str): The `json_schema_extra` flag to filter properties by, such as
+                'set_on_match', 'set_on_create', 'merge_on', 'unique' or 'index'.
 
         Returns:
             list[str]: A list of property names that match the specified usage type.
         """
-        all_props = cls.model_json_schema()["properties"]
+        all_props = cls.model_json_schema(schema_generator=_LenientJsonSchema)["properties"]
 
         selected_props = []
 
@@ -111,6 +137,23 @@ class CommonModel(BaseModel):
             export_dict = pydantic_export_dict
 
         return export_dict
+
+    def _engine_value(self, key: str) -> Any:
+        """Get one property's value, converted the way the engine expects.
+
+        Equivalent to `self._engine_dict()[key]` but dumps only the property asked for.
+        The conversion matters and cannot be skipped by reading the attribute directly -
+        a UUID primary property, for instance, reaches the graph as a string.
+
+        Args:
+            key (str): the property to read, addressed by alias where it has one.
+
+        Returns:
+            Any: the converted value.
+        """
+        field_name = self._field_names_by_key.get(key, key)
+
+        return self._engine_dict(include={field_name})[key]
 
     def _get_merge_parameters_common(self, exclude: set[str] = set()) -> dict[str, Any]:
         """Input an all properties dictionary, and filter based on property types.

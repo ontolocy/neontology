@@ -13,6 +13,14 @@ added here is not silently claimed by every engine.
 from enum import Enum
 
 
+class CapabilityNotSupportedError(NotImplementedError):
+    """Raised when an engine is asked for something its backend cannot do.
+
+    Subclasses NotImplementedError, which is what the engine methods used to raise
+    bare, so existing `except NotImplementedError` callers keep working.
+    """
+
+
 class Capability(str, Enum):
     """A named piece of engine behaviour that callers or tests may depend on."""
 
@@ -48,6 +56,21 @@ class Capability(str, Enum):
 
     # Querying relationship properties via get_related().
     RELATIONSHIP_PROPERTY_QUERIES = "relationship_property_queries"
+
+    # Uniqueness constraints on a label/property pair, and listing and dropping
+    # them. grand-cypher queries an ordinary NetworkX graph, which has no schema
+    # layer to hold them.
+    CONSTRAINTS = "constraints"
+
+    # Indexes on a label/property pair, and listing and dropping them. Separate
+    # from CONSTRAINTS because an engine could offer one without the other.
+    INDEXES = "indexes"
+
+    # A named path in a query matching more than one pattern - two MATCH clauses, say -
+    # holding only its own nodes and relationships. grand-cypher builds a named path from
+    # every node the query matched, so it joins the other patterns onto it, through
+    # whatever edges lie between them or with a gap where none do.
+    MULTI_PATTERN_PATHS = "multi_pattern_paths"
 
 
 def render_capability_matrix() -> str:

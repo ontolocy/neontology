@@ -152,26 +152,34 @@ def test_create_multiple_if_exists(engine, use_graph):
 
 
 def test_no_primary_label():
+    """Never declaring a primary label makes a node abstract.
+
+    This used to surface as an AttributeError from reading the missing attribute, which
+    said nothing about the class being abstract.
+    """
+
     class SpecialPracticeNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         pp: str
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(NotImplementedError, match="abstract node"):
         SpecialPracticeNode(pp="Test Node")
 
 
 def test_none_primary_label():
+    """Setting the primary label to None makes a node abstract.
+
+    It used to warn that the label was not alphanumeric on the way through, which
+    described the wrong problem - the label is absent by design, not malformed.
+    """
+
     class SpecialPracticeNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
         __primarylabel__: ClassVar[Optional[str]] = None
         pp: str
 
-    with pytest.warns(
-        UserWarning,
-        match="Primary Label should contain only alphanumeric characters and underscores",
-    ):
-        with pytest.raises(NotImplementedError):
-            SpecialPracticeNode(pp="Test Node")
+    with pytest.raises(NotImplementedError, match="abstract node"):
+        SpecialPracticeNode(pp="Test Node")
 
 
 def test_create_multilabel(use_graph):

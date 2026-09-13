@@ -10,11 +10,13 @@ from .commonmodel import CommonModel
 from .gql import gql_identifier_adapter, int_adapter
 from .graphconnection import GraphConnection
 from .optional_deps import require_pandas
+from .registry import registry
 from .result import NeontologyResult
-from .schema_utils import NodeSchema, SchemaProperty, extract_type_mapping
 
 if TYPE_CHECKING:
     import pandas as pd
+
+    from .schema import NodeSchema
 
 
 P = ParamSpec("P")
@@ -135,14 +137,74 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     __primarylabel__: ClassVar[Optional[str]]
     __secondarylabels__: ClassVar[list[str]] = []
 
+    # labels carried by the declaring class and every class inheriting from it. Unlike
+    # __secondarylabels__, a subclass cannot replace these - it can only add its own.
+    __inheritablelabels__: ClassVar[list[str]] = []
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        """Register this node class as it is defined.
+
+        Pydantic calls this once the model class is fully built, so `model_fields` and
+        the class' own namespace are both populated - which registration needs in order
+        to tell a declared primary label from an inherited one.
+
+        Args:
+            **kwargs (Any): class keyword arguments, passed through to pydantic.
+        """
+        super().__pydantic_init_subclass__(**kwargs)
+
+        registry.register_node(cls)
+
+    @classmethod
+    def _is_abstract(cls) -> bool:
+        """Whether this is an abstract node, which is never written to the graph.
+
+        Abstract nodes exist to share properties with subclasses. There are two ways to
+        spell one - `__primarylabel__ = None`, and never declaring it at all - and this
+        is the single place that decides, so both behave identically.
+
+        Returns:
+            bool: True if this class has no primary label.
+        """
+        return getattr(cls, "__primarylabel__", None) is None
+
+    @classmethod
+    def _all_labels(cls) -> list[str]:
+        """Every label this node carries in the graph, primary first.
+
+        That is the primary label, then secondary labels, then the inheritable labels
+        declared by this class or any class it inherits from. Secondary labels are an
+        ordinary class attribute, so a subclass declaring its own replaces its parent's.
+        Inheritable labels are read from every class in the hierarchy, so a subclass can
+        only add to them. Repeats are dropped, which lets a class list its own primary
+        label as inheritable in order to pass it down.
+
+        Args:
+            None.
+
+        Returns:
+            list[str]: every label this node carries, primary label first, without repeats.
+        """
+        inheritable = [label for klass in cls.__mro__ for label in vars(klass).get("__inheritablelabels__") or []]
+
+        # read as _is_abstract does: an abstract class may never have declared a label
+        labels = [getattr(cls, "__primarylabel__", None), *(cls.__secondarylabels__ or []), *inheritable]
+
+        return list(dict.fromkeys(labels))
+
     def __init__(self, **data: dict):
         super().__init__(**data)
 
         # we can define 'abstract' nodes which don't have a label
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph or even instantiated
-        if self.__primarylabel__ is None:
-            raise NotImplementedError("Nodes to be used in the graph must define a primary label.")
+        if self._is_abstract():
+            raise NotImplementedError(
+                f"{type(self).__name__} has no __primarylabel__, so it is an abstract node:"
+                " it exists to share properties with subclasses and is never written to the"
+                " graph. Give it a __primarylabel__ to use it directly."
+            )
 
     def __str__(self) -> str:
         """String representation of the node, showing the primary property value by default."""
@@ -205,18 +267,19 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
     @model_validator(mode="after")
     def validate_identifiers(self) -> Self:
         """Validate data provided for primary label and primary property."""
-        try:
-            gql_identifier_adapter.validate_strings(self.__primarylabel__)
+        # an abstract node deliberately has no primary label, so there is nothing to
+        # check here - warning that it was not alphanumeric described the wrong problem
+        if not self._is_abstract():
+            try:
+                gql_identifier_adapter.validate_strings(self.__primarylabel__)
 
-        except AttributeError:
-            pass
-        except ValidationError:
-            warnings.warn(
-                (
-                    "Primary Label should contain only alphanumeric characters and underscores."
-                    " It should begin with an alphabetic character."
+            except ValidationError:
+                warnings.warn(
+                    (
+                        "Primary Label should contain only alphanumeric characters and underscores."
+                        " It should begin with an alphabetic character."
+                    )
                 )
-            )
 
         try:
             gql_identifier_adapter.validate_strings(self.__primaryproperty__)
@@ -230,6 +293,19 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 )
             )
 
+        # secondary and inheritable labels are interpolated into cypher alongside the
+        # primary one, so they are held to the same standard
+        for secondary_label in self._all_labels()[1:]:
+            try:
+                gql_identifier_adapter.validate_strings(secondary_label)
+            except ValidationError:
+                warnings.warn(
+                    (
+                        f"Secondary Label {secondary_label!r} should contain only alphanumeric"
+                        " characters and underscores. It should begin with an alphabetic character."
+                    )
+                )
+
         return self
 
     def get_pp(self) -> Union[str, int]:
@@ -238,7 +314,11 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             Union[str, int]: The value of the primary property.
         """
-        return self._get_merge_parameters()["pp"]
+        # only the primary property is dumped. This used to go through
+        # _get_merge_parameters(), which dumps and converts every property and builds
+        # three more dicts to reach one value - and it is called per node when query
+        # results are hydrated.
+        return self._engine_value(self.__primaryproperty__)
 
     def create(self) -> Self:
         """Create this node in the graph."""
@@ -248,7 +328,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         node_details = [{"pp": pp_value, "props": all_props}]
 
-        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+        all_labels = self._all_labels()
 
         pp_key = self.__primaryproperty__
 
@@ -262,7 +342,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """Merge this node into the graph."""
         node_list = [self._get_merge_parameters()]
 
-        all_labels = [self.__primarylabel__] + self.__secondarylabels__
+        all_labels = self._all_labels()
 
         pp_key = self.__primaryproperty__
 
@@ -285,9 +365,13 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Raises:
             TypeError: Raised if one of the nodes isn't of this type.
         """
-        node_list = [{"props": x._engine_dict(), "pp": x._engine_dict()[cls.__primaryproperty__]} for x in nodes]
+        # dumped once per node and reused: _engine_dict() dumps and converts the whole
+        # model, so calling it twice here doubled the cost of a bulk create
+        all_props = [x._engine_dict() for x in nodes]
 
-        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+        node_list = [{"props": props, "pp": props[cls.__primaryproperty__]} for props in all_props]
+
+        all_labels = cls._all_labels()
         pp_key = cls.__primaryproperty__
 
         gc = GraphConnection()
@@ -311,7 +395,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         """
         node_list = [x._get_merge_parameters() for x in nodes]
 
-        all_labels = [cls.__primarylabel__] + cls.__secondarylabels__
+        all_labels = cls._all_labels()
 
         pp_key = cls.__primaryproperty__
 
@@ -423,7 +507,8 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         gc = GraphConnection()
 
-        result = gc.evaluate_query(cypher, params, node_classes={cls.__primarylabel__: cls})
+        # a subclass node carrying this label matches too, and comes back as itself
+        result = gc.evaluate_query(cypher, params, node_classes=registry.result_classes(cls))
 
         if result.nodes:
             return result.nodes[0]
@@ -472,6 +557,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
                 - {"name__iexact": "value"} → exact match (case-insensitive)
                 - {"quantity__gt": 100} → greater than
                 - {"date__lt": some_date} → less than
+                - {"tags__in": ["a", "b"]} → value in list
+                - {"name__isnull": True} → property is null (False for IS NOT NULL)
+
+                Also supported: __gte, __lte, __contains, __startswith, __istartswith.
+                A key containing "__" must end in one of these lookups; field names are
+                validated as identifiers.
                 Defaults to None.
             limit (int, optional): Maximum number of results to return. Defaults to None.
             skip (int, optional): Skip through this many results (for pagination). Defaults to None.
@@ -646,62 +737,16 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         return json.dumps(self._prep_dump_dict(model_dict))
 
     @classmethod
-    def neontology_schema(cls, include_outgoing_rels: bool = True) -> NodeSchema:
-        """Generate a schema for this node class.
+    def neontology_schema(cls) -> "NodeSchema":
+        """Describe this node class: its labels, properties and relationships.
 
-        Args:
-            include_outgoing_rels (bool, optional): If True, include outgoing relationships in the schema.
-                Defaults to True.
+        Abstract classes can be described too. `neontology.get_ontology_schema()`
+        describes every model at once.
 
         Returns:
-            NodeSchema: A schema object representing the node class.
-
-        Raises:
-            ValueError: If the node class does not have a primary label defined.
+            NodeSchema: the description.
         """
-        if not cls.__primarylabel__:
-            raise ValueError("Node does not have a primary label defined for generating schema.")
+        # imported here: the schema module builds on this one
+        from .schema import _node_schema
 
-        schema_dict: dict = {}
-        schema_dict["label"] = cls.__primarylabel__
-        schema_dict["title"] = cls.__name__
-        schema_dict["secondary_labels"] = cls.__secondarylabels__
-
-        model_properties: list = []
-
-        for field_name, field_props in cls.model_fields.items():
-            field_type = extract_type_mapping(field_props.annotation, show_optional=True)
-
-            node_property = SchemaProperty(
-                type_annotation=field_type,
-                name=field_name,
-                required=field_props.is_required(),
-            )
-
-            if field_props.is_required() is True:
-                model_properties.insert(0, node_property)
-
-            # put optional fields at the end
-            else:
-                model_properties.append(node_property)
-
-        schema_dict["properties"] = model_properties
-        schema_dict["outgoing_relationships"] = []
-
-        if include_outgoing_rels is False:
-            return NodeSchema(**schema_dict)
-
-        else:
-            from .utils import get_rels_by_source, get_rels_by_type
-
-            outgoing_rels = get_rels_by_source().get(cls.__primarylabel__, set())
-            all_rel_types = get_rels_by_type()
-
-            for rel in outgoing_rels:
-                rel_class = all_rel_types[rel].relationship_class
-
-                rel_schema = rel_class.neontology_schema(source_labels=[schema_dict["label"]])
-
-                schema_dict["outgoing_relationships"].append(rel_schema)
-
-        return NodeSchema(**schema_dict)
+        return _node_schema(cls)
