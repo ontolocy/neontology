@@ -179,7 +179,10 @@ def pytest_collection_modifyitems(config, items):
     capability that starts working fails the build instead of passing unnoticed.
     """
     for item in items:
-        if "use_graph" in item.fixturenames:
+        # keyed on the fixture that needs database credentials rather than on use_graph,
+        # so a test connecting by itself is deselected by -m "not uses_graph" too.
+        # fixturenames includes the fixtures a fixture requests, so use_graph tests count
+        if "get_graph_config" in item.fixturenames:
             item.add_marker("uses_graph")
 
         marker = item.get_closest_marker("requires_capability")
