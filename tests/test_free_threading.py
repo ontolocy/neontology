@@ -21,10 +21,13 @@ def test_the_gil_stays_disabled():
     """Importing a C extension not declared safe without the GIL turns the GIL back on.
 
     Python only warns when that happens, so the suite would carry on - with the GIL
-    enabled, and no longer testing a free-threaded build. Neontology and whichever of its
-    optional extras are installed are imported first, so anything they bring in counts.
+    enabled, and no longer testing a free-threaded build. Neontology, its tools and whichever
+    of its optional extras are installed are imported first, so anything they bring in counts.
+    The tools are imported here rather than left to their own tests to load: they bring in
+    PyYAML, whose C extension turned the GIL back on until PyYAML 6.0.3.
     """
     import neontology  # noqa: F401
+    import neontology.tools  # noqa: F401
 
     for module in ("pandas", "networkx", "grandcypher"):
         if importlib.util.find_spec(module):
