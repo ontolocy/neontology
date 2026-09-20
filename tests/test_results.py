@@ -241,3 +241,20 @@ class TestNodeLinkData:
 
         # still part of the result's data
         assert "node_link_data" in result.model_dump()
+
+    def test_node_link_data_uses_lowercase_endpoint_keys(self, use_graph):
+        # D3, Cytoscape and networkx all expect an edge to name its ends 'source' and
+        # 'target', so this format keeps them however the content format spells them
+        person = ResultsPerson(name="source-node")
+        place = ResultsPlace(name="target-node")
+        person.merge()
+        place.merge()
+        ResultsVisits(source=person, target=place).merge()
+
+        result = use_graph.evaluate_query(VISITS)
+
+        edge = result.node_link_data["edges"][0]
+
+        assert edge["source"] == "source-node"
+        assert edge["target"] == "target-node"
+        assert "SOURCE" not in edge

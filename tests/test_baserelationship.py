@@ -1,5 +1,6 @@
 # type: ignore
 
+import json
 from typing import ClassVar, Optional
 from uuid import uuid4
 
@@ -417,3 +418,71 @@ def test_create_mass_rels(engine, use_graph, benchmark):
             use_graph.engine.driver.clear_edges()
 
     benchmark(do_merge, rels_df)
+
+
+class MixedAlphaNode(BaseNode):
+    __primarylabel__: ClassVar[Optional[str]] = "MixedAlphaNode"
+    __primaryproperty__: ClassVar[str] = "alpha_pp"
+
+    alpha_pp: str
+
+
+class MixedBetaNode(MixedAlphaNode):
+    # a subclass, so it satisfies the relationship's annotation, but identified by a
+    # different property
+    __primarylabel__: ClassVar[Optional[str]] = "MixedBetaNode"
+    __primaryproperty__: ClassVar[str] = "beta_pp"
+
+    beta_pp: str
+
+
+class MixedEndpointRel(BaseRelationship):
+    source: MixedAlphaNode
+    target: MixedAlphaNode
+    __relationshiptype__: ClassVar[Optional[str]] = "TEST_MIXED_ENDPOINTS"
+
+
+def test_merge_relationships_across_classes_with_different_primary_properties(use_graph):
+    # source and target props are resolved per group, so a second group whose classes
+    # name their primary property differently is not merged with the first group's
+    alpha = MixedAlphaNode(alpha_pp="Alpha Node")
+    alpha.merge()
+
+    beta = MixedBetaNode(alpha_pp="unused", beta_pp="Beta Node")
+    beta.merge()
+
+    rels = [
+        MixedEndpointRel(source=alpha, target=beta),
+        MixedEndpointRel(source=beta, target=alpha),
+    ]
+
+    MixedEndpointRel.merge_relationships(rels)
+
+    assert MixedEndpointRel.get_count() == 2
+
+
+def test_neontology_dump_uses_uppercase_endpoint_keys(use_graph):
+    # the content format is uppercase throughout, and a dump is content
+    source_node = PracticeNode(pp="Source Node")
+    target_node = PracticeNode(pp="Target Node")
+
+    rel = NewRelType(source=source_node, target=target_node, new_rel_prop="Rel 1")
+
+    dumped = rel.neontology_dump()
+
+    assert dumped["SOURCE"] == "Source Node"
+    assert dumped["TARGET"] == "Target Node"
+    assert "source" not in dumped
+    assert "target" not in dumped
+
+
+def test_neontology_dump_json_uses_uppercase_endpoint_keys(use_graph):
+    source_node = PracticeNode(pp="Source Node")
+    target_node = PracticeNode(pp="Target Node")
+
+    rel = NewRelType(source=source_node, target=target_node, new_rel_prop="Rel 1")
+
+    dumped = json.loads(rel.neontology_dump_json())
+
+    assert dumped["SOURCE"] == "Source Node"
+    assert dumped["TARGET"] == "Target Node"

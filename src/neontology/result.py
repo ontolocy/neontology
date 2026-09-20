@@ -4,6 +4,28 @@ from typing import Any
 from pydantic import BaseModel, computed_field
 
 
+def _as_link(relationship: Any) -> dict:
+    """Dump a relationship as an edge of node link data.
+
+    Node link data is a format of its own: NetworkX, D3 and Cytoscape all expect an
+    edge to name its ends `source` and `target`. Neontology's own content format names
+    them `SOURCE` and `TARGET`, along with every other key which says how to build the
+    graph, so the two are spelled differently on purpose.
+
+    Args:
+        relationship (Any): the relationship to dump.
+
+    Returns:
+        dict: the relationship as an edge.
+    """
+    dumped = relationship.neontology_dump()
+
+    dumped["source"] = dumped.pop("SOURCE", None)
+    dumped["target"] = dumped.pop("TARGET", None)
+
+    return dumped
+
+
 class NeontologyResult(BaseModel):
     records_raw: Any
     records: list
@@ -36,7 +58,7 @@ class NeontologyResult(BaseModel):
 
         # relationships are already distinct by database identity, so none are merged here:
         # parallel relationships with equal properties are separate edges
-        links = [x.neontology_dump() for x in self.relationships]
+        links = [_as_link(x) for x in self.relationships]
 
         unique_nodes = list(nodes.values())
 
