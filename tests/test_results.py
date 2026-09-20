@@ -15,6 +15,7 @@ the backend:
 `records_raw` is the driver's own result, for anyone needing it verbatim.
 """
 
+import json
 import warnings
 from typing import ClassVar, Optional
 
@@ -258,3 +259,68 @@ class TestNodeLinkData:
         assert edge["source"] == "source-node"
         assert edge["target"] == "target-node"
         assert "SOURCE" not in edge
+
+
+class TestNestedDump:
+    """The dump's node oriented shape: a record per node, relationships nested in it."""
+
+    def test_nested_dump_is_a_record_per_node(self, use_graph):
+        person = ResultsPerson(name="ada", note="a note")
+        place = ResultsPlace(name="london")
+        person.merge()
+        place.merge()
+        ResultsVisits(source=person, target=place).merge()
+
+        result = use_graph.evaluate_query(VISITS)
+
+        records = result.neontology_dump(nested=True)
+
+        assert isinstance(records, list)
+        assert {x["LABEL"] for x in records} == {"ResultsPerson", "ResultsPlace"}
+
+        ada = [x for x in records if x.get("name") == "ada"][0]
+
+        assert ada["note"] == "a note"
+        assert len(ada["RELATIONSHIPS_OUT"]) == 1
+
+        declared = ada["RELATIONSHIPS_OUT"][0]
+
+        assert declared["RELATIONSHIP_TYPE"] == "RESULTS_VISITS"
+        assert declared["TARGET_LABEL"] == "ResultsPlace"
+        assert declared["TARGETS"] == ["london"]
+
+        # the node declaring it is the source, so the record does not name one
+        assert "SOURCE" not in declared
+        assert "SOURCE_LABEL" not in declared
+        assert "TARGET" not in declared
+
+    def test_a_node_with_no_relationships_leaving_it_carries_no_block(self, use_graph):
+        person = ResultsPerson(name="ada")
+        place = ResultsPlace(name="london")
+        person.merge()
+        place.merge()
+        ResultsVisits(source=person, target=place).merge()
+
+        result = use_graph.evaluate_query(VISITS)
+
+        london = [x for x in result.neontology_dump(nested=True) if x.get("name") == "london"][0]
+
+        assert "RELATIONSHIPS_OUT" not in london
+
+    def test_the_flat_shape_is_still_the_default(self, use_graph):
+        ResultsPerson(name="ada").merge()
+
+        result = use_graph.evaluate_query("MATCH (n:ResultsPerson) RETURN n")
+
+        assert set(result.neontology_dump()) == {"nodes", "edges"}
+
+    def test_nested_dump_json_serialises_the_same_shape(self, use_graph):
+        person = ResultsPerson(name="ada")
+        place = ResultsPlace(name="london")
+        person.merge()
+        place.merge()
+        ResultsVisits(source=person, target=place).merge()
+
+        result = use_graph.evaluate_query(VISITS)
+
+        assert json.loads(result.neontology_dump_json(nested=True)) == result.neontology_dump(nested=True)

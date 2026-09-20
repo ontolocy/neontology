@@ -3,6 +3,7 @@
 Kept in step with docs/importing-content.md: if an example there changes, change it here.
 """
 
+import json
 from typing import ClassVar, Optional
 
 import pytest
@@ -13,8 +14,6 @@ from neontology.tools import (
     DuplicateNodeDefinitionError,
     ImportContentError,
     ImportValidationError,
-    export_records,
-    export_yaml,
     import_csv,
     import_md,
     import_records,
@@ -442,12 +441,18 @@ def test_exporting_a_result_as_content(use_graph, tmp_path_factory):
 
     result = use_graph.evaluate_query("MATCH (n:Host)-[r:RESOLVES_TO]->(o:IPAddress) RETURN n, r, o")
 
-    records = export_records(result)
+    records = result.neontology_dump(nested=True)
 
     web1 = [x for x in records if x.get("hostname") == "web1"][0]
 
-    assert web1["RELATIONSHIPS_OUT"][0]["TARGETS"] == ["10.0.0.1"]
+    declared = web1["RELATIONSHIPS_OUT"][0]
 
-    export_yaml(result, dir_path / "graph.yaml")
+    # exactly the keys the documented example shows
+    assert set(declared) == {"RELATIONSHIP_TYPE", "TARGET_LABEL", "TARGETS"}
+    assert declared["TARGETS"] == ["10.0.0.1"]
 
-    assert (dir_path / "graph.yaml").exists()
+    # written as ordinary json, which is what import_json reads
+    path = dir_path / "graph.json"
+    path.write_text(result.neontology_dump_json(nested=True))
+
+    assert json.loads(path.read_text()) == records

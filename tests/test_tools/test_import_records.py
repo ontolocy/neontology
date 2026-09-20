@@ -495,3 +495,30 @@ def test_duplicate_and_conflict_errors_can_be_caught_together(use_graph):
     assert issubclass(DuplicateNodeDefinitionError, ImportContentError)
     assert issubclass(ConflictingNodeRecordError, ImportContentError)
     assert issubclass(ImportContentError, ValueError)
+
+
+def test_nested_dump_round_trips(use_graph):
+    # the node oriented shape a repository is usually written in, back into the graph
+    archy = PersonImportNode(name="archy", age=55, import_id="archy-1")
+    betty = PersonImportNode(name="betty", age=66, import_id="betty-1")
+    archy.merge()
+    betty.merge()
+    FollowsImportRel(source=archy, target=betty, import_follows_prop_1="testing").merge()
+
+    result = use_graph.evaluate_query("MATCH (n:PersonImportLabel)-[r:IMPORT_FOLLOWS]->(o:PersonImportLabel) RETURN n, r, o")
+
+    records = result.neontology_dump(nested=True)
+
+    if use_graph.engine.supports(Capability.GRAPH_MUTATIONS):
+        use_graph.evaluate_query_single("MATCH (n) DETACH DELETE n")
+
+    else:
+        use_graph.engine.driver.clear()
+
+    assert PersonImportNode.get_count() == 0
+
+    report = import_records([records], error_on_unmatched=True)
+
+    assert report.nodes == {"PersonImportLabel": 2}
+    assert report.relationships == {"IMPORT_FOLLOWS": 1}
+    assert PersonImportNode.match("archy").age == 55

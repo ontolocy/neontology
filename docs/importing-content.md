@@ -391,33 +391,48 @@ A batch of records can also fail for a reason no single record explains — the 
 
 ## Exporting
 
-`export_records()` describes a query result as content: a record per node, with each relationship declared under the node it leaves. That is the shape a repository is usually written in, so what comes out looks like what a person would have written.
-
-```python
-from neontology.tools import export_records, export_yaml, export_json
-
-result = GraphConnection().evaluate_query("MATCH (n:Host)-[r]->(o) RETURN n, r, o")
-
-export_yaml(result, "content/graph.yaml")
-export_json(result, "content/graph.json")
-
-records = export_records(result)   # or the records themselves
-```
-
-A query has to return the nodes at both ends of a relationship for the relationship to be built at all, so return them alongside it. Properties which have no value are left out, so what is written says only what was set — pass `exclude_none=False` to write them all.
-
-`neontology_dump()` on a node, a relationship or a query result produces the flatter form, split into nodes and edges:
+`neontology_dump()` on a node, a relationship or a query result produces records in this same format, so a graph can be written back out and read in again:
 
 ```python
 result = GraphConnection().evaluate_query("MATCH (n:Host)-[r]->(o) RETURN n, r, o")
 
 data = result.neontology_dump()       # {'nodes': [...], 'edges': [...]}
-json_data = result.neontology_dump_json()
+
+Path("content/graph.json").write_text(result.neontology_dump_json())
 
 import_records([data])
 ```
 
 That container — `nodes` and `edges` — is accepted by the importer as a third layout alongside combined and split.
+
+### The node oriented shape
+
+`nested=True` dumps a record per node instead, each carrying the relationships that leave it — the shape content is usually written in by hand, rather than nodes and edges side by side:
+
+```python
+records = result.neontology_dump(nested=True)
+
+Path("content/graph.yaml").write_text(
+    yaml.safe_dump(json.loads(result.neontology_dump_json(nested=True)), sort_keys=False)
+)
+```
+
+```yaml
+- LABEL: Host
+  hostname: web1
+  owner: platform-team
+  RELATIONSHIPS_OUT:
+    - RELATIONSHIP_TYPE: RESOLVES_TO
+      TARGET_LABEL: IPAddress
+      TARGETS:
+        - 10.0.0.1
+- LABEL: IPAddress
+  ip: 10.0.0.1
+```
+
+A relationship is only built when the result holds the nodes at both of its ends, so return them alongside it — a query returning relationships alone dumps nothing to declare.
+
+Use `neontology_dump_json()` rather than `neontology_dump()` when writing a file: it takes values through pydantic's own serialisation, so a datetime is written as ISO rather than however `str()` happens to render it.
 
 !!! note
     `node_link_data` on a result is a different format, for NetworkX, D3 and Cytoscape. Those expect an edge to name its ends `source` and `target` in lowercase, so it keeps that convention and is not importable content.
