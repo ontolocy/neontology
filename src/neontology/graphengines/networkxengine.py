@@ -95,6 +95,28 @@ def _is_path(value: Any) -> bool:
     )
 
 
+def _hashable(value: Any) -> Any:
+    """Represent a property value so it can be part of a dictionary key.
+
+    Relationships are grouped by the properties they merge on, and a property may hold
+    a list, which cannot be hashed. Two values which are equal have equal
+    representations, which is all the grouping needs.
+
+    Args:
+        value (Any): the property value.
+
+    Returns:
+        Any: the value, or its representation where it cannot be hashed.
+    """
+    try:
+        hash(value)
+
+    except TypeError:
+        return repr(value)
+
+    return value
+
+
 def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, Any]]:
     """Read a grand-cypher result as rows of engine-neutral values, for `build_result`.
 
@@ -462,7 +484,15 @@ class NetworkxEngine(GraphEngineBase):
                 target_type.__primaryproperty__,
             )
 
-        edge_records = []
+        rel_type_identifier = gql_identifier_adapter.validate_strings(rel_type)
+
+        # Collected by what identifies a relationship rather than appended to, so two
+        # records which merge onto the same relationship produce one edge - as MERGE
+        # does for two rows of an UNWIND. The edges are only added to the graph once
+        # the batch has been read, so the existence check below sees the graph as it
+        # was before the batch started: without this, the second record would find
+        # nothing and a parallel edge would be added beside the first.
+        edge_records: dict[tuple, tuple] = {}
 
         for x in rel_props:
             all_props = {**x["always_set"], **x["set_on_match"], **x["set_on_create"]}
@@ -470,37 +500,60 @@ class NetworkxEngine(GraphEngineBase):
             source_id = generate_node_id(x["source_prop"], source_label)
             target_id = generate_node_id(x["target_prop"], target_label)
 
-            merge_attributes = {"__labels__": {gql_identifier_adapter.validate_strings(rel_type)}}
+            # every merge_on property is part of what identifies the relationship,
+            # including one whose value is falsy - a relationship tagged 0 is not the
+            # one tagged 1, and must not match and overwrite it
+            merge_on_values = {prop: all_props.get(prop) for prop in merge_on_props}
 
-            # if there are props to merge on, pull them out too
+            merge_attributes = {"__labels__": {rel_type_identifier}, **merge_on_values}
 
-            for merge_on_prop in merge_on_props:
-                if all_props.get(merge_on_prop):
-                    merge_attributes[merge_on_prop] = all_props[merge_on_prop]
+            merge_key = (
+                source_id,
+                target_id,
+                rel_type_identifier,
+                tuple(sorted((k, _hashable(v)) for k, v in merge_on_values.items())),
+            )
 
-            # now check if there is already a relationship which meets that criteria
-            existing_edges = self._existing_edges(source_id, target_id, **merge_attributes)
+            pending = edge_records.get(merge_key)
 
-            if existing_edges is not None:
-                # if the edge already exists, we need to delete it
+            if pending is not None:
+                # already merged earlier in this batch, so this record matches it
+                existing_props: Optional[dict] = pending[2]
+
+            else:
+                existing_edges = self._existing_edges(source_id, target_id, **merge_attributes) or []
+
+                # read before removing: the attribute dictionary belongs to the edge
+                existing_props = (
+                    dict(self.driver.get_edge_data(source_id, target_id, key=existing_edges[0])) if existing_edges else None
+                )
+
                 for key in existing_edges:
                     self.driver.remove_edge(source_id, target_id, key=key)
 
-            new_record = (
+            if existing_props is None:
+                props = {**x["always_set"], **x["set_on_create"]}
+
+            else:
+                # as in merge_nodes: what was set when the relationship was created
+                # stays as it was, and set_on_match applies in its place
+                carried = {k: existing_props[k] for k in x["set_on_create"] if k in existing_props}
+
+                props = {**x["always_set"], **x["set_on_match"], **carried}
+
+            edge_records[merge_key] = (
                 source_id,
                 target_id,
                 {
-                    **all_props,
-                    "__labels__": {gql_identifier_adapter.validate_strings(rel_type)},
+                    **props,
+                    "__labels__": {rel_type_identifier},
                     "__neograndrel__": True,
-                    "__sourcepp__": generate_node_id(x["source_prop"], source_label),
-                    "__targetpp__": generate_node_id(x["target_prop"], target_label),
+                    "__sourcepp__": source_id,
+                    "__targetpp__": target_id,
                 },
             )
 
-            edge_records.append(new_record)
-
-        self.driver.add_edges_from(edge_records)
+        self.driver.add_edges_from(edge_records.values())
 
     def evaluate_query(
         self,
