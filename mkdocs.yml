@@ -6,6 +6,7 @@ nav:
     - FastAPI Neo4j Example: fastapi.md
     - Advanced Usage: advanced-usage.md
     - Running Queries: queries.md
+    - Importing Content: importing-content.md
     - Describing Your Ontology: describing-your-ontology.md
     - Cookbook: recipes.md
     - Graph Engines: graph-engines.md

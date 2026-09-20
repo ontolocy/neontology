@@ -239,7 +239,14 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
 
         # sources and targets could have different primary labels
         # to operate efficiently, we group like source and targets for batch creation of relationships
-        grouped_rels = itertools.groupby(rels, lambda x: (x.source.__class__, x.target.__class__))
+        # sorted first, because groupby only groups runs of adjacent items, and relationships
+        # of mixed types arrive interleaved
+        def _group_key(rel: R) -> tuple[type, type]:
+            return (rel.source.__class__, rel.target.__class__)
+
+        ordered_rels = sorted(rels, key=lambda x: (x.source.__class__.__name__, x.target.__class__.__name__))
+
+        grouped_rels = itertools.groupby(ordered_rels, _group_key)
 
         for node_clases, common_rels in grouped_rels:
             src_class = node_clases[0]
@@ -248,11 +255,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             source_label = src_class.__primarylabel__
             target_label = tgt_class.__primarylabel__
 
-            if source_prop is None:
-                source_prop = src_class.__primaryproperty__
-
-            if target_prop is None:
-                target_prop = tgt_class.__primaryproperty__
+            # resolved per group rather than assigned to the arguments, which would carry
+            # the first group's property names into every group after it
+            group_source_prop = source_prop if source_prop is not None else src_class.__primaryproperty__
+            group_target_prop = target_prop if target_prop is not None else tgt_class.__primaryproperty__
 
             if not source_label or not target_label:
                 raise ValueError("Source and target Nodes must have a defined primary label to create a relationship.")
@@ -262,15 +268,17 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             if not rel_type:
                 raise ValueError("Relationship must have a defined relationship type for creating a relationship.")
 
-            rel_list: list[dict[str, Any]] = [x._get_merge_parameters(source_prop, target_prop) for x in common_rels]
+            rel_list: list[dict[str, Any]] = [
+                x._get_merge_parameters(group_source_prop, group_target_prop) for x in common_rels
+            ]
 
             gc = GraphConnection()
 
             gc.merge_relationships(
                 source_label,
                 target_label,
-                source_prop,
-                target_prop,
+                group_source_prop,
+                group_target_prop,
                 rel_type,
                 merge_on_props,
                 rel_list,
@@ -421,9 +429,14 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             dict: The modified dumped model dictionary.
         """
         if exclude_node_props is True:
-            dumped_model["source"] = self.source.get_pp()
+            # the content format names these keys in uppercase, as it does every key
+            # which says how to build the graph rather than being a property
+            dumped_model.pop("source", None)
+            dumped_model.pop("target", None)
+
+            dumped_model["SOURCE"] = self.source.get_pp()
             dumped_model["SOURCE_LABEL"] = self.source.__primarylabel__
-            dumped_model["target"] = self.target.get_pp()
+            dumped_model["TARGET"] = self.target.get_pp()
             dumped_model["TARGET_LABEL"] = self.target.__primarylabel__
 
         else:

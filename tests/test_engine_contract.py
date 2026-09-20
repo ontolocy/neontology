@@ -12,6 +12,7 @@ engine, rather than being skipped here.
 from typing import ClassVar, Optional
 
 import pytest
+from pydantic import Field
 
 from neontology import BaseNode, BaseRelationship
 from neontology.graphengines.capabilities import Capability
@@ -191,3 +192,134 @@ def test_export_dict_converter_rejects_unsupported_types(engine):
     """Every engine must reject dicts as property values, consistently."""
     with pytest.raises(TypeError):
         engine.export_dict_converter({"a_dict": {"nested": "value"}})
+
+
+class ContractMergeOnRel(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "ENGINE_CONTRACT_MERGE_ON_REL"
+
+    source: ContractNode
+    target: ContractNode
+
+    tag: int = Field(default=0, json_schema_extra={"merge_on": True})
+    note: Optional[str] = None
+
+
+class ContractCreateRel(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "ENGINE_CONTRACT_CREATE_REL"
+
+    source: ContractNode
+    target: ContractNode
+
+    created: Optional[str] = Field(default=None, json_schema_extra={"set_on_create": True})
+    seen: Optional[str] = None
+
+
+class ContractMatchRel(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "ENGINE_CONTRACT_MATCH_REL"
+
+    source: ContractNode
+    target: ContractNode
+
+    only_on_match: Optional[str] = Field(default=None, json_schema_extra={"set_on_match": True})
+
+
+def _contract_pair():
+    """Merge the two nodes the relationship contract tests relate."""
+    source = ContractNode(pp="merge-source")
+    target = ContractNode(pp="merge-target")
+
+    source.merge()
+    target.merge()
+
+    return source, target
+
+
+class TestRelationshipMergeContract:
+    """What merging relationships means, stated once for every engine.
+
+    A relationship is identified by its source, target, type and `merge_on` properties.
+    Merging one which is already there updates it rather than adding a second, whether
+    the two arrive in separate calls or in the same batch.
+    """
+
+    def test_merging_the_same_relationship_twice_in_one_call_makes_one(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractMergeOnRel.merge_records(
+            [
+                {"source": "merge-source", "target": "merge-target", "tag": 1},
+                {"source": "merge-source", "target": "merge-target", "tag": 1},
+            ]
+        )
+
+        assert ContractMergeOnRel.get_count() == 1
+
+    def test_merging_the_same_relationship_in_separate_calls_makes_one(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractMergeOnRel(source=source, target=target, tag=1).merge()
+        ContractMergeOnRel(source=source, target=target, tag=1).merge()
+
+        assert ContractMergeOnRel.get_count() == 1
+
+    def test_merging_in_one_call_leaves_the_last_value(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractMergeOnRel.merge_records(
+            [
+                {"source": "merge-source", "target": "merge-target", "tag": 1, "note": "first"},
+                {"source": "merge-source", "target": "merge-target", "tag": 1, "note": "second"},
+            ]
+        )
+
+        rels = ContractMergeOnRel.match_relationships()
+
+        assert len(rels) == 1
+        assert rels[0].note == "second"
+
+    def test_relationships_differing_on_a_merge_on_property_stay_separate(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractMergeOnRel.merge_records(
+            [
+                {"source": "merge-source", "target": "merge-target", "tag": 1},
+                {"source": "merge-source", "target": "merge-target", "tag": 2},
+            ]
+        )
+
+        assert ContractMergeOnRel.get_count() == 2
+
+    def test_a_falsy_merge_on_value_still_identifies_a_relationship(self, use_graph):
+        # zero is a value like any other: a relationship tagged 0 is not the one
+        # tagged 1, so merging it must not match and overwrite that one
+        source, target = _contract_pair()
+
+        ContractMergeOnRel(source=source, target=target, tag=1).merge()
+        ContractMergeOnRel(source=source, target=target, tag=0).merge()
+
+        assert ContractMergeOnRel.get_count() == 2
+
+    def test_set_on_create_survives_a_later_merge(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractCreateRel(source=source, target=target, created="FIRST", seen="one").merge()
+        ContractCreateRel(source=source, target=target, created="SECOND", seen="two").merge()
+
+        rels = ContractCreateRel.match_relationships()
+
+        assert len(rels) == 1
+        # set on create applies only when the relationship is created
+        assert rels[0].created == "FIRST"
+        # everything else is updated as usual
+        assert rels[0].seen == "two"
+
+    def test_set_on_match_does_not_apply_when_the_relationship_is_created(self, use_graph):
+        source, target = _contract_pair()
+
+        ContractMatchRel(source=source, target=target, only_on_match="FIRST").merge()
+
+        assert ContractMatchRel.match_relationships()[0].only_on_match is None
+
+        ContractMatchRel(source=source, target=target, only_on_match="SECOND").merge()
+
+        assert ContractMatchRel.match_relationships()[0].only_on_match == "SECOND"
