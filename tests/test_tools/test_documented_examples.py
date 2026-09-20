@@ -13,6 +13,9 @@ from neontology.tools import (
     DuplicateNodeDefinitionError,
     ImportContentError,
     ImportValidationError,
+    export_records,
+    export_yaml,
+    import_csv,
     import_md,
     import_records,
     import_yaml,
@@ -324,3 +327,127 @@ def test_the_dump_container_round_trips(use_graph):
     report = import_records([data], error_on_unmatched=True)
 
     assert report.relationships == {"RESOLVES_TO": 1}
+
+
+def test_relationships_arriving_at_a_node(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "hosts.yaml", "- LABEL: Host\n  hostname: dns1\n- LABEL: Host\n  hostname: dns2\n")
+    _write(
+        dir_path,
+        "ip.yaml",
+        "LABEL: IPAddress\n"
+        "ip: 10.0.0.1\n"
+        "RELATIONSHIPS_IN:\n"
+        "  - RELATIONSHIP_TYPE: RESOLVES_TO\n"
+        "    SOURCE_LABEL: Host\n"
+        "    SOURCES:\n"
+        "      - dns1\n"
+        "      - dns2\n",
+    )
+
+    report = import_yaml(dir_path, error_on_unmatched=True)
+
+    assert report.relationships == {"RESOLVES_TO": 2}
+
+
+def test_matching_the_declaring_nodes_own_end_on_a_property(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "ips.yaml", "LABEL: IPAddress\nip: 10.0.0.1\n")
+    _write(
+        dir_path,
+        "hosts.yaml",
+        "LABEL: Host\n"
+        "hostname: web1\n"
+        "asset_tag: asset-0091\n"
+        "RELATIONSHIPS_IN:\n"
+        "  - RELATIONSHIP_TYPE: MANAGED_BY\n"
+        "    SOURCE_LABEL: IPAddress\n"
+        "    SOURCES: [10.0.0.1]\n"
+        "    TARGET_PROPERTY: asset_tag\n",
+    )
+
+    report = import_yaml(dir_path, error_on_unmatched=True)
+
+    assert report.relationships == {"MANAGED_BY": 1}
+
+
+def test_naming_several_nodes_at_both_ends_is_an_error(use_graph):
+    records = [
+        {
+            "RELATIONSHIP_TYPE": "RESOLVES_TO",
+            "SOURCE_LABEL": "Host",
+            "TARGET_LABEL": "IPAddress",
+            "SOURCES": ["web1", "web2"],
+            "TARGETS": ["10.0.0.1", "10.0.0.2"],
+        }
+    ]
+
+    with pytest.raises(ImportContentError, match="both ends"):
+        import_records(records, check_unmatched=False)
+
+
+def test_a_csv_of_nodes(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "hosts.csv", "LABEL,hostname,owner\nHost,web1,platform-team\nHost,web2,data-team\n")
+
+    report = import_csv(dir_path)
+
+    assert report.nodes == {"Host": 2}
+    assert Host.match("web1").owner == "platform-team"
+
+
+def test_a_csv_with_defaults(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "hosts.csv", "hostname,owner\nweb1,platform-team\n")
+    _write(dir_path, "ips.csv", "ip\n10.0.0.1\n")
+    _write(dir_path, "resolves.csv", "SOURCE,TARGET\nweb1,10.0.0.1\n")
+
+    import_csv(dir_path / "hosts.csv", defaults={"LABEL": "Host"})
+    import_csv(dir_path / "ips.csv", defaults={"LABEL": "IPAddress"})
+
+    report = import_csv(
+        dir_path / "resolves.csv",
+        defaults={
+            "RELATIONSHIP_TYPE": "RESOLVES_TO",
+            "SOURCE_LABEL": "Host",
+            "TARGET_LABEL": "IPAddress",
+        },
+        error_on_unmatched=True,
+    )
+
+    assert report.relationships == {"RESOLVES_TO": 1}
+
+
+def test_a_csv_cannot_nest(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "hosts.csv", "LABEL,hostname,RELATIONSHIPS_OUT\nHost,web1,x\n")
+
+    with pytest.raises(ImportContentError, match="flat record"):
+        import_csv(dir_path)
+
+
+def test_exporting_a_result_as_content(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    host = Host(hostname="web1", owner="platform-team")
+    host.merge()
+    ip = IPAddress(ip="10.0.0.1")
+    ip.merge()
+    ResolvesTo(source=host, target=ip).merge()
+
+    result = use_graph.evaluate_query("MATCH (n:Host)-[r:RESOLVES_TO]->(o:IPAddress) RETURN n, r, o")
+
+    records = export_records(result)
+
+    web1 = [x for x in records if x.get("hostname") == "web1"][0]
+
+    assert web1["RELATIONSHIPS_OUT"][0]["TARGETS"] == ["10.0.0.1"]
+
+    export_yaml(result, dir_path / "graph.yaml")
+
+    assert (dir_path / "graph.yaml").exists()

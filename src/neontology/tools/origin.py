@@ -5,7 +5,7 @@ it can say which file and which entry it was - the thing a bare pydantic error, 
 from somewhere inside a batch of five thousand records, cannot tell you.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
 
@@ -17,6 +17,7 @@ class RecordOrigin:
         source: the file it was read from, or a description of the input it came in.
         document: which document within the file, where a file holds several.
         index: which record within that document or list.
+        line: which line of the file, where the format is one record per line.
         path: where inside the record, for a record nested in another one - for
             example `RELATIONSHIPS_OUT[0].TARGET_NODES[1]`.
     """
@@ -24,6 +25,7 @@ class RecordOrigin:
     source: str
     document: Optional[int] = None
     index: Optional[int] = None
+    line: Optional[int] = None
     path: Optional[str] = None
 
     def nested(self, path: str) -> "RecordOrigin":
@@ -37,7 +39,7 @@ class RecordOrigin:
         """
         joined = f"{self.path}.{path}" if self.path else path
 
-        return RecordOrigin(source=self.source, document=self.document, index=self.index, path=joined)
+        return replace(self, path=joined)
 
     def at(self, index: int) -> "RecordOrigin":
         """Get the origin of the record at a position within this one.
@@ -49,11 +51,22 @@ class RecordOrigin:
             RecordOrigin: that record's origin.
         """
         if self.index is None:
-            return RecordOrigin(source=self.source, document=self.document, index=index, path=self.path)
+            return replace(self, index=index)
 
         # already positioned, so this is a position within the record rather than
         # alongside it - which the path describes
         return self.nested(f"[{index}]")
+
+    def at_line(self, line: int) -> "RecordOrigin":
+        """Get the origin of the record on one line of the file.
+
+        Args:
+            line (int): the line in the file, counting from one as an editor does.
+
+        Returns:
+            RecordOrigin: an origin naming that line.
+        """
+        return replace(self, line=line)
 
     def in_document(self, document: int) -> "RecordOrigin":
         """Get the origin of a record in one document of a multi-document file.
@@ -64,7 +77,7 @@ class RecordOrigin:
         Returns:
             RecordOrigin: an origin naming that document.
         """
-        return RecordOrigin(source=self.source, document=document, index=self.index, path=self.path)
+        return replace(self, document=document)
 
     def __str__(self) -> str:
         """Describe the origin the way it is reported to whoever wrote the content.
@@ -79,6 +92,9 @@ class RecordOrigin:
 
         if self.index is not None:
             parts.append(f"record {self.index + 1}")
+
+        if self.line is not None:
+            parts.append(f"line {self.line}")
 
         described = ", ".join(parts)
 

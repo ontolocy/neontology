@@ -18,15 +18,18 @@ from .origin import RecordOrigin, SourcedRecord
 
 # Keys which say how to build the graph rather than describing a property of a model.
 # Everything else in a record is a property of the node or relationship it describes.
-NODE_CONTROL_KEYS = frozenset({"LABEL", "RELATIONSHIPS_OUT"})
+NODE_CONTROL_KEYS = frozenset({"LABEL", "RELATIONSHIPS_OUT", "RELATIONSHIPS_IN"})
 
 RELATIONSHIP_CONTROL_KEYS = frozenset(
     {
         "RELATIONSHIP_TYPE",
         "SOURCE_LABEL",
         "TARGET_LABEL",
+        "SOURCE_PROPERTY",
         "TARGET_PROPERTY",
         "SOURCE",
+        "SOURCES",
+        "SOURCE_NODES",
         "TARGET",
         "TARGETS",
         "TARGET_NODES",
@@ -36,8 +39,14 @@ RELATIONSHIP_CONTROL_KEYS = frozenset(
     }
 )
 
-# the keys naming the far end of a relationship, in the order they are read
+# the keys naming each end of a relationship, in the order they are read: nodes
+# defined inline, then a list of identifiers, then a single identifier
+SOURCE_KEYS = ("SOURCE_NODES", "SOURCES", "SOURCE")
 TARGET_KEYS = ("TARGET_NODES", "TARGETS", "TARGET")
+
+# the two blocks a node record may use to declare the relationships it takes part in,
+# mapped to the end of those relationships the declaring node is
+RELATIONSHIP_BLOCKS = {"RELATIONSHIPS_OUT": "SOURCE", "RELATIONSHIPS_IN": "TARGET"}
 
 # accepted as aliases of the canonical uppercase endpoint keys
 LEGACY_ENDPOINT_KEYS = {"source": "SOURCE", "target": "TARGET"}
@@ -124,6 +133,11 @@ def check_control_keys(raw: dict[str, Any], reserved: frozenset, model_class: ty
     Raises:
         ImportContentError: naming the nearest control key, where there is one.
     """
+    is_node = reserved is NODE_CONTROL_KEYS
+
+    kind, other_kind = ("node", "relationship") if is_node else ("relationship", "node")
+    other = RELATIONSHIP_CONTROL_KEYS if is_node else NODE_CONTROL_KEYS
+
     for key in raw:
         if key in reserved or key in model_class.model_fields:
             continue
@@ -131,12 +145,18 @@ def check_control_keys(raw: dict[str, Any], reserved: frozenset, model_class: ty
         if not _CONTROL_KEY_SHAPE.match(key):
             continue
 
+        if key in other:
+            raise ImportContentError(
+                f"{key!r} is a key of a {other_kind} record, but this is a {kind} record."
+                f" A record describes one or the other, so a {other_kind} needs a record of its own."
+            )
+
         suggestions = difflib.get_close_matches(key, sorted(reserved), n=1, cutoff=0.6)
 
         did_you_mean = f" Did you mean {suggestions[0]!r}?" if suggestions else ""
 
         raise ImportContentError(
-            f"{key!r} is not one of the keys a record uses to say how to build the graph, and"
+            f"{key!r} is not one of the keys a {kind} record uses to say how to build the graph, and"
             f" {model_class.__name__} has no property by that name.{did_you_mean}"
         )
 
@@ -197,6 +217,7 @@ class NeontologyRelationshipRaw(BaseModel):
     TARGET_LABEL: str
     SOURCE: Optional[Any] = None
     TARGET: Optional[Any] = None
+    SOURCE_PROPERTY: Optional[str] = None
     TARGET_PROPERTY: Optional[str] = None
 
 
@@ -232,6 +253,7 @@ class NeontologyRelationshipRecord(BaseModel):
     input_record: NeontologyRelationshipRaw
     relationship_type: Optional[str] = None
 
+    source_prop: Optional[str] = None
     target_prop: Optional[str] = None
     source_label: Optional[str] = None
     target_label: Optional[str] = None
@@ -263,6 +285,9 @@ class NeontologyRelationshipRecord(BaseModel):
         if not data.get("target_label"):
             data["target_label"] = raw.get("TARGET_LABEL")
 
+        if not data.get("source_prop"):
+            data["source_prop"] = raw.get("SOURCE_PROPERTY")
+
         if not data.get("target_prop"):
             data["target_prop"] = raw.get("TARGET_PROPERTY")
 
@@ -286,7 +311,10 @@ class NeontologyRelationshipRecord(BaseModel):
     @model_validator(mode="after")
     def populate_fields(self):
         """Use the raw input data (from input_record) to populate the fields of the model."""
-        # if an explicit TARGET_PROPERTY wasn't passed in, use the primary property
+        # where an end's property wasn't named explicitly, match on the primary property
+        if self.source_prop is None:
+            self.source_prop = node_class_for_label(self.source_label).__primaryproperty__
+
         if self.target_prop is None:
             self.target_prop = node_class_for_label(self.target_label).__primaryproperty__
 
@@ -334,10 +362,12 @@ def _node_record(
     Raises:
         ImportContentError: if it uses a key no node record has.
     """
-    if inline is True and "RELATIONSHIPS_OUT" in raw:
+    declared = [block for block in RELATIONSHIP_BLOCKS if block in raw]
+
+    if inline is True and declared:
         raise ImportContentError(
-            "A node defined inline in TARGET_NODES cannot declare RELATIONSHIPS_OUT. Give the node a"
-            " record of its own to relate it to anything further."
+            f"A node defined inline cannot declare {declared[0]}. Give the node a record of its own"
+            " to relate it to anything further."
         )
 
     check_control_keys(raw, NODE_CONTROL_KEYS, node_class_for_label(raw.get("LABEL")))
@@ -345,107 +375,187 @@ def _node_record(
     return NeontologyNodeRecord(input_record=raw, inline=inline, origin=origin)
 
 
+def _read_end(
+    raw: dict[str, Any],
+    end: str,
+    origin: RecordOrigin,
+) -> tuple[list[NeontologyNodeRecord], list[Any]]:
+    """Read the nodes a relationship record names at one of its ends.
+
+    An end is named in one of three ways, which behave the same wherever the record
+    appears: a single identifier (`SOURCE`/`TARGET`), a list of them
+    (`SOURCES`/`TARGETS`), or node records defined inline (`SOURCE_NODES`/`TARGET_NODES`),
+    which the import brings into the graph rather than matching.
+
+    Args:
+        raw (dict[str, Any]): the raw relationship record, read destructively.
+        end (str): "SOURCE" or "TARGET".
+        origin (RecordOrigin): where the record came from.
+
+    Returns:
+        tuple: the node records defined inline at this end, and the values identifying
+        every node at it.
+    """
+    inline_nodes: list[NeontologyNodeRecord] = []
+    values: list[Any] = []
+
+    for position, entry in enumerate(raw.pop(f"{end}_NODES", None) or []):
+        node_record = _node_record(entry, origin.nested(f"{end}_NODES[{position}]"), inline=True)
+
+        inline_nodes.append(node_record)
+        values.append(primary_property_value(node_record))
+
+    values += raw.pop(f"{end}S", None) or []
+
+    if end in raw:
+        values.append(raw.pop(end))
+
+    return inline_nodes, values
+
+
+def _declaring_node_value(node_record: "NeontologyNodeRecord", prop: Optional[str], end: str) -> Any:
+    """Get the value identifying the node which declared a nested relationship.
+
+    Its own end may be matched on a property other than its primary property, in which
+    case the record has to carry that property for the relationship to find it.
+
+    Args:
+        node_record (NeontologyNodeRecord): the declaring node's record.
+        prop (Optional[str]): the property its end is matched on, if one is named.
+        end (str): "SOURCE" or "TARGET".
+
+    Returns:
+        Any: the value identifying it.
+
+    Raises:
+        ImportContentError: if the record does not carry the property named.
+    """
+    if not prop:
+        return primary_property_value(node_record)
+
+    declared = node_record.output_record or {}
+
+    if prop not in declared:
+        raise ImportContentError(
+            f"A relationship is matched on {end}_PROPERTY {prop!r}, but the {node_record.label} record"
+            f" declaring it does not give {prop!r} a value, so there is nothing to match it by."
+        )
+
+    return declared[prop]
+
+
 def expand_relationship(
     raw: dict[str, Any],
-    source_value: Any,
-    source_label: Optional[str],
     origin: RecordOrigin,
     context: ImportContext,
+    fixed_end: Optional[tuple[str, "NeontologyNodeRecord", Optional[str]]] = None,
 ) -> tuple[list[NeontologyNodeRecord], list[NeontologyRelationshipRecord]]:
-    """Expand one relationship record into a record per target it names.
+    """Expand one relationship record into a record per pair of nodes it names.
 
-    A relationship record names its targets in one of three ways, which behave the same
-    whether the record stands on its own or is nested under a node's RELATIONSHIPS_OUT:
-    `TARGET` for a single node, `TARGETS` for several, and `TARGET_NODES` for nodes
-    defined inline, which the import brings into the graph rather than matching.
+    One end of the record names a single node and the other may name several, so the
+    record expands to one relationship per node at that end. A record nested under a
+    node fixes the end that node is: the declaring node is the source of everything in
+    its `RELATIONSHIPS_OUT`, and the target of everything in its `RELATIONSHIPS_IN`.
 
     Args:
         raw (dict[str, Any]): one raw relationship record.
-        source_value (Any): the value identifying the source node.
-        source_label (Optional[str]): the primary label of the source node.
         origin (RecordOrigin): where the record came from.
         context (ImportContext): the run it is part of.
+        fixed_end (Optional[tuple]): for a nested record, which end the declaring node
+            is, the record describing it, and its primary label.
 
     Returns:
         tuple: the node records the relationship defines inline, and one relationship
-        record per target.
+        record per pair of nodes.
 
     Raises:
-        ImportContentError: if the record names no target at all, or has no source.
+        ImportContentError: if either end names no node, or both name several.
     """
     raw = normalise_endpoint_keys(raw, context, origin)
 
-    raw["SOURCE_LABEL"] = source_label
+    if fixed_end is not None:
+        end, node_record, label = fixed_end
+
+        if any(key in raw for key in (end, f"{end}S", f"{end}_NODES")):
+            raise ImportContentError(
+                f"A relationship under RELATIONSHIPS_{'OUT' if end == 'SOURCE' else 'IN'} names its own"
+                f" {end}, but the node declaring it is the {end.lower()} of every relationship in that"
+                " block. Remove it, or give the relationship a record of its own."
+            )
+
+        raw[end] = _declaring_node_value(node_record, raw.get(f"{end}_PROPERTY"), end)
+        raw[f"{end}_LABEL"] = label
 
     check_control_keys(raw, RELATIONSHIP_CONTROL_KEYS, relationship_class_for_type(raw.get("RELATIONSHIP_TYPE")))
 
-    if not any(key in raw for key in TARGET_KEYS):
+    rel_type = raw.get("RELATIONSHIP_TYPE")
+
+    inline_sources, sources = _read_end(raw, "SOURCE", origin)
+    inline_targets, targets = _read_end(raw, "TARGET", origin)
+
+    for end, named in (("SOURCE", sources), ("TARGET", targets)):
+        if named:
+            continue
+
         raise ImportContentError(
-            f"A {raw.get('RELATIONSHIP_TYPE')!r} relationship record names no target. Give it a TARGET,"
-            " a list of TARGETS, or TARGET_NODES to define the nodes at the far end inline."
+            f"A {rel_type!r} relationship record names no {end.lower()}. Give it a {end}, a list of"
+            f" {end}S, or {end}_NODES to define the nodes at that end inline."
         )
 
-    if source_value is None:
-        raise ImportContentError(f"A {raw.get('RELATIONSHIP_TYPE')!r} relationship record has no SOURCE to relate from.")
+    if len(sources) > 1 and len(targets) > 1:
+        raise ImportContentError(
+            f"A {rel_type!r} relationship record names several nodes at both ends, so which relates to"
+            " which is not defined. Name one node at one of the ends, and give the other end a record"
+            " of its own for each node it relates to."
+        )
 
-    inline_nodes = []
-    targets = []
-
-    for position, entry in enumerate(raw.pop("TARGET_NODES", None) or []):
-        node_record = _node_record(entry, origin.nested(f"TARGET_NODES[{position}]"), inline=True)
-
-        inline_nodes.append(node_record)
-        targets.append(primary_property_value(node_record))
-
-    targets += raw.pop("TARGETS", None) or []
-
-    if "TARGET" in raw:
-        targets.append(raw.pop("TARGET"))
+    pairs = [(source, target) for source in sources for target in targets]
 
     relationships = [
         NeontologyRelationshipRecord(
-            input_record={**raw, "SOURCE": source_value, "TARGET": target},
+            input_record={**raw, "SOURCE": source, "TARGET": target},
             origin=origin,
         )
-        for target in targets
+        for source, target in pairs
     ]
 
-    return inline_nodes, relationships
+    return inline_sources + inline_targets, relationships
 
 
 def _process_sub_records(
-    source_node_record: NeontologyNodeRecord,
+    node_record: NeontologyNodeRecord,
     subrecords: list[dict[str, Any]],
+    block: str,
     origin: RecordOrigin,
     context: ImportContext,
 ) -> tuple[list[NeontologyNodeRecord], list[NeontologyRelationshipRecord]]:
-    """Expand the relationships declared under a node record's RELATIONSHIPS_OUT.
+    """Expand the relationships declared under one of a node record's relationship blocks.
 
     Args:
-        source_node_record (NeontologyNodeRecord): the record declaring them, which is
-            the source of every one of them.
+        node_record (NeontologyNodeRecord): the record declaring them, which is one end
+            of every one of them.
         subrecords (list[dict[str, Any]]): the raw relationship records.
+        block (str): RELATIONSHIPS_OUT or RELATIONSHIPS_IN.
         origin (RecordOrigin): where the declaring record came from.
         context (ImportContext): the run it is part of.
 
     Returns:
         tuple: the node records defined inline, and the relationship records.
     """
-    source_pp = primary_property_value(source_node_record)
+    end = RELATIONSHIP_BLOCKS[block]
 
     output_nodes = []
     output_rels = []
 
     for position, record in enumerate(subrecords):
-        nested_origin = origin.nested(f"RELATIONSHIPS_OUT[{position}]")
+        nested_origin = origin.nested(f"{block}[{position}]")
 
         with context.collector.catching(nested_origin):
             new_nodes, new_rels = expand_relationship(
                 record,
-                source_pp,
-                source_node_record.label,
                 nested_origin,
                 context,
+                fixed_end=(end, node_record, node_record.label),
             )
 
             output_nodes += new_nodes
@@ -561,14 +671,17 @@ def prepare_sourced_records(
 
         with context.collector.catching(origin):
             if "LABEL" in record:
-                rel_records = record.pop("RELATIONSHIPS_OUT", None)
+                declared = {block: record.pop(block, None) for block in RELATIONSHIP_BLOCKS}
 
                 node_record = _node_record(record, origin)
 
                 nodes.append(node_record)
 
-                if rel_records:
-                    new_nodes, new_rels = _process_sub_records(node_record, rel_records, origin, context)
+                for block, rel_records in declared.items():
+                    if not rel_records:
+                        continue
+
+                    new_nodes, new_rels = _process_sub_records(node_record, rel_records, block, origin, context)
 
                     nodes += new_nodes
                     relationships += new_rels
@@ -576,15 +689,7 @@ def prepare_sourced_records(
             elif "RELATIONSHIP_TYPE" in record:
                 # normalised here rather than twice, so using a deprecated endpoint key
                 # is noted once for the record rather than once per pass over it
-                record = normalise_endpoint_keys(record, context, origin)
-
-                new_nodes, new_rels = expand_relationship(
-                    record,
-                    record.get("SOURCE"),
-                    record.get("SOURCE_LABEL"),
-                    origin,
-                    context,
-                )
+                new_nodes, new_rels = expand_relationship(record, origin, context)
 
                 nodes += new_nodes
                 relationships += new_rels

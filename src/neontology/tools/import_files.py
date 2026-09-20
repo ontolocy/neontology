@@ -1,7 +1,8 @@
+import csv
 import json
 from logging import getLogger
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import yaml
 
@@ -143,6 +144,70 @@ def _read_md(file_path: Path) -> list[SourcedRecord]:
     return [SourcedRecord(data=record, origin=RecordOrigin(source=str(file_path)))]
 
 
+# a CSV row is one flat record, so the keys which describe something nested in a record
+# cannot be spelled in one
+CSV_UNSUPPORTED_KEYS = frozenset({"RELATIONSHIPS_OUT", "RELATIONSHIPS_IN", "SOURCE_NODES", "TARGET_NODES"})
+
+
+def _read_csv(file_path: Path, defaults: Optional[dict[str, Any]] = None) -> list[SourcedRecord]:
+    """Read the records in a CSV file, one per row.
+
+    A row is a flat record: it can describe a node or a relationship, but not nodes
+    nested inside a relationship or relationships nested under a node. An empty cell
+    means the property was not given, so the model's default applies rather than the
+    property being set to an empty string.
+
+    Args:
+        file_path (Path): the file to read.
+        defaults (Optional[dict[str, Any]]): values applied to every row which does not
+            give them itself, for keys which are the same down the whole file.
+
+    Returns:
+        list[SourcedRecord]: the records it holds, each knowing which line it was on.
+
+    Raises:
+        ImportContentError: if the file has no header row, or uses a key a flat record
+            cannot express.
+    """
+    with open(file_path, "r", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+
+        if reader.fieldnames is None:
+            raise ImportContentError(
+                f"{file_path} has no header row. The first line of a CSV names the properties and keys its rows carry."
+            )
+
+        unsupported = CSV_UNSUPPORTED_KEYS.intersection(reader.fieldnames)
+
+        if unsupported:
+            raise ImportContentError(
+                f"{file_path} has a {sorted(unsupported)[0]} column, which a CSV cannot express: a row"
+                " is one flat record. Put the relationships in a CSV of their own, naming the nodes at"
+                " each end, or use YAML or JSON where records can nest."
+            )
+
+        origin = RecordOrigin(source=str(file_path))
+
+        records = []
+
+        for row in reader:
+            # an empty cell says nothing about the property, so it is left out entirely
+            # and the model's own default applies
+            record = {k: v for k, v in row.items() if k is not None and v not in (None, "")}
+
+            if not record:
+                continue
+
+            records.append(
+                SourcedRecord(
+                    data={**(defaults or {}), **record},
+                    origin=origin.at_line(reader.line_num),
+                )
+            )
+
+    return records
+
+
 def _import_files(
     path: Union[str, Path],
     path_pattern: str,
@@ -256,6 +321,58 @@ def import_yaml(
         path,
         path_pattern,
         _read_yaml,
+        batch_size,
+        check_unmatched,
+        error_on_unmatched,
+        validate_only,
+    )
+
+
+def import_csv(
+    path: str,
+    path_pattern: str = "**/*.csv",
+    defaults: Optional[dict[str, Any]] = None,
+    batch_size: Optional[int] = None,
+    check_unmatched: bool = True,
+    error_on_unmatched: bool = False,
+    validate_only: bool = False,
+) -> ImportReport:
+    """Import CSV files into the graph, a record per row.
+
+    A row is a flat record, so it can describe a node or a relationship but cannot nest
+    one inside another: a node's relationships and nodes defined inline both need a
+    format which nests, or a CSV of their own naming the nodes at each end.
+
+    Keys which are the same down a whole file - the LABEL of a file of one kind of node,
+    say - can be given once in `defaults` rather than as a column, and a row which has a
+    column of its own for one of them overrides it.
+
+    An empty cell means the property was not given, so the model's default applies.
+    Every value is read as text and converted by the model, so a column of numbers,
+    booleans or dates arrives as the type the model declares.
+
+    Args:
+        path (str): a file, or a directory to search for files.
+        path_pattern (str): the glob pattern to match files in a directory.
+        defaults (Optional[dict[str, Any]]): values applied to every row which does not
+            give them itself.
+        batch_size (Optional[int]): how many records to write per query. It limits the
+            size of each write, not what a relationship can refer to.
+        check_unmatched (bool): check relationship endpoints resolve, warn if not.
+        error_on_unmatched (bool): raise rather than warn where they do not.
+        validate_only (bool): do not populate the graph.
+
+    Returns:
+        ImportReport: what the import did, and which files it read.
+    """
+
+    def reader(file_path: Path) -> list[SourcedRecord]:
+        return _read_csv(file_path, defaults)
+
+    return _import_files(
+        path,
+        path_pattern,
+        reader,
         batch_size,
         check_unmatched,
         error_on_unmatched,

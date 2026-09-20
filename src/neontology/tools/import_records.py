@@ -282,9 +282,7 @@ def _check_endpoints(
 
     for record in input_records:
         with context.collector.catching(record.origin):
-            source_class = node_class_for_label(record.source_label)
-
-            required[(record.source_label, source_class.__primaryproperty__)][record.source].append(record.origin)
+            required[(record.source_label, record.source_prop)][record.source].append(record.origin)
             required[(record.target_label, record.target_prop)][record.target].append(record.origin)
 
     known = _known_endpoints(node_records)
@@ -344,7 +342,9 @@ def _import_relationships(
         report (ImportReport): counts what was merged.
         batch_size (Optional[int]): how many records to merge per query, or None for all.
     """
-    for (rel_type, target_prop, source_label, target_label), rel_entries in _group_relationships(input_records).items():
+    for key, rel_entries in _group_relationships(input_records).items():
+        rel_type, source_prop, target_prop, source_label, target_label = key
+
         rel_class = relationship_class_for_type(rel_type)
 
         source_type = node_class_for_label(source_label)
@@ -353,8 +353,15 @@ def _import_relationships(
         records = [x.output_record for x in rel_entries]
         origins = [x.origin for x in rel_entries]
 
-        def hydrate(record, rel_class=rel_class, source_type=source_type, target_type=target_type, target_prop=target_prop):
-            return _hydrate_relationship(record, rel_class, source_type, target_type, target_prop)
+        def hydrate(
+            record,
+            rel_class=rel_class,
+            source_type=source_type,
+            target_type=target_type,
+            source_prop=source_prop,
+            target_prop=target_prop,
+        ):
+            return _hydrate_relationship(record, rel_class, source_type, target_type, source_prop, target_prop)
 
         for batch, batch_origins in _batches_with_origins(records, origins, batch_size):
             try:
@@ -362,6 +369,7 @@ def _import_relationships(
                     batch,
                     source_type=source_type,
                     target_type=target_type,
+                    source_prop=source_prop,
                     target_prop=target_prop,
                 )
 
@@ -380,7 +388,8 @@ def _group_relationships(
         input_records (list[NeontologyRelationshipRecord]): the records to group.
 
     Returns:
-        dict[tuple, list]: the records, by relationship type, target property and labels.
+        dict[tuple, list]: the records, by relationship type, the property each end is
+        matched on, and the labels at each end.
     """
     grouped: dict[tuple, list[NeontologyRelationshipRecord]] = defaultdict(list)
 
@@ -388,6 +397,7 @@ def _group_relationships(
         grouped[
             (
                 record.relationship_type,
+                record.source_prop,
                 record.target_prop,
                 record.source_label,
                 record.target_label,
@@ -402,6 +412,7 @@ def _hydrate_relationship(
     rel_class: type,
     source_type: type,
     target_type: type,
+    source_prop: Optional[str],
     target_prop: Optional[str],
 ) -> Any:
     """Build one relationship's model the way merging it does.
@@ -415,6 +426,7 @@ def _hydrate_relationship(
         rel_class (type): the relationship class.
         source_type (type): the source node class.
         target_type (type): the target node class.
+        source_prop (Optional[str]): the property the source is matched on.
         target_prop (Optional[str]): the property the target is matched on.
 
     Returns:
@@ -422,10 +434,10 @@ def _hydrate_relationship(
     """
     hydrated = dict(record)
 
-    source_prop = source_type.__primaryproperty__
+    resolved_source_prop = source_prop or source_type.__primaryproperty__
     resolved_target_prop = target_prop or target_type.__primaryproperty__
 
-    hydrated["source"] = source_type.model_construct(**{source_prop: record["source"]})
+    hydrated["source"] = source_type.model_construct(**{resolved_source_prop: record["source"]})
     hydrated["target"] = target_type.model_construct(**{resolved_target_prop: record["target"]})
 
     return rel_class(**hydrated)
@@ -454,6 +466,7 @@ def _validate_records(
                 relationship_class_for_type(rel_record.relationship_type),
                 node_class_for_label(rel_record.source_label),
                 node_class_for_label(rel_record.target_label),
+                rel_record.source_prop,
                 rel_record.target_prop,
             )
 

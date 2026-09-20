@@ -82,15 +82,17 @@ first_seen: "2026-01-01"
 | --- | --- | --- |
 | `LABEL` | node | the node's primary label |
 | `RELATIONSHIPS_OUT` | node | relationships leaving this node |
+| `RELATIONSHIPS_IN` | node | relationships arriving at this node |
 | `RELATIONSHIP_TYPE` | relationship | the relationship's type |
 | `SOURCE_LABEL` | relationship | primary label of the node it leaves |
 | `TARGET_LABEL` | relationship | primary label of the node it arrives at |
-| `SOURCE` | relationship | which node it leaves |
-| `TARGET` | relationship | which node it arrives at |
-| `TARGETS` | relationship | several nodes it arrives at |
-| `TARGET_NODES` | relationship | nodes at the far end, defined inline |
-| `TARGET_PROPERTY` | relationship | match the target on this property instead of its primary property |
+| `SOURCE` / `TARGET` | relationship | which node it leaves / arrives at |
+| `SOURCES` / `TARGETS` | relationship | several nodes at that end |
+| `SOURCE_NODES` / `TARGET_NODES` | relationship | nodes at that end, defined inline |
+| `SOURCE_PROPERTY` / `TARGET_PROPERTY` | relationship | match that end on this property instead of its primary property |
 | `BODY_PROPERTY` | markdown frontmatter | which property the markdown body belongs in |
+
+Each end of a relationship is named the same way: a single value, a list, or records defining the nodes inline. One end names a single node and the other may name several, so a record expands to one relationship per node at that end. Naming several at *both* ends is an error, since which relates to which would not be defined.
 
 A key written like a control key which is neither one of these nor a property of your model is reported as a mistake, with the nearest control key suggested — so `TARGET_PROPERTIES` tells you it meant `TARGET_PROPERTY` rather than complaining about an unexpected field.
 
@@ -116,6 +118,25 @@ RELATIONSHIPS_OUT:
 ```
 
 The node declaring them is the source of every one, so these records need no `SOURCE` or `SOURCE_LABEL`.
+
+### Relationships arriving at a node
+
+`RELATIONSHIPS_IN` is the mirror of `RELATIONSHIPS_OUT`: the node declaring them is the *target* of every one, so the far end is named with `SOURCES`, `SOURCE_NODES` or `SOURCE`.
+
+```yaml
+LABEL: IPAddress
+ip: 10.0.0.1
+RELATIONSHIPS_IN:
+  - RELATIONSHIP_TYPE: RESOLVES_TO
+    SOURCE_LABEL: Host
+    SOURCES:
+      - dns1
+      - dns2
+```
+
+Declaring relationships only where they leave keeps it obvious from the content which node owns what, and is worth sticking to as a convention. `RELATIONSHIPS_IN` is there for the cases where the arriving end is the one with something to say — an IP address that knows which hosts resolve to it, say, where the hosts are managed elsewhere.
+
+A node can declare both blocks. A record inside either may not name its own end, since the node declaring it is that end.
 
 ### Split: nodes in one file, relationships in another
 
@@ -212,11 +233,24 @@ TARGET_PROPERTY: asset_tag
 
 Here the hosts are matched by their `asset_tag` rather than by `hostname`. The property must identify exactly one node; if it matches several, that is reported.
 
+`SOURCE_PROPERTY` does the same for the other end, and both work inside `RELATIONSHIPS_OUT` and `RELATIONSHIPS_IN` — including for the declaring node's own end, whose record then has to carry that property:
+
+```yaml
+LABEL: Host
+hostname: web1
+asset_tag: asset-0091
+RELATIONSHIPS_IN:
+  - RELATIONSHIP_TYPE: MANAGED_BY
+    SOURCE_LABEL: IPAddress
+    SOURCES: [10.0.0.1]
+    TARGET_PROPERTY: asset_tag
+```
+
 ## Importing
 
 ```python
 from neontology import init_neontology
-from neontology.tools import import_yaml, import_json, import_md, import_records
+from neontology.tools import import_yaml, import_json, import_md, import_csv, import_records
 
 import myapp.models  # defining your models is what registers them
 
@@ -247,6 +281,40 @@ BODY_PROPERTY: description
 ---
 This host serves the public website.
 ```
+
+### CSV
+
+A CSV row is one flat record. It can describe a node or a relationship, but nothing nested: `RELATIONSHIPS_OUT`, `RELATIONSHIPS_IN`, `SOURCE_NODES` and `TARGET_NODES` all need a format that nests, or a CSV of their own naming the nodes at each end.
+
+```csv
+LABEL,hostname,owner
+Host,web1,platform-team
+Host,web2,data-team
+```
+
+Keys which are the same down a whole file can be given once in `defaults` rather than as a column, and a row with a column of its own overrides it:
+
+```python
+import_csv("hosts.csv", defaults={"LABEL": "Host"})
+
+import_csv(
+    "resolves.csv",
+    defaults={
+        "RELATIONSHIP_TYPE": "RESOLVES_TO",
+        "SOURCE_LABEL": "Host",
+        "TARGET_LABEL": "IPAddress",
+    },
+)
+```
+
+`defaults` describe the rows one call reads, so files of different kinds are imported by a call each — point the call at a file, or narrow it with `path_pattern`.
+
+Two rules are worth knowing:
+
+- **An empty cell means the property was not given**, so the model's default applies rather than the property being set to an empty string. A CSV cannot express an empty string as a value.
+- **Every value is read as text and converted by the model**, so columns of numbers, booleans and dates arrive as the type the model declares. A property holding a list needs a format that nests.
+
+A row which does not validate is reported with the line it is on, counting the header as line 1.
 
 ### Options
 
@@ -323,7 +391,22 @@ A batch of records can also fail for a reason no single record explains — the 
 
 ## Exporting
 
-`neontology_dump()` on a node, a relationship or a query result produces records in this same format, so a graph can be written back out and read in again:
+`export_records()` describes a query result as content: a record per node, with each relationship declared under the node it leaves. That is the shape a repository is usually written in, so what comes out looks like what a person would have written.
+
+```python
+from neontology.tools import export_records, export_yaml, export_json
+
+result = GraphConnection().evaluate_query("MATCH (n:Host)-[r]->(o) RETURN n, r, o")
+
+export_yaml(result, "content/graph.yaml")
+export_json(result, "content/graph.json")
+
+records = export_records(result)   # or the records themselves
+```
+
+A query has to return the nodes at both ends of a relationship for the relationship to be built at all, so return them alongside it. Properties which have no value are left out, so what is written says only what was set — pass `exclude_none=False` to write them all.
+
+`neontology_dump()` on a node, a relationship or a query result produces the flatter form, split into nodes and edges:
 
 ```python
 result = GraphConnection().evaluate_query("MATCH (n:Host)-[r]->(o) RETURN n, r, o")
