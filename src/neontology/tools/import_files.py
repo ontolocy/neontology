@@ -8,9 +8,9 @@ import yaml
 
 from .errors import ImportContentError
 from .import_records import import_sourced_records
-from .origin import RecordOrigin, SourcedRecord
-from .records import iter_raw_records
-from .report import ImportReport
+from .importreport import ImportReport
+from .recordformat import iter_raw_records
+from .recordorigin import RecordOrigin, SourcedRecord
 
 logger = getLogger(__name__)
 

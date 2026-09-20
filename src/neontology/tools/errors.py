@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
-from .origin import RecordOrigin
+from .recordorigin import RecordOrigin
 
 
 class ImportContentError(ValueError):

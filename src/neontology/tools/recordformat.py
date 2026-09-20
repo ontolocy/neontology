@@ -14,7 +14,7 @@ from pydantic import BaseModel, model_validator
 
 from ..utils import get_node_types, get_rels_by_type
 from .errors import ErrorCollector, ImportContentError
-from .origin import RecordOrigin, SourcedRecord
+from .recordorigin import RecordOrigin, SourcedRecord
 
 # Keys which say how to build the graph rather than describing a property of a model.
 # Everything else in a record is a property of the node or relationship it describes.

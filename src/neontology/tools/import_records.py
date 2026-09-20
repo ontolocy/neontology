@@ -15,8 +15,8 @@ from .errors import (
     ErrorCollector,
     ImportContentError,
 )
-from .origin import RecordOrigin, SourcedRecord
-from .records import (
+from .importreport import ImportReport
+from .recordformat import (
     ImportContext,
     NeontologyNodeRecord,
     NeontologyRelationshipRecord,
@@ -26,7 +26,7 @@ from .records import (
     primary_property_value,
     relationship_class_for_type,
 )
-from .report import ImportReport
+from .recordorigin import RecordOrigin, SourcedRecord
 
 logger = logging.getLogger(__name__)
 
