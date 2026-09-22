@@ -13,7 +13,7 @@ from typing import ClassVar, Optional
 
 import pytest
 
-from neontology import BaseNode, BaseRelationship
+from neontology import BaseNode, BaseRelationship, Capability
 
 
 class TemporalNode(BaseNode):
@@ -56,8 +56,17 @@ VALUES = {
     "gaps": [timedelta(hours=1), timedelta(days=2, seconds=30)],
 }
 
+# only the aware datetime needs anything of the backend beyond storing the value: a
+# timestamp column that holds no offset reads it back naive
+_FIELDS = [
+    pytest.param(field, marks=[pytest.mark.requires_capability(Capability.TIMEZONE_AWARE_DATETIMES)])
+    if field == "aware_datetime"
+    else field
+    for field in VALUES
+]
 
-@pytest.mark.parametrize("field", list(VALUES))
+
+@pytest.mark.parametrize("field", _FIELDS)
 class TestNodeRoundTrip:
     """Each temporal type on its own, so a failure names the type that broke."""
 

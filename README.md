@@ -26,7 +26,8 @@ Neontology's core works with plain Python dictionaries and has no heavyweight de
 ```bash
 pip install neontology[pandas]   # merge_df and other pandas dataframe helpers
 pip install neontology[grand]    # the experimental in-memory NetworkX backend
-pip install neontology[all]      # both of the above
+pip install neontology[ladybug]  # the embedded LadybugDB backend
+pip install neontology[all]      # all of the above
 pip install neontology[rust]     # Rust extensions for the Neo4j driver (faster, needs a wheel for your platform)
 ```
 
@@ -176,6 +177,8 @@ For large or complex queries, data science or visualization/exploration, conside
 Neontology has experimental support for GQL/openCypher property graph databases other than Neo4j:
 
 * Memgraph
+* LadybugDB
+* NetworkX
 
 ### Memgraph Engine
 
@@ -198,3 +201,24 @@ You can also use the following environment variables and just `init_neontology(M
 * `MEMGRAPH_URI`
 * `MEMGRAPH_USERNAME`
 * `MEMGRAPH_PASSWORD`
+
+### LadybugDB Engine
+
+[LadybugDB](https://ladybugdb.com/) (formerly Kùzu) is an embedded graph database: it runs
+inside your own process, on disk or in memory, with no server to manage.
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import LadybugConfig
+
+init_neontology(LadybugConfig(db_path="my-graph.lbdb"))   # or ":memory:", the default
+
+# ... define or import your models ...
+
+GraphConnection().initialise_graph()
+```
+
+Ladybug is schema first, so `initialise_graph()` declares a table per node class and
+relationship type before anything can be written. See
+[Graph Engines](https://neontology.readthedocs.io/en/latest/graph-engines/) for what that
+means for secondary labels, constraints and indexes.

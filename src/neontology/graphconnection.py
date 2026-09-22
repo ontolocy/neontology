@@ -546,6 +546,14 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
     except ImportError:
         pass
 
+    try:
+        from .graphengines import LadybugConfig
+
+        graph_engines["LADYBUG"] = LadybugConfig
+
+    except ImportError:
+        pass
+
     if config is None:
         graph_engine = os.getenv("NEONTOLOGY_ENGINE")
 
@@ -556,9 +564,11 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
 
             if config_class is None:
                 available = ", ".join(sorted(graph_engines))
+                extras = {"NETWORKX": "grand", "LADYBUG": "ladybug"}
+                extra = extras.get(graph_engine)
                 hint = (
-                    " Install the optional 'grand' extra (pip install neontology[grand]) to use NETWORKX."
-                    if graph_engine == "NETWORKX"
+                    f" Install the optional '{extra}' extra (pip install neontology[{extra}]) to use {graph_engine}."
+                    if extra
                     else ""
                 )
                 raise ValueError(f"Unknown graph engine '{graph_engine}'. Available engines: {available}.{hint}")

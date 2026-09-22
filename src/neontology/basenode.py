@@ -497,15 +497,15 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Returns:
             Optional[B]: If the node exists, return it as an instance.
         """
+        gc = GraphConnection()
+
         cypher = f"""
-        MATCH (n:{cls.__primarylabel__})
+        MATCH (n{gc.engine.label_pattern(cls.__primarylabel__)})
         WHERE n.{cls.__primaryproperty__} = $pp
         RETURN n
         """
 
         params = {"pp": pp}
-
-        gc = GraphConnection()
 
         # a subclass node carrying this label matches too, and comes back as itself
         result = gc.evaluate_query(cypher, params, node_classes=registry.result_classes(cls))
@@ -611,8 +611,12 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         Raises:
             ValueError: If neither outgoing nor incoming is specified.
         """
+        gc = GraphConnection()
+
         if target_label:
-            target = f"o:{gql_identifier_adapter.validate_strings(target_label)}"
+            # the engine decides how a class is matched, so a backend where a subclass
+            # node does not carry its parent's label still finds subclasses here
+            target = f"o{gc.engine.label_pattern(target_label)}"
         else:
             target = "o"
 
@@ -674,7 +678,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         new_query, params = _find_this_node(query, pass_on_params, self)
 
-        gc = GraphConnection()
         result = gc.evaluate_query(new_query, params)
 
         return result

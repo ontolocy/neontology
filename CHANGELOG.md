@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **A LadybugDB graph engine** (`pip install neontology[ladybug]`), for [LadybugDB](https://ladybugdb.com/) - formerly Kùzu - an embedded graph database that runs in your own process, on disk or in memory, and speaks Cypher. `LadybugConfig(db_path=...)` chooses where it lives, defaulting to `":memory:"` or the `LADYBUG_PATH` environment variable, and `NEONTOLOGY_ENGINE=LADYBUG` selects it. Like the NetworkX engine, it is optional: the package imports and the other engines work without it installed.
+- **`initialise_graph()` declares the schema on a backend that needs one.** Ladybug is schema first - every label is a table with typed columns - so there it creates a node table per node class, keyed on that class' primary property, and a relationship table per relationship type naming every pair of node tables it can connect. Column types are read from each property's pydantic JSON Schema. Running it again adds a new class' table, a new property's column or a new pair of ends, so a database follows your models as they change. On Ladybug a write to a label with no table raises an error saying so; `LadybugConfig(auto_create=True)` declares each table as it is first written instead.
+- `Table`, alongside `Constraint` and `Index` in `neontology.graphengines.dbschema` and exported from the package root. It describes a node or relationship table a database holds, and is what `initialise_graph()` returns on a backend that declares them.
+- `GraphEngineBase.label_pattern(label)`, which builds the label fragment matching every node of a class. It returns `":Label"` on every existing engine, so nothing changes for them; Ladybug overrides it to name the class and its subclasses, because a Ladybug node carries only one label and several labels in a Ladybug pattern are a union rather than an intersection. That is what keeps `match_nodes()`, `match()`, `get_count()`, `delete()` and `related_nodes()` finding subclass nodes there, as they do everywhere else.
+- Three capabilities naming where LadybugDB diverges, alongside the `duplicate_create`, `constraints`, `indexes` and `datetime_functions` it also does not support. `secondary_labels`: a node carries exactly one label, so `__secondarylabels__` and `__inheritablelabels__` are not written and a raw query naming one finds nothing. `undeclared_schema`: a query naming a label, relationship type or property the database has not been told about is an error rather than a pattern that matches nothing. `timezone_aware_datetimes`: Ladybug's `TIMESTAMP` holds no offset, so an aware datetime is read back naive. The capability matrix in `docs/graph-engines.md` is regenerated accordingly.
+
 ## v3.0.0
 
 ### Removed

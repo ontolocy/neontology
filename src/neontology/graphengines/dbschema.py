@@ -100,3 +100,20 @@ class Index(SchemaObject):
     Only indexes neontology could meaningfully manage are reported - see
     `GraphEngineBase.get_indexes`.
     """
+
+
+class Table(SchemaObject):
+    """A node or relationship table declared in the database.
+
+    Only backends whose schema has to be declared before anything is written have
+    these - LadybugDB stores each label as its own table, with typed columns. The
+    other engines write whatever they are given and never return one.
+
+    Args:
+        columns (tuple[str, ...]): the columns the table holds, in order. `properties`
+            on the base class names the primary key instead, so the two are distinct:
+            a node table is keyed on its primary property and carries every property
+            of its class as a column.
+    """
+
+    columns: tuple[str, ...] = ()

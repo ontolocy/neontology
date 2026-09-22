@@ -78,11 +78,13 @@ def test_capability_error_is_a_not_implemented_error():
     assert issubclass(CapabilityNotSupportedError, NotImplementedError)
 
 
-def test_networkx_constraint_error_explains_the_structural_guarantee(use_graph, engine):
-    """NetworkX keys nodes by (pp, label), so the invariant already holds.
+def test_constraint_error_explains_why_the_engine_cannot(use_graph, engine):
+    """An engine without constraints must say why, not only that it refuses.
 
-    The error should say so rather than leaving the caller thinking their uniqueness
-    assumption is unenforced.
+    NetworkX keys nodes by (pp, label) and Ladybug by a table's primary key, so in both
+    cases uniqueness of the primary property already holds - the caller should not be
+    left thinking their assumption is unenforced. Each engine declares its own reason,
+    so the assertion is that the reason travels rather than what it says.
     """
     if engine.supports(Capability.CONSTRAINTS):
         pytest.skip("engine supports constraints")
@@ -90,7 +92,7 @@ def test_networkx_constraint_error_explains_the_structural_guarantee(use_graph, 
     with pytest.raises(CapabilityNotSupportedError) as excinfo:
         use_graph.engine.apply_uniqueness_constraint("DBSchemaNode", "pp")
 
-    assert "structural" in str(excinfo.value).lower()
+    assert engine.capability_hints[Capability.CONSTRAINTS] in str(excinfo.value)
 
 
 # --------------------------------------------------------------------------

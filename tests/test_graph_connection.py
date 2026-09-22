@@ -24,7 +24,7 @@ class PracticeRelationshipGC(BaseRelationship):
 create_test_node_table_cypher = "CREATE NODE TABLE TestNode(name STRING, PRIMARY KEY (name))"
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_evaluate_query_single(use_graph):
     gc = GraphConnection()
 
@@ -38,7 +38,7 @@ def test_evaluate_query_single(use_graph):
     assert result == "Foo Bar"
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_evaluate_query_single_node(use_graph):
     gc = GraphConnection()
 
@@ -52,7 +52,7 @@ def test_evaluate_query_single_node(use_graph):
     assert dict(result)["name"] == "Foo Bar"
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_evaluate_query_single_multiple(use_graph):
     gc = GraphConnection()
 
@@ -68,7 +68,7 @@ def test_evaluate_query_single_multiple(use_graph):
         gc.evaluate_query_single(match_cypher)
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_evaluate_query_single_collected(use_graph):
     gc = GraphConnection()
 
@@ -225,7 +225,7 @@ def test_evaluate_query_params(use_graph):
     assert result.nodes[0].pp == "bar"
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_undefined_label(use_graph):
     gc = GraphConnection()
 
@@ -250,7 +250,7 @@ class SpecialTestNodeGC(BaseNode):
     pp: str
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_multiple_primary_labels(use_graph):
     gc = GraphConnection()
 
@@ -278,7 +278,7 @@ def test_multiple_primary_labels(use_graph):
     assert len(result.nodes) == 0
 
 
-@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS)
+@pytest.mark.requires_capability(Capability.GRAPH_MUTATIONS, Capability.UNDECLARED_SCHEMA)
 def test_warn_on_unexpected_secondary_labels(use_graph):
     gc = GraphConnection()
 

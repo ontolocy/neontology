@@ -10,3 +10,12 @@ try:
 except ImportError:
     # GrandEngine is optional, so we handle the ImportError gracefully
     pass
+
+try:
+    from .ladybugengine import LadybugConfig, LadybugEngine  # noqa: F401
+
+    __all__.extend(["LadybugConfig", "LadybugEngine"])
+
+except ImportError:
+    # LadybugEngine is optional, so we handle the ImportError gracefully
+    pass

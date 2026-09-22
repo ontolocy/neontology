@@ -5,7 +5,7 @@ from .baserelationship import BaseRelationship
 from .gql import GQLIdentifier, gql_identifier_adapter
 from .graphconnection import GraphConnection, init_neontology
 from .graphengines.capabilities import Capability, CapabilityNotSupportedError
-from .graphengines.dbschema import Constraint, ConstraintType, Index
+from .graphengines.dbschema import Constraint, ConstraintType, Index, Table
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
 from .registry import (
@@ -38,6 +38,7 @@ __all__ = [
     "Constraint",
     "ConstraintType",
     "Index",
+    "Table",
     "Capability",
     "CapabilityNotSupportedError",
     # Deprecated, removed in v4
