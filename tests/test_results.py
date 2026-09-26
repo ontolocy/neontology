@@ -93,7 +93,11 @@ class TestRecords:
         assert result.records == [EMPTY_RECORD] * 3
 
     def test_a_node_which_cannot_be_built_is_left_out_of_its_record(self, graph):
-        with pytest.warns(UserWarning, match="ResultsPlace"):
+        # the relationship to it cannot be built either, and says so
+        with (
+            pytest.warns(UserWarning, match="ResultsPlace"),
+            pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"),
+        ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
         assert set(result.records[0]["nodes"]) == {"p"}
@@ -148,7 +152,11 @@ class TestRelationships:
         assert record["relationships"]["r"].target is record["nodes"]["o"]
 
     def test_a_relationship_whose_node_cannot_be_built_is_left_out_with_a_warning(self, graph):
-        with pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"):
+        # as is the node, which warns for itself
+        with (
+            pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"),
+            pytest.warns(UserWarning, match="ResultsPlace"),
+        ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
         assert result.relationships == []
@@ -207,7 +215,11 @@ class TestPaths:
     def test_a_path_including_a_relationship_which_cannot_be_built_is_left_out_with_a_warning(self, graph):
         only_visits = {"RESULTS_VISITS": get_rels_by_type()["RESULTS_VISITS"]}
 
-        with pytest.warns(UserWarning, match="[Pp]ath 'x'"):
+        # as is the relationship, which warns for itself
+        with (
+            pytest.warns(UserWarning, match="[Pp]ath 'x'"),
+            pytest.warns(UserWarning, match="class for the RESULTS_HOSTS relationship type"),
+        ):
             result = graph.evaluate_query(TWO_HOP_PATH, relationship_classes=only_visits)
 
         assert result.paths == []

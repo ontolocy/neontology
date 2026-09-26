@@ -254,6 +254,19 @@ class TestRelationshipMergeContract:
 
         assert ContractMergeOnRel.get_count() == 1
 
+    def test_a_relationship_to_a_node_which_does_not_exist_is_not_created(self, use_graph):
+        _contract_pair()
+
+        ContractMergeOnRel.merge_records(
+            [
+                {"source": "no-such-node", "target": "merge-target", "tag": 1},
+                {"source": "merge-source", "target": "no-such-node", "tag": 1},
+            ]
+        )
+
+        assert ContractMergeOnRel.get_count() == 0
+        assert use_graph.evaluate_query_single("MATCH (n) RETURN COUNT(n)") == 2
+
     def test_merging_the_same_relationship_in_separate_calls_makes_one(self, use_graph):
         source, target = _contract_pair()
 

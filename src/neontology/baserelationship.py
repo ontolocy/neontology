@@ -392,7 +392,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         rel_type = gql_identifier_adapter.validate_strings(cls.__relationshiptype__)
         cypher = f"MATCH (n)-[r:{rel_type}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
-        return result
+
+        # on NetworkX a count over zero matches returns no rows at all, where the other
+        # engines return 0
+        return 0 if result is None else result
 
     def _prep_dump_dict(self, dumped_model: dict, exclude_node_props: bool = True) -> dict:
         """Prepare the dumped model dictionary for Neontology.

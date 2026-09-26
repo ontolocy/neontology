@@ -511,6 +511,12 @@ class NetworkxEngine(GraphEngineBase):
             source_id = generate_node_id(x["source_prop"], source_label)
             target_id = generate_node_id(x["target_prop"], target_label)
 
+            # as MATCH does on the other engines: a relationship whose source or target
+            # does not exist is not created, since adding the edge would also add the
+            # missing node, with no label or properties
+            if not (self.driver.has_node(source_id) and self.driver.has_node(target_id)):
+                continue
+
             # every merge_on property is part of what identifies the relationship,
             # including one whose value is falsy - a relationship tagged 0 is not the
             # one tagged 1, and must not match and overwrite it

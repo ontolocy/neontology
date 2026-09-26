@@ -53,8 +53,8 @@ records_raw = {
     ],
     "edges": [
         {
-            "source": "Bob",
-            "target": "Alice",
+            "SOURCE": "Bob",
+            "TARGET": "Alice",
             "import_follows_prop_1": "TEST IMPORT FOLLOWS PROPERTY VALUE",
             "SOURCE_LABEL": "PersonImportLabel",
             "TARGET_LABEL": "PersonImportLabel",
@@ -226,8 +226,8 @@ def test_import_records_bad_node_validate_only(use_graph):
     # doesn't have a TARGET_LABEL
     bad_records = [
         {
-            "source": "Bob",
-            "target": "Alice",
+            "SOURCE": "Bob",
+            "TARGET": "Alice",
             "import_follows_prop_1": "TEST IMPORT FOLLOWS PROPERTY VALUE",
             "SOURCE_LABEL": "PersonImportLabel",
             "RELATIONSHIP_TYPE": "IMPORT_FOLLOWS",
@@ -281,8 +281,9 @@ def test_top_level_relationship_uppercase_source_target(use_graph):
 
 
 def test_top_level_relationship_lowercase_source_target_still_works(use_graph):
-    # what neontology_dump() emits today, and what the importer has always accepted
-    import_records([[_host("a"), _host("b"), _resolves(source="a", target="b")]])
+    # what the importer has always accepted, and neontology_dump() wrote before v3
+    with pytest.warns(DeprecationWarning, match="lowercase 'source' or 'target'"):
+        import_records([[_host("a"), _host("b"), _resolves(source="a", target="b")]])
 
     assert len(ResolvesImportRel.match_relationships()) == 1
 

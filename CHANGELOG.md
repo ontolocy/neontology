@@ -110,6 +110,8 @@
 
 ### Fixed
 
+- **On the NetworkX engine, merging a relationship whose source or target node does not exist no longer creates it.** Adding the edge also added the missing node, with no label or properties, leaving an edge the other engines would never have written - `MATCH` finds no node there, so they create nothing.
+- `BaseRelationship.get_count()` returns 0 on the NetworkX engine when there are no relationships of the type, rather than `None`.
 - **`get_related()` no longer writes `depth` into its query unchecked.** A `depth` tuple taken from user input could inject Cypher. Its bounds are now validated as non-negative integers.
 - `get_related()`, `@related_nodes`, `@related_property`, `match()`, `BaseRelationship.get_count()`, `match_relationships()` and `get_count()` on the NetworkX engine now validate the identifiers they write into their queries, as every other query already did.
 - A single character label, relationship type or property name, such as `x`, is now a valid identifier. The pattern required at least two characters.
