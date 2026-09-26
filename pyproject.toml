@@ -74,8 +74,14 @@ grand = [
     "networkx>=3.2.1",
 ]
 
+# The embedded LadybugDB engine. The database runs in-process, so this is the
+# whole dependency - there is no server to reach.
+ladybug = [
+    "ladybug>=0.20,<1",
+]
+
 all = [
-    "neontology[grand,pandas]"
+    "neontology[grand,ladybug,pandas]"
 ]
 
 # Tool configurations (keeping your existing ones + removing flake8)

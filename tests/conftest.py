@@ -21,6 +21,15 @@ except ImportError:
     NetworkxConfig = None
     HAS_GRAND = False
 
+try:
+    from neontology.graphengines import LadybugConfig
+
+    HAS_LADYBUG = True
+
+except ImportError:
+    LadybugConfig = None
+    HAS_LADYBUG = False
+
 
 # The single source of truth for the engines the suite runs against. To add a
 # backend, add one entry here: the parametrisation, the config construction and
@@ -29,6 +38,7 @@ except ImportError:
 #   id:         the pytest param id, used to select an engine with -k
 #   config:     the GraphEngineConfig subclass
 #   env_vars:   config field -> environment variable holding its value
+#   kwargs:     config arguments that are the same on every run
 #   available:  False when an optional dependency is missing, so the param skips
 ENGINES = [
     {
@@ -59,6 +69,19 @@ ENGINES = [
         "env_vars": {},
         "available": HAS_GRAND,
         "skip_reason": "needs the [grand] extra",
+    },
+    {
+        "id": "ladybug-engine",
+        "config": LadybugConfig,
+        "env_vars": {},
+        # Ladybug is schema first, and most of the suite defines its models inside the
+        # test function - after the fixture has run, so nothing could have declared their
+        # tables. auto_create declares each table as it is first written, which is what
+        # lets the shared suite run here. The schema first default is covered directly,
+        # in tests/test_ladybug.py.
+        "kwargs": {"auto_create": True},
+        "available": HAS_LADYBUG,
+        "skip_reason": "needs the [ladybug] extra",
     },
 ]
 
@@ -113,7 +136,7 @@ def get_graph_config(engine_id) -> object:
 
     entry = ENGINES_BY_ID[engine_id]
 
-    graph_config = {}
+    graph_config = dict(entry.get("kwargs", {}))
 
     for field, env_var in entry["env_vars"].items():
         value = os.getenv(env_var)
@@ -185,9 +208,12 @@ def pytest_collection_modifyitems(config, items):
         if "get_graph_config" in item.fixturenames:
             item.add_marker("uses_graph")
 
-        marker = item.get_closest_marker("requires_capability")
+        # every marker, not the closest: a test can be marked at the class, the function
+        # and the parameter, and one of those quietly shadowing the others would leave a
+        # test failing on an engine it was marked for
+        needed = [capability for marker in item.iter_markers("requires_capability") for capability in marker.args]
 
-        if marker is None:
+        if not needed:
             continue
 
         engine = _engine_for_item(item)
@@ -195,7 +221,7 @@ def pytest_collection_modifyitems(config, items):
         if engine is None:
             continue
 
-        missing = [c for c in marker.args if not engine.supports(c)]
+        missing = [c for c in dict.fromkeys(needed) if not engine.supports(c)]
 
         if missing:
             names = ", ".join(c.value for c in missing)

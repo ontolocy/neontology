@@ -1,9 +1,9 @@
 """Capabilities that a graph engine may or may not support.
 
 Neontology aims for feature parity between engines. Where an engine cannot offer
-something - currently only the experimental NetworkX/grand-cypher backend - it is
-named here and declared on the engine, so the difference is stated in one place
-rather than inferred from test assertions.
+something - the experimental NetworkX/grand-cypher backend, and the embedded
+LadybugDB backend - it is named here and declared on the engine, so the difference
+is stated in one place rather than inferred from test assertions.
 
 Engines declare what they *do* support (see `GraphEngineBase.supported_capabilities`).
 An omission therefore means "unsupported", which is the safe direction: a capability
@@ -23,6 +23,26 @@ class CapabilityNotSupportedError(NotImplementedError):
 
 class Capability(str, Enum):
     """A named piece of engine behaviour that callers or tests may depend on."""
+
+    # A node carrying more than one label, so a subclass node also matches its
+    # parent's label. LadybugDB stores each label as its own table and a node
+    # belongs to exactly one of them, so secondary and inheritable labels are not
+    # written and a query naming one directly finds nothing. Class scoped queries
+    # still find subclasses - see GraphEngineBase.label_pattern().
+    SECONDARY_LABELS = "secondary_labels"
+
+    # Naming a label, relationship type or property the database has not been told
+    # about. LadybugDB is schema first - every label is a table with typed columns - so
+    # a query naming one that does not exist is an error, where the other engines treat
+    # it as a pattern or a filter that simply matches nothing. Neontology's own writes
+    # declare what they need; this is about queries you write yourself.
+    UNDECLARED_SCHEMA = "undeclared_schema"
+
+    # A datetime keeping its timezone through a round trip. LadybugDB's TIMESTAMP holds
+    # no offset, so an aware datetime is read back naive. Its TIMESTAMP_TZ is not the
+    # answer either: it reports every value as UTC, which would make a naive datetime
+    # come back aware and an offset other than UTC come back wrong.
+    TIMEZONE_AWARE_DATETIMES = "timezone_aware_datetimes"
 
     # Writing to the graph with a raw query (CREATE, DELETE and friends).
     # grand-cypher is a query language over an existing NetworkX graph and
@@ -93,6 +113,14 @@ def render_capability_matrix() -> str:
         engines.append(("NetworkX", NetworkxEngine))
 
     except ImportError:  # pragma: no cover - depends on the optional grand extra
+        pass
+
+    try:
+        from .ladybugengine import LadybugEngine
+
+        engines.append(("Ladybug", LadybugEngine))
+
+    except ImportError:  # pragma: no cover - depends on the optional ladybug extra
         pass
 
     lines = [

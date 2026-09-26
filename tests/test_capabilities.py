@@ -14,6 +14,14 @@ try:
 except ImportError:
     HAS_GRAND = False
 
+try:
+    from neontology.graphengines import LadybugEngine  # noqa: F401
+
+    HAS_LADYBUG = True
+
+except ImportError:
+    HAS_LADYBUG = False
+
 DOCS = Path(__file__).parent.parent / "docs" / "graph-engines.md"
 MARKERS = re.compile(
     r"<!-- BEGIN CAPABILITY MATRIX -->\n(.*?)\n<!-- END CAPABILITY MATRIX -->",
@@ -22,8 +30,8 @@ MARKERS = re.compile(
 
 
 @pytest.mark.skipif(
-    not HAS_GRAND,
-    reason="the committed matrix includes the networkx column, which needs the [grand] extra",
+    not (HAS_GRAND and HAS_LADYBUG),
+    reason="the committed matrix has a column per optional engine, so it needs every engine extra",
 )
 def test_capability_matrix_in_docs_is_current():
     match = MARKERS.search(DOCS.read_text())

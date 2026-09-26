@@ -1,6 +1,6 @@
 # Graph Engines
 
-By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases, starting with experimental support for Memgraph.
+By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases: Memgraph, the embedded LadybugDB, and NetworkX.
 
 !!! EXPERIMENTAL
     Some of these features are still experimental so may change in the future.
@@ -18,6 +18,7 @@ You can also use the NEONTOLOGY_ENGINE environment variable to set the graph eng
 * `NEO4J`
 * `MEMGRAPH`
 * `NETWORKX`
+* `LADYBUG`
 
 ### Neo4j
 
@@ -71,6 +72,83 @@ Cypher / GQL support with this engine is limited compared to Neo4j so some featu
 
 The NetworkX graph is held in memory with no locking, so a query running while another thread writes to the graph can fail with `RuntimeError: dictionary changed size during iteration`. If several threads use the NetworkX engine, don't let them query while another is writing.
 
+### LadybugDB
+
+Neontology has experimental support for [LadybugDB](https://ladybugdb.com/) (formerly Kùzu)
+as a backend - an embedded graph database that runs inside your own process, speaking
+Cypher, against a directory on disk or entirely in memory. There is no server to run.
+
+```bash
+pip install neontology[ladybug]
+```
+
+```python
+from neontology import GraphConnection, init_neontology
+from neontology.graphengines import LadybugConfig
+
+config = LadybugConfig(
+        db_path="my-graph.lbdb",    # OR use the LADYBUG_PATH environment variable.
+                                    # Defaults to ":memory:", which keeps the graph in
+                                    # memory for the life of the process. Ladybug creates
+                                    # the database if it is not there, but not the
+                                    # directory holding it.
+    )
+
+init_neontology(config)
+
+gc = GraphConnection()
+gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
+```
+
+#### Declaring your schema
+
+Ladybug is schema first: every label is a table with typed columns, which has to exist
+before anything is written to it. So on this backend, `initialise_graph()` is not
+optional - it is what creates those tables:
+
+```python
+init_neontology(LadybugConfig(db_path="my-graph.lbdb"))
+
+# ... define or import your models ...
+
+GraphConnection().initialise_graph()
+```
+
+It declares a node table per node class, keyed on that class' primary property, and a
+relationship table per relationship type, naming every pair of node tables it can
+connect. It returns the `Table` objects it declared. Running it again after changing your
+models adds what is missing - a new class' table, a new property's column, a new pair of
+ends - and changes nothing else, so a database can follow your models as they grow.
+
+Writing to a label with no table raises an error saying so. If you would rather the
+tables followed your writes, ask for that explicitly:
+
+```python
+init_neontology(LadybugConfig(auto_create=True))
+```
+
+Each table is then declared the first time something is written to it. Note that this
+only covers Neontology's own writes: a query you write yourself still has to name
+labels, relationship types and properties the database already knows about, because
+Ladybug rejects a query naming one that does not exist rather than matching nothing.
+
+#### One label per node
+
+A Ladybug node lives in the table named by its primary label, and carries no other
+label, so `__secondarylabels__` and `__inheritablelabels__` are not written to the graph.
+
+Querying through your models is unaffected: `match_nodes()`, `match()`, `get_count()`,
+`delete()` and `related_nodes()` match a class as the union of its own and its
+subclasses' primary labels, so asking for `Person` still returns the `Employee` nodes
+and builds each one as itself. What does not work is a raw query naming a secondary
+label directly, since there is no table behind it.
+
+Constraints and indexes are not available either. A node table's primary key is its
+class' primary property, so uniqueness there is enforced by the database - a second
+`create()` of a value that already exists is rejected rather than duplicated - but a
+property tagged `unique` is not, and there is nothing to index. See the capability
+matrix below.
+
 ### Engine capability matrix
 
 Where an engine cannot offer something, it is named as a capability and declared on the
@@ -79,27 +157,30 @@ test, so it cannot drift - see `Capability` in `neontology.graphengines.capabili
 for what each one means.
 
 <!-- BEGIN CAPABILITY MATRIX -->
-| Capability | Neo4j | Memgraph | NetworkX |
-| --- | --- | --- | --- |
-| `graph_mutations` | Yes | Yes | No |
-| `return_star` | Yes | Yes | No |
-| `duplicate_create` | Yes | Yes | No |
-| `datetime_filters` | Yes | Yes | No |
-| `datetime_functions` | Yes | Yes | No |
-| `list_property_filters` | Yes | Yes | No |
-| `complex_property_types` | Yes | Yes | No |
-| `collect_distinct` | Yes | Yes | No |
-| `relationship_property_queries` | Yes | Yes | No |
-| `constraints` | Yes | Yes | No |
-| `indexes` | Yes | Yes | No |
-| `multi_pattern_paths` | Yes | Yes | No |
+| Capability | Neo4j | Memgraph | NetworkX | Ladybug |
+| --- | --- | --- | --- | --- |
+| `secondary_labels` | Yes | Yes | Yes | No |
+| `undeclared_schema` | Yes | Yes | Yes | No |
+| `timezone_aware_datetimes` | Yes | Yes | Yes | No |
+| `graph_mutations` | Yes | Yes | No | Yes |
+| `return_star` | Yes | Yes | No | Yes |
+| `duplicate_create` | Yes | Yes | No | No |
+| `datetime_filters` | Yes | Yes | No | Yes |
+| `datetime_functions` | Yes | Yes | No | No |
+| `list_property_filters` | Yes | Yes | No | Yes |
+| `complex_property_types` | Yes | Yes | No | Yes |
+| `collect_distinct` | Yes | Yes | No | Yes |
+| `relationship_property_queries` | Yes | Yes | No | Yes |
+| `constraints` | Yes | Yes | No | No |
+| `indexes` | Yes | Yes | No | No |
+| `multi_pattern_paths` | Yes | Yes | No | Yes |
 <!-- END CAPABILITY MATRIX -->
 
 ### Constraints and indexes
 
 Constraints and indexes are backend features, so they live on the graph engine and are
 gated by the `constraints` and `indexes` capabilities above. Neo4j and Memgraph support
-both; the NetworkX backend supports neither.
+both; the NetworkX and LadybugDB backends support neither.
 
 #### Initialising a graph
 
@@ -118,7 +199,9 @@ GraphConnection().initialise_graph()
 
 This applies everything your models declare that the backend supports: a uniqueness
 constraint on each node class' primary property, and the constraints and indexes
-[declared on your models](#declaring-them-on-your-models). Anything the backend cannot do
+[declared on your models](#declaring-them-on-your-models). On a backend whose schema has
+to be declared up front, it declares that schema instead - see
+[LadybugDB](#declaring-your-schema). Anything the backend cannot do
 is skipped, so the same call works on every engine - on the NetworkX backend it does
 nothing. It only ever adds, so it is safe to run again, and it returns the `Constraint` and
 `Index` objects it applied.
@@ -265,8 +348,9 @@ if gc.supports(Capability.CONSTRAINTS):
 ```
 
 A model with tagged properties works on every backend, since tags only take effect when
-they are applied. The NetworkX backend enforces none of them, though: only the primary
-property is unique there, because nodes are keyed by it.
+they are applied. Neither the NetworkX nor the LadybugDB backend enforces any of them,
+though: on both, only the primary property is unique - NetworkX keys its nodes by it, and
+Ladybug makes it a node table's primary key.
 
 ```python
 from neontology import GraphConnection, init_neontology

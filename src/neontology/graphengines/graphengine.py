@@ -76,6 +76,23 @@ class GraphEngineBase:
 
         return capability in cls.supported_capabilities
 
+    def label_pattern(self, label: str) -> str:
+        """Build the label fragment that matches every node of a class, for a MATCH pattern.
+
+        A class is matched by its primary label, because a subclass node carries its
+        ancestors' labels as well as its own. A backend where that is not true - where a
+        node has exactly one label - overrides this to name the class and its subclasses
+        instead, which is why every class scoped query goes through here rather than
+        interpolating `__primarylabel__` itself.
+
+        Args:
+            label (str): the class' primary label.
+
+        Returns:
+            str: the fragment to follow the node variable with, such as ":Person".
+        """
+        return f":{gql_identifier_adapter.validate_strings(label)}"
+
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:
         """Convert a value to a type supported by the graph engine.
@@ -577,7 +594,7 @@ class GraphEngineBase:
         """
         cypher = f"""
         UNWIND $pp_values AS pp
-        MATCH (n:{gql_identifier_adapter.validate_strings(label)})
+        MATCH (n{self.label_pattern(label)})
         WHERE n.{gql_identifier_adapter.validate_strings(pp_key)} = pp
         DETACH DELETE n
         """
@@ -752,7 +769,7 @@ class GraphEngineBase:
         Returns:
             list: A list of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause
@@ -783,7 +800,7 @@ class GraphEngineBase:
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause

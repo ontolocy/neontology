@@ -207,7 +207,18 @@ class NetworkxEngine(GraphEngineBase):
     # grand-cypher is a query language over an in-memory NetworkX graph, with no
     # mutation clauses and a reduced expression language, so it supports few of
     # the named capabilities. Everything not named in Capability works normally.
-    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset()
+    # The exceptions are the three that name another backend's constraints rather than
+    # grand-cypher's: nodes carry every label they are given in a `__labels__` attribute,
+    # which is what grand-cypher matches a label against; there is no schema to declare,
+    # so a query naming an unknown label or property simply matches nothing; and property
+    # values are the Python objects themselves, so a datetime keeps its timezone.
+    supported_capabilities: ClassVar[frozenset[Capability]] = frozenset(
+        {
+            Capability.SECONDARY_LABELS,
+            Capability.UNDECLARED_SCHEMA,
+            Capability.TIMEZONE_AWARE_DATETIMES,
+        }
+    )
 
     capability_hints: ClassVar[dict[Capability, str]] = {
         Capability.CONSTRAINTS: (

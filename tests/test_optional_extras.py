@@ -1,10 +1,10 @@
 """The library must work without its optional extras installed.
 
-Two things are optional: the NetworkX engine ([grand]) and dataframe support
-([pandas]). `neontology.graphengines` and `init_neontology` swallow the ImportError
-for the former, and `merge_df` defers importing pandas until it is called. These tests
-hold that contract, and the CI job that installs without extras exercises the absent
-case.
+Three things are optional: the NetworkX engine ([grand]), the LadybugDB engine
+([ladybug]) and dataframe support ([pandas]). `neontology.graphengines` and
+`init_neontology` swallow the ImportError for the engines, and `merge_df` defers
+importing pandas until it is called. These tests hold that contract, and the CI job
+that installs without extras exercises the absent case.
 """
 
 from typing import ClassVar, Optional
@@ -23,6 +23,14 @@ except ImportError:
     HAS_GRAND = False
 
 try:
+    from neontology.graphengines import LadybugConfig  # noqa: F401
+
+    HAS_LADYBUG = True
+
+except ImportError:
+    HAS_LADYBUG = False
+
+try:
     import pandas  # noqa: F401
 
     HAS_PANDAS = True
@@ -31,8 +39,8 @@ except ImportError:
     HAS_PANDAS = False
 
 
-def test_neontology_imports_without_the_grand_extra():
-    """Importing the package must never require the optional dependency."""
+def test_neontology_imports_without_its_optional_extras():
+    """Importing the package must never require an optional dependency."""
     assert neontology.BaseNode is not None
     assert neontology.init_neontology is not None
 
@@ -50,6 +58,19 @@ def test_networkx_engine_import_raises_without_extra():
         from neontology.graphengines.networkxengine import NetworkxEngine  # noqa: F401
 
 
+def test_ladybug_engine_exported_only_when_installed():
+    """The optional engine appears in __all__ exactly when its extra is present."""
+    assert ("LadybugEngine" in graphengines.__all__) is HAS_LADYBUG
+    assert ("LadybugConfig" in graphengines.__all__) is HAS_LADYBUG
+
+
+@pytest.mark.skipif(HAS_LADYBUG, reason="only meaningful without the [ladybug] extra")
+def test_ladybug_engine_import_raises_without_extra():
+    """Importing the engine module directly should fail cleanly, not partially."""
+    with pytest.raises(ImportError):
+        from neontology.graphengines.ladybugengine import LadybugEngine  # noqa: F401
+
+
 def test_unknown_engine_name_explains_itself(monkeypatch):
     """An unrecognised NEONTOLOGY_ENGINE should say what is available."""
     monkeypatch.setenv("NEONTOLOGY_ENGINE", "NOT_AN_ENGINE")
@@ -64,6 +85,15 @@ def test_requesting_networkx_without_extra_points_at_the_extra(monkeypatch):
     monkeypatch.setenv("NEONTOLOGY_ENGINE", "NETWORKX")
 
     with pytest.raises(ValueError, match="grand"):
+        neontology.init_neontology()
+
+
+@pytest.mark.skipif(HAS_LADYBUG, reason="only meaningful without the [ladybug] extra")
+def test_requesting_ladybug_without_extra_points_at_the_extra(monkeypatch):
+    """Asking for LADYBUG without ladybug installed should name the extra, not KeyError."""
+    monkeypatch.setenv("NEONTOLOGY_ENGINE", "LADYBUG")
+
+    with pytest.raises(ValueError, match="ladybug"):
         neontology.init_neontology()
 
 

@@ -16,6 +16,7 @@ from typing import ClassVar, Optional
 import pytest
 
 from neontology import (
+    Capability,
     DuplicateLabelError,
     DuplicateLabelWarning,
     InheritedLabelWarning,
@@ -269,10 +270,12 @@ class TestLabelHandling:
 class TestDeprecations:
     """refresh_classes is meaningless now the registry is never stale."""
 
+    @pytest.mark.requires_capability(Capability.UNDECLARED_SCHEMA)
     def test_refresh_classes_is_deprecated(self, use_graph):
         with pytest.warns(DeprecationWarning, match="refresh_classes"):
             use_graph.evaluate_query("MATCH (n:RegistryNeverCreatedNode) RETURN n", refresh_classes=True)
 
+    @pytest.mark.requires_capability(Capability.UNDECLARED_SCHEMA)
     def test_not_passing_refresh_classes_does_not_warn(self, use_graph):
         import warnings as warnings_module
 
@@ -380,6 +383,7 @@ class TestConnectionPropertiesAreDeprecated:
 
         assert result == get_rels_by_type()
 
+    @pytest.mark.requires_capability(Capability.UNDECLARED_SCHEMA)
     def test_querying_does_not_use_the_deprecated_properties(self, use_graph):
         """Internal use had to move off them, or every query would warn."""
         with warnings.catch_warnings(record=True) as caught:

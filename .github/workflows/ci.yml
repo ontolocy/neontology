@@ -45,13 +45,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        # The [rust] extra is dropped on free-threaded builds: neo4j-rust-ext ships no
-        # free-threaded wheels, so it falls back to compiling its sdist, where PyO3
-        # refuses free-threaded CPython below 3.14 outright and costs minutes of cargo
-        # build on 3.14t. It is a drop-in codec for the driver rather than something
-        # neontology calls, so the other matrix entries cover it.
+        # Two extras are dropped on free-threaded builds, both because they ship no
+        # free-threaded wheels and would fall back to compiling their sdist. [rust] is
+        # neo4j-rust-ext, where PyO3 refuses free-threaded CPython below 3.14 outright
+        # and costs minutes of cargo build on 3.14t; it is a drop-in codec for the
+        # driver rather than something neontology calls. [ladybug] is an embedded
+        # database in C++, which is minutes of compilation again. The other matrix
+        # entries cover both.
         run: |
-          uv sync --all-extras ${{ endsWith(matrix.python-version, 't') && '--no-extra rust' || '' }}
+          uv sync --all-extras ${{ endsWith(matrix.python-version, 't') && '--no-extra rust --no-extra ladybug' || '' }}
       - name: Test default engines with pytest
         env:
           TEST_NEO4J_URI: bolt://localhost:7687
@@ -65,9 +67,9 @@ jobs:
 
   minimal-install:
     # neontology must work without its optional extras - [grand] for the NetworkX
-    # engine and [pandas] for dataframe support. No other job exercises that, so a
-    # stray top-level import of either would break `pip install neontology` while
-    # CI stayed green.
+    # engine, [ladybug] for the LadybugDB engine and [pandas] for dataframe support. No
+    # other job exercises that, so a stray top-level import of any of them would break
+    # `pip install neontology` while CI stayed green.
     runs-on: ubuntu-latest
 
     strategy:
@@ -90,14 +92,14 @@ jobs:
         run: |
           uv run python -c "
           import importlib.util, sys
-          for module, extra in (('networkx', 'grand'), ('pandas', 'pandas')):
+          for module, extra in (('networkx', 'grand'), ('ladybug', 'ladybug'), ('pandas', 'pandas')):
               if importlib.util.find_spec(module):
                   sys.exit(f'{module} is installed - this job must run without the [{extra}] extra')
           print('optional extras absent, as required')
           "
       - name: Confirm neontology imports without it
         run: |
-          uv run python -c "import neontology; neontology.BaseNode; print('neontology imports without grand')"
+          uv run python -c "import neontology; neontology.BaseNode; print('neontology imports without its extras')"
       - name: Test with pytest
         run: |
           uv run pytest -m "not uses_graph" --benchmark-disable

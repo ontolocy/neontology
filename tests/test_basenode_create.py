@@ -94,6 +94,25 @@ def test_create(use_graph):
     assert result.nodes[0].pp == "Test Node"
 
 
+def _create_again(engine, create):
+    """Create a node that already exists, tolerating a backend that refuses to.
+
+    Neontology does not check first - it is for the database to enforce. A backend
+    without DUPLICATE_CREATE enforces it either by keying the node on its primary
+    property, which overwrites, or with a primary key, which raises.
+    """
+    if engine.supports(Capability.DUPLICATE_CREATE):
+        create()
+
+        return
+
+    try:
+        create()
+
+    except RuntimeError:
+        pass
+
+
 def test_create_if_exists(engine, use_graph):
     """Neontology does not check if a node already exists, it is for the user to enforce this at the database level."""
     tn = PracticeNode(pp="Test Node")
@@ -112,12 +131,12 @@ def test_create_if_exists(engine, use_graph):
 
     assert result.nodes[0].pp == "Test Node"
 
-    tn.create()
+    _create_again(engine, tn.create)
 
     node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
-    # engines without DUPLICATE_CREATE identify nodes by (primary property,
-    # label), so the second create overwrote the first
+    # engines without DUPLICATE_CREATE identify nodes by (primary property, label), so
+    # the second create either overwrote the first or was refused - one node either way
     expected = 2 if engine.supports(Capability.DUPLICATE_CREATE) else 1
 
     assert node_count == expected
@@ -140,12 +159,12 @@ def test_create_multiple_if_exists(engine, use_graph):
 
     assert result.nodes[0].pp == "Test Node"
 
-    PracticeNode.create_nodes([tn])
+    _create_again(engine, lambda: PracticeNode.create_nodes([tn]))
 
     node_count = use_graph.evaluate_query_single("MATCH (n:PracticeNode) WHERE n.pp = 'Test Node' RETURN COUNT(n)")
 
-    # engines without DUPLICATE_CREATE identify nodes by (primary property,
-    # label), so the second create overwrote the first
+    # engines without DUPLICATE_CREATE identify nodes by (primary property, label), so
+    # the second create either overwrote the first or was refused - one node either way
     expected = 2 if engine.supports(Capability.DUPLICATE_CREATE) else 1
 
     assert node_count == expected
@@ -182,6 +201,7 @@ def test_none_primary_label():
         SpecialPracticeNode(pp="Test Node")
 
 
+@pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
 def test_create_multilabel(use_graph):
     class MultipleLabelNode(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
@@ -211,6 +231,7 @@ def test_create_multilabel(use_graph):
     assert result.nodes[0].__secondarylabels__ == ["ExtraLabel1", "ExtraLabel2"]
 
 
+@pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
 def test_create_multilabel_inheritance(use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"
@@ -280,6 +301,7 @@ def test_create_multilabel_inheritance_multiple(use_graph):
     assert result == 2
 
 
+@pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
 def test_merge_defined_label_inherited(use_graph):
     class Mammal(BaseNode):
         __primaryproperty__: ClassVar[str] = "pp"

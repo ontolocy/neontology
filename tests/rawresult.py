@@ -26,6 +26,11 @@ def raw_labels(result: Any, key: str = "n", index: int = 0) -> set:
     if isinstance(raw, dict):
         return set(raw[key][index]["__labels__"])
 
+    # Ladybug returns plain lists of values, and a node carries the one label of the
+    # table it lives in
+    if isinstance(raw[index], list):
+        return {raw[index][0]["_LABEL"]}
+
     # the neo4j driver returns a list of records holding driver Node objects
     return set(raw[index].values()[0].labels)
 

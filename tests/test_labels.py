@@ -24,7 +24,7 @@ from typing import ClassVar, Optional
 import pytest
 from rawresult import raw_labels
 
-from neontology import BaseNode, BaseRelationship, DuplicateLabelError, DuplicateLabelWarning, registry
+from neontology import BaseNode, BaseRelationship, Capability, DuplicateLabelError, DuplicateLabelWarning, registry
 
 
 def _node(name: str, base: type = BaseNode, **namespace):
@@ -137,6 +137,7 @@ class TestBuildingTheMostDerivedClass:
 
         return bob, alice
 
+    @pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
     def test_a_general_query_builds_the_subclass(self, use_graph, people):
         with _no_label_warnings():
             result = use_graph.evaluate_query("MATCH (n:LblPerson) RETURN n")
@@ -240,6 +241,7 @@ class TestInheritableLabels:
 
         assert set(schema.secondary_labels) == {"LblYoung", "LblAnimal", "LblOrganism"}
 
+    @pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
     def test_written_nodes_carry_every_label(self, use_graph):
         LblPuppy(name="rex").create()
         LblPuppy(name="fido").merge()
@@ -249,6 +251,7 @@ class TestInheritableLabels:
 
             assert raw_labels(result) == {"LblPuppy", "LblYoung", "LblAnimal", "LblOrganism"}
 
+    @pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
     def test_an_ancestor_label_finds_every_descendant(self, use_graph):
         LblAnimal(name="generic").create()
         LblDog(name="rex").create()
@@ -284,6 +287,7 @@ def _evolving_model(secondary: list):
 class TestMergeIdentity:
     """A node is identified by its primary label and primary property, not its full label set."""
 
+    @pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
     def test_adding_a_label_to_a_model_updates_existing_nodes(self, use_graph):
         _evolving_model([])(name="x", version=1).merge()
 
@@ -300,6 +304,7 @@ class TestMergeIdentity:
         assert raw_labels(result) == {"LblEvolving", "LblAddedLabel"}
         assert result.nodes[0].version == 2
 
+    @pytest.mark.requires_capability(Capability.SECONDARY_LABELS)
     def test_merge_does_not_remove_labels(self, use_graph):
         """Merging adds the model's labels; it never strips labels already on the node."""
         _evolving_model(["LblKeptLabel"])(name="y").merge()
