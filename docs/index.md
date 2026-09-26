@@ -12,7 +12,7 @@ Neontology is inspired by projects like py2neo (which is no longer maintained), 
 pip install neontology
 ```
 
-The core works with plain Python dictionaries. Optional extras add pandas dataframe support and the experimental NetworkX and LadybugDB backends:
+The core works with plain Python dictionaries. Optional extras add pandas dataframe support and the NetworkX and LadybugDB backends:
 
 ```bash
 pip install neontology[pandas]

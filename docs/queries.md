@@ -1,9 +1,6 @@
 # Queries
 
-Neontology has limited support for running cypher/GQL queries against the connected graph database.
-
-!!! EXPERIMENTAL
-    Some of these features are still experimental so may change in the future.
+Neontology runs cypher/GQL queries against the connected graph database, and can build what they return into your models.
 
 For large or complex queries, data science or visualization/exploration, consider using a native driver or built-in interface (like Neo4j Browser/Bloom or Memgraph Lab).
 
@@ -207,7 +204,17 @@ print(results.nodes[0].name)
 
 ```
 
-The returned `NeontologyResult` object has the following properties:
+`evaluate_query` returns a `NeontologyResult`, which you can import from `neontology` - for
+a type hint, say:
+
+```python
+from neontology import GraphConnection, NeontologyResult
+
+def people() -> NeontologyResult:
+    return GraphConnection().evaluate_query("MATCH (p:Person) RETURN p")
+```
+
+It has the following properties:
 
 - `records_raw` - the raw records returned by the engine's driver, unchanged
 - `records` - one entry per row returned, holding that row's `nodes`, `relationships` and `paths` as Neontology objects, and its other `values`, each keyed by the name it was returned as
@@ -229,6 +236,20 @@ Anything which cannot be built as a Neontology object is left out, with a warnin
 - a relationship whose type has no defined class, or whose source or target node is not
   returned by the query, or cannot be built
 - a path including a relationship which cannot be built
+
+Each warning is a `NeontologyWarning`, the base class of every warning Neontology raises
+about your models, queries and results. It is a `UserWarning`, so it can be filtered with
+Python's own machinery - to make any of them fail a test suite, say:
+
+```python
+import warnings
+
+from neontology import NeontologyWarning
+
+warnings.simplefilter("error", NeontologyWarning)
+```
+
+Deprecations are raised as `DeprecationWarning` instead.
 
 ### Values
 

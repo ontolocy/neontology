@@ -162,6 +162,9 @@ from neontology import DuplicateLabelWarning
 warnings.simplefilter("error", DuplicateLabelWarning)
 ```
 
+`DuplicateLabelWarning` and `InheritedLabelWarning` are both `NeontologyWarning`s, the base
+class of every warning Neontology raises, so filtering on that catches them too.
+
 Re-running a notebook cell or reloading a module is not treated as a clash - that is the
 same model being defined again, not two models fighting over one label.
 
@@ -207,9 +210,6 @@ class ElephantNode(BaseNode):
 ## Retrieving related nodes and properties with BaseNode methods
 
 The power of GQL comes from the ability to quickly traverse relationships to understand what how a node relates to the rest of the graph. Neontology aims to make this easier by helping you run GQL directly from BaseNode models to find related nodes and properties - even if that involves traversing multiple hops to find what you're looking for.
-
-!!! EXPERIMENTAL
-    Support for these features is still experimental so may change in the future.
 
 ### get_related()
 

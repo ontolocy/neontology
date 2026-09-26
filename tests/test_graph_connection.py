@@ -3,6 +3,7 @@ from typing import ClassVar, Optional
 import pytest
 from pydantic import Field
 
+from neontology import NeontologyWarning
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphconnection import GraphConnection, init_neontology
@@ -237,7 +238,7 @@ def test_undefined_label(use_graph):
     RETURN n
     """
 
-    with pytest.warns(UserWarning, match="Unexpected primary labels returned:"):
+    with pytest.warns(NeontologyWarning, match="Unexpected primary labels returned:"):
         result = gc.evaluate_query(match_cypher)
 
     assert len(result.records) == 2
@@ -297,7 +298,7 @@ def test_warn_on_unexpected_secondary_labels(use_graph):
 
     # check we raise a warning
 
-    with pytest.warns(UserWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"):
+    with pytest.warns(NeontologyWarning, match="Unexpected secondary labels returned: {'WeirdTestNode'}"):
         result = gc.evaluate_query(match_cypher)
 
     # we should still capture as records and nodes

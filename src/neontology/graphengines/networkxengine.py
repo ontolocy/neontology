@@ -8,6 +8,7 @@ from grandcypher import GrandCypher
 from typing_extensions import LiteralString
 
 from ..gql import gql_identifier_adapter
+from ..neontologywarning import NeontologyWarning
 from ..result import NeontologyResult
 from .capabilities import Capability
 from .graphengine import GraphEngineBase, GraphEngineConfig
@@ -243,7 +244,7 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str):
+    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str, label: str):
         """Swap a property in a list of dictionaries.
 
         Args:
@@ -251,29 +252,37 @@ class NetworkxEngine(GraphEngineBase):
             props_key (str): The key in the dictionaries to update (e.g source_prop / target_prop).
             prop_to_update (str): The property to be replaced (the non-primary prop to match on).
             new_prop (str): The new property to set. (e.g. __primaryproperty__)
+            label (str): the label of the nodes to match, as MATCH would.
 
         Returns:
-            list: Updated list of dictionaries with the swapped property.
+            list: the entries whose node was found, with the swapped property. An entry whose
+                node was not found is left out, with a warning.
         """
         # index the graph once rather than scanning every node for every entry -
         # merging n relationships over a graph of m nodes was O(n * m)
         by_prop = {}
 
         for _, data in self.driver.nodes(data=True):
-            if prop_to_update in data:
+            if prop_to_update in data and label in data.get("__labels__", ()):
                 by_prop[data[prop_to_update]] = data
+
+        found = []
 
         for entry in all_props:
             this_node = by_prop.get(entry[props_key])
 
             if not this_node:
-                warnings.warn(f"Source node with property {prop_to_update}={entry[props_key]} not found.")
+                end = props_key.removesuffix("_prop").capitalize()
+
+                warnings.warn(f"{end} node with property {prop_to_update}={entry[props_key]} not found.", NeontologyWarning)
                 continue
 
             # update the source_prop to the actual node's primary property value
             entry[props_key] = this_node[new_prop]
 
-        return all_props
+            found.append(entry)
+
+        return found
 
     def verify_connection(self) -> bool:
         """Verify the connection to the backend.
@@ -490,6 +499,7 @@ class NetworkxEngine(GraphEngineBase):
                 "source_prop",
                 source_prop,
                 source_type.__primaryproperty__,
+                source_label,
             )
 
         if target_prop != target_type.__primaryproperty__:
@@ -498,6 +508,7 @@ class NetworkxEngine(GraphEngineBase):
                 "target_prop",
                 target_prop,
                 target_type.__primaryproperty__,
+                target_label,
             )
 
         rel_type_identifier = gql_identifier_adapter.validate_strings(rel_type)

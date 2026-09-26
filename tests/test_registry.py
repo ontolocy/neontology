@@ -413,6 +413,22 @@ class TestPackageExports:
             assert hasattr(neontology, name), f"{name} should be exported from neontology"
             assert name in neontology.__all__
 
+    def test_the_query_result_is_importable_from_neontology(self):
+        """It is what evaluate_query returns, so type hints need it without a submodule import."""
+        import neontology
+
+        assert "NeontologyResult" in neontology.__all__
+        assert neontology.NeontologyResult is neontology.result.NeontologyResult
+
+    def test_library_warnings_share_a_base_class(self):
+        """So they can be filtered as a class, and still count as the UserWarnings they were."""
+        import neontology
+
+        assert "NeontologyWarning" in neontology.__all__
+        assert issubclass(neontology.NeontologyWarning, UserWarning)
+        assert issubclass(neontology.DuplicateLabelWarning, neontology.NeontologyWarning)
+        assert issubclass(neontology.InheritedLabelWarning, neontology.NeontologyWarning)
+
     def test_looking_up_models_does_not_need_a_connection(self):
         """The point of keeping these as functions rather than connection properties."""
         import neontology

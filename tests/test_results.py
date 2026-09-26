@@ -24,9 +24,8 @@ from typing import ClassVar, Optional
 
 import pytest
 
-from neontology import BaseNode, BaseRelationship, get_rels_by_type
+from neontology import BaseNode, BaseRelationship, NeontologyResult, NeontologyWarning, get_rels_by_type
 from neontology.graphengines.capabilities import Capability
-from neontology.result import NeontologyResult
 
 
 class ResultsPerson(BaseNode):
@@ -107,8 +106,8 @@ class TestRecords:
     def test_a_node_which_cannot_be_built_is_left_out_of_its_record(self, graph):
         # the relationship to it cannot be built either, and says so
         with (
-            pytest.warns(UserWarning, match="ResultsPlace"),
-            pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"),
+            pytest.warns(NeontologyWarning, match="ResultsPlace"),
+            pytest.warns(NeontologyWarning, match="RESULTS_VISITS relationship.*could not be built"),
         ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
@@ -217,8 +216,8 @@ class TestRelationships:
     def test_a_relationship_whose_node_cannot_be_built_is_left_out_with_a_warning(self, graph):
         # as is the node, which warns for itself
         with (
-            pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"),
-            pytest.warns(UserWarning, match="ResultsPlace"),
+            pytest.warns(NeontologyWarning, match="RESULTS_VISITS relationship.*could not be built"),
+            pytest.warns(NeontologyWarning, match="ResultsPlace"),
         ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
@@ -229,7 +228,7 @@ class TestRelationships:
         """A relationship type missing from the classes given is warned about, not a KeyError."""
         only_hosts = {"RESULTS_HOSTS": get_rels_by_type()["RESULTS_HOSTS"]}
 
-        with pytest.warns(UserWarning, match="RESULTS_VISITS"):
+        with pytest.warns(NeontologyWarning, match="RESULTS_VISITS"):
             result = graph.evaluate_query(VISITS, relationship_classes=only_hosts)
 
         assert result.relationships == []
@@ -280,8 +279,8 @@ class TestPaths:
 
         # as is the relationship, which warns for itself
         with (
-            pytest.warns(UserWarning, match="[Pp]ath 'x'"),
-            pytest.warns(UserWarning, match="class for the RESULTS_HOSTS relationship type"),
+            pytest.warns(NeontologyWarning, match="[Pp]ath 'x'"),
+            pytest.warns(NeontologyWarning, match="class for the RESULTS_HOSTS relationship type"),
         ):
             result = graph.evaluate_query(TWO_HOP_PATH, relationship_classes=only_visits)
 

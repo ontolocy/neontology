@@ -8,6 +8,7 @@ from .graphengines.capabilities import Capability, CapabilityNotSupportedError
 from .graphengines.dbschema import Constraint, ConstraintType, Index, Table
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
+from .neontologywarning import NeontologyWarning
 from .registry import (
     DuplicateLabelError,
     DuplicateLabelWarning,
@@ -15,6 +16,7 @@ from .registry import (
     Registry,
     registry,
 )
+from .result import NeontologyResult
 from .schema import get_ontology_schema
 from .utils import (
     auto_constrain_neo4j,
@@ -53,8 +55,11 @@ __all__ = [
     "DuplicateLabelWarning",
     "InheritedLabelWarning",
     "DuplicateLabelError",
+    "NeontologyWarning",
     # Describing the ontology
     "get_ontology_schema",
+    # Query results
+    "NeontologyResult",
     # GQL
     "GQLIdentifier",
     "gql_identifier_adapter",

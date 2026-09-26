@@ -1,7 +1,7 @@
 """Capabilities that a graph engine may or may not support.
 
 Neontology aims for feature parity between engines. Where an engine cannot offer
-something - the experimental NetworkX/grand-cypher backend, and the embedded
+something - the NetworkX/grand-cypher backend, and the embedded
 LadybugDB backend - it is named here and declared on the engine, so the difference
 is stated in one place rather than inferred from test assertions.
 

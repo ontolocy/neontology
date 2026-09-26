@@ -15,8 +15,8 @@ from rawresult import raw_property
 
 from neontology import (
     BaseNode,
+    NeontologyResult,
 )
-from neontology.result import NeontologyResult
 
 # pandas is an optional extra: merge_df is a convenience wrapper over
 # merge_records, which takes plain dictionaries

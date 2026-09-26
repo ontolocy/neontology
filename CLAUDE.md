@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Neontology is an object-graph mapper: Pydantic models define nodes/relationships that are written to and read from openCypher/GQL property graph databases (Neo4j, Memgraph, and experimentally NetworkX via grand-cypher). Published to PyPI as `neontology`; docs are on Read the Docs (built from [docs/](docs/) with mkdocs).
+Neontology is an object-graph mapper: Pydantic models define nodes/relationships that are written to and read from openCypher/GQL property graph databases (Neo4j, Memgraph, the embedded LadybugDB, and NetworkX via grand-cypher). Published to PyPI as `neontology`; docs are on Read the Docs (built from [docs/](docs/) with mkdocs).
 
 ## Commands
 
@@ -73,7 +73,7 @@ Each engine pairs with a `GraphEngineConfig` subclass declaring `engine` and `en
 
 ### Engine capabilities
 
-Parity between engines is the goal; where one cannot do something it is named in `Capability` ([graphengines/capabilities.py](src/neontology/graphengines/capabilities.py)) and declared on the engine. Engines list what they **do** support, so a newly added capability is never silently claimed — omission means unsupported. `supports()` raises on anything that isn't a `Capability`, so a typo fails instead of reporting a feature as missing. In practice only `NetworkxEngine` diverges: the vocabulary names exactly its gaps, so its supported set is empty.
+Parity between engines is the goal; where one cannot do something it is named in `Capability` ([graphengines/capabilities.py](src/neontology/graphengines/capabilities.py)) and declared on the engine. Engines list what they **do** support, so a newly added capability is never silently claimed — omission means unsupported. `supports()` raises on anything that isn't a `Capability`, so a typo fails instead of reporting a feature as missing. In practice Neo4j and Memgraph support every capability, and `NetworkxEngine` and `LadybugEngine` are where engines diverge.
 
 **Never branch on an engine name in tests.** Use `@pytest.mark.requires_capability(Capability.X)` when a test cannot run at all, or `engine.supports(Capability.X)` (via the `engine` fixture) when the expected value differs. The marker resolves at collection time to `xfail(strict=True)` rather than skip, so a capability that starts working **fails the build** instead of passing unnoticed — that is the mechanism, not a stylistic choice. It exists because a skip claimed `merge_on` was unsupported for the NetworkX backend when it had worked since v2.2.1, and nothing caught the drift.
 
@@ -106,4 +106,5 @@ Three invariants hold the format together. **Every record carries a `RecordOrigi
 - **A module is named after its principal export, spelled the way that export is spelled.** A class gives its name lowercased and run together ([basenode.py](src/neontology/basenode.py)/`BaseNode`, [graphconnection.py](src/neontology/graphconnection.py)/`GraphConnection`, [networkxengine.py](src/neontology/graphengines/networkxengine.py)/`NetworkxEngine`); a function gives its name as written, so with underscores ([import_records.py](src/neontology/tools/import_records.py)/`import_records()`); a module covering a topic rather than one export takes a plain noun (`capabilities`, `hydration`, `registry`, `errors`). `optional_deps.py` is the one file that follows none of these. Prefer a name a reader can guess from the class they are looking for.
 - Ruff with `line-length = 128` and pydocstyle (google convention) — docstrings are required on public functions/methods (`D100`, `D101`, `D104`, `D107` are ignored). Lint `src` and `tests`; `tests/**` ignores the `D` rules via `per-file-ignores`, so test functions don't need docstrings.
 - `requires-python = ">=3.10"`: `X | Y` unions and `ParamSpec` are available from the stdlib, but `Self` still needs `typing_extensions` (stdlib only from 3.11). Existing modules use `Optional`/`Union` and `from __future__ import annotations` from the 3.9 era — match the surrounding file rather than converting it piecemeal.
+- A warning about the user's models, queries or results is a `NeontologyWarning` ([neontologywarning.py](src/neontology/neontologywarning.py)), or a subclass of it, so users can filter the library's warnings as a class; a deprecation is a `DeprecationWarning`. Never a bare `warnings.warn(message)`.
 - New user-facing behaviour normally needs a `docs/` update and a `CHANGELOG.md` entry under the next version.
