@@ -221,7 +221,11 @@ If no arguments are given, this function will return all nodes with a direct out
 * `target_label` - the label of the target node you want to match on.
 * `incoming` - whether to include incoming relationships.
 * `outgoing` - whether to include outgoing relationships.
-* `limit` - the maximum number of nodes to return.
+* `depth` - a `(min, max)` tuple bounding the number of relationships between the node and those it is related to.
+* `limit` - the maximum number of results to return.
+* `skip` - how many results to skip, for pagination.
+
+`depth`, `limit` and `skip` must be non-negative integers - anything else, including a numeric string, raises a `ValueError`.
 
 The return type is a [NeontologyResult object](queries.md#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
 

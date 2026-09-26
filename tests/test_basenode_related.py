@@ -149,6 +149,48 @@ def test_related_nodes(engine, use_graph):
         assert len(bobs_rels.relationships) == 2
 
 
+def test_related_nodes_depth_limit_and_skip(use_graph):
+    alice = AugmentedPerson(name="Alice")
+    bob = AugmentedPerson(name="Bob")
+    carol = AugmentedPerson(name="Carol")
+    AugmentedPerson.merge_nodes([alice, bob, carol])
+
+    AugmentedPersonRelationship.merge_relationships(
+        [
+            AugmentedPersonRelationship(source=alice, target=bob),
+            AugmentedPersonRelationship(source=bob, target=carol),
+        ]
+    )
+
+    def related(result):
+        return {record["nodes"]["o"].name for record in result.records}
+
+    assert related(alice.get_related(depth=(1, 1))) == {"Bob"}
+    assert related(alice.get_related(depth=(1, 2))) == {"Bob", "Carol"}
+
+    first = alice.get_related(depth=(1, 2), limit=1)
+    rest = alice.get_related(depth=(1, 2), skip=1)
+
+    assert len(first.records) == 1
+    assert related(first) | related(rest) == {"Bob", "Carol"}
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"depth": (1, "2]-(x) DETACH DELETE x //")},
+        {"depth": (-1, 2)},
+        {"depth": (1, 2.0)},
+        {"limit": -1},
+        {"limit": True},
+        {"skip": "1"},
+    ],
+)
+def test_related_nodes_refuses_counts_which_are_not_non_negative_integers(kwargs):
+    with pytest.raises(ValueError):
+        AugmentedPerson(name="Alice").get_related(**kwargs)
+
+
 def test_related_nodes_unmerged(use_graph):
     alice = AugmentedPerson(name="Alice")
 

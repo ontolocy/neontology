@@ -635,7 +635,7 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause

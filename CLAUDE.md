@@ -83,7 +83,7 @@ Not every difference is a capability. `records_raw` is the driver's own structur
 
 ### Query safety
 
-Cypher is built with parameters for values. Anything interpolated into the query string (labels, property keys, relationship types) must pass through `gql_identifier_adapter.validate_strings(...)` from [gql.py](src/neontology/gql.py), which enforces `^[a-zA-Z][a-zA-Z0-9_]+$`. Follow this in any new query construction.
+Cypher is built with parameters for values. Anything interpolated into the query string (labels, property keys, relationship types) must pass through `gql_identifier_adapter.validate_strings(...)` from [gql.py](src/neontology/gql.py), which enforces `^[a-zA-Z][a-zA-Z0-9_]*$`. Follow this in any new query construction. Identifiers a model class declares are also checked once as the class is defined (`validate_model_identifier`), which raises; counts such as `skip`, `limit` and path `depth` go through `non_negative_int_adapter`, and are passed as parameters wherever Cypher allows it (path length bounds cannot be).
 
 ### Results and tooling
 

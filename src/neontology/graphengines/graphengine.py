@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, T
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError, model_validator
 
-from ..gql import gql_identifier_adapter, int_adapter
+from ..gql import gql_identifier_adapter, non_negative_int_adapter
 from ..registry import registry
 from ..result import NeontologyResult
 from .capabilities import Capability, CapabilityNotSupportedError
@@ -769,6 +769,12 @@ class GraphEngineBase:
         Returns:
             list: A list of nodes that match the given criteria.
         """
+        # checked before anything is asked of the database
+        if skip is not None:
+            skip = non_negative_int_adapter.validate_python(skip)
+        if limit is not None:
+            limit = non_negative_int_adapter.validate_python(limit)
+
         cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
@@ -828,7 +834,7 @@ class GraphEngineBase:
         from ..utils import get_node_types, get_rels_by_type
 
         cypher = f"""
-        MATCH (n)-[r:{relationship_class.__relationshiptype__}]->(o)
+        MATCH (n)-[r:{gql_identifier_adapter.validate_strings(relationship_class.__relationshiptype__)}]->(o)
         RETURN n, r, o
         """
 
@@ -836,11 +842,11 @@ class GraphEngineBase:
 
         if skip:
             cypher += " SKIP $skip "
-            params["skip"] = int_adapter.validate_python(skip)
+            params["skip"] = non_negative_int_adapter.validate_python(skip)
 
         if limit:
             cypher += " LIMIT $limit "
-            params["limit"] = int_adapter.validate_python(limit)
+            params["limit"] = non_negative_int_adapter.validate_python(limit)
 
         rel_types = get_rels_by_type()
         node_classes = get_node_types()

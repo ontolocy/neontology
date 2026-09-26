@@ -1,13 +1,11 @@
 import functools
 import json
-import warnings
 from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, TypeVar, Union
 
-from pydantic import ValidationError, model_validator
 from typing_extensions import ParamSpec, Self
 
 from .commonmodel import CommonModel
-from .gql import gql_identifier_adapter, int_adapter
+from .gql import gql_identifier_adapter, non_negative_int_adapter, validate_model_identifier
 from .graphconnection import GraphConnection
 from .optional_deps import require_pandas
 from .registry import registry
@@ -24,7 +22,9 @@ R = TypeVar("R")
 
 
 def _find_this_node(query, params, node):
-    this_node = f"(ThisNode:{node.__primarylabel__} {{{node.__primaryproperty__}: $_neontology_pp}})"
+    label = gql_identifier_adapter.validate_strings(node.__primarylabel__)
+    pp_key = gql_identifier_adapter.validate_strings(node.__primaryproperty__)
+    this_node = f"(ThisNode:{label} {{{pp_key}: $_neontology_pp}})"
     params["_neontology_pp"] = node.get_pp()
     new_query = query.replace("(#ThisNode)", this_node)
 
@@ -151,8 +151,26 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         Args:
             **kwargs (Any): class keyword arguments, passed through to pydantic.
+
+        Raises:
+            ValueError: if the primary property or any label is not a valid identifier.
         """
         super().__pydantic_init_subclass__(**kwargs)
+
+        # an abstract node may leave its primary property to its subclasses
+        if hasattr(cls, "__primaryproperty__"):
+            validate_model_identifier(cls, "__primaryproperty__", cls.__primaryproperty__)
+
+        # an abstract node deliberately has no primary label, which is not a malformed one
+        if not cls._is_abstract():
+            validate_model_identifier(cls, "__primarylabel__", cls.__primarylabel__)
+
+        # secondary and inheritable labels are interpolated into queries alongside the
+        # primary one, so they are held to the same standard. Inheritable labels a parent
+        # declares were checked when the parent was defined.
+        for attribute in ("__secondarylabels__", "__inheritablelabels__"):
+            for label in getattr(cls, attribute) or []:
+                validate_model_identifier(cls, attribute, label)
 
         registry.register_node(cls)
 
@@ -263,50 +281,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             and hasattr(getattr(cls, name), "neontology_related_prop")
         }
         return related_prop_attributes
-
-    @model_validator(mode="after")
-    def validate_identifiers(self) -> Self:
-        """Validate data provided for primary label and primary property."""
-        # an abstract node deliberately has no primary label, so there is nothing to
-        # check here - warning that it was not alphanumeric described the wrong problem
-        if not self._is_abstract():
-            try:
-                gql_identifier_adapter.validate_strings(self.__primarylabel__)
-
-            except ValidationError:
-                warnings.warn(
-                    (
-                        "Primary Label should contain only alphanumeric characters and underscores."
-                        " It should begin with an alphabetic character."
-                    )
-                )
-
-        try:
-            gql_identifier_adapter.validate_strings(self.__primaryproperty__)
-        except AttributeError:
-            pass
-        except ValidationError:
-            warnings.warn(
-                (
-                    "Primary Property should contain only alphanumeric characters and underscores."
-                    " It should begin with an alphabetic character."
-                )
-            )
-
-        # secondary and inheritable labels are interpolated into cypher alongside the
-        # primary one, so they are held to the same standard
-        for secondary_label in self._all_labels()[1:]:
-            try:
-                gql_identifier_adapter.validate_strings(secondary_label)
-            except ValidationError:
-                warnings.warn(
-                    (
-                        f"Secondary Label {secondary_label!r} should contain only alphanumeric"
-                        " characters and underscores. It should begin with an alphabetic character."
-                    )
-                )
-
-        return self
 
     def get_pp(self) -> Union[str, int]:
         """Get the primary property value for this node.
@@ -501,7 +475,7 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
 
         cypher = f"""
         MATCH (n{gc.engine.label_pattern(cls.__primarylabel__)})
-        WHERE n.{cls.__primaryproperty__} = $pp
+        WHERE n.{gql_identifier_adapter.validate_strings(cls.__primaryproperty__)} = $pp
         RETURN n
         """
 
@@ -609,8 +583,24 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             NeontologyResult: A result object containing the nodes and relationships found.
 
         Raises:
-            ValueError: If neither outgoing nor incoming is specified.
+            ValueError: If neither outgoing nor incoming is specified, or if depth, limit or skip is not
+                a non-negative integer.
         """
+        # checked before anything is asked of the database
+        if skip:
+            skip = non_negative_int_adapter.validate_python(skip)
+
+        if limit:
+            limit = non_negative_int_adapter.validate_python(limit)
+
+        if depth:
+            # a path's length bounds cannot be query parameters, so they are interpolated
+            min_depth, max_depth = (non_negative_int_adapter.validate_python(x) for x in depth)
+
+            rel_depth = f"*{min_depth}..{max_depth}"
+        else:
+            rel_depth = ""
+
         gc = GraphConnection()
 
         if target_label:
@@ -652,13 +642,6 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
             out_dir = "-"
             in_dir = "<-"
 
-        if depth:
-            min_depth, max_depth = depth
-
-            rel_depth = f"*{min_depth}..{max_depth}"
-        else:
-            rel_depth = ""
-
         if distinct:
             return_distinct = "DISTINCT"
 
@@ -670,11 +653,15 @@ class BaseNode(CommonModel):  # pyre-ignore[13]
         RETURN {return_distinct} o, r, ThisNode
         """
 
+        # relationship properties are passed as parameters under their own names, so these
+        # take a prefix no identifier can begin with
         if skip:
-            query += f" SKIP {int_adapter.validate_python(skip)} "
+            query += " SKIP $_neontology_skip "
+            pass_on_params["_neontology_skip"] = skip
 
         if limit:
-            query += f" LIMIT {int_adapter.validate_python(limit)} "
+            query += " LIMIT $_neontology_limit "
+            pass_on_params["_neontology_limit"] = limit
 
         new_query, params = _find_this_node(query, pass_on_params, self)
 

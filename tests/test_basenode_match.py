@@ -69,6 +69,12 @@ def test_match_nodes_skip(use_graph):
     assert results1[0].pp != results2[0].pp
 
 
+@pytest.mark.parametrize("kwargs", [{"limit": -1}, {"skip": -1}, {"limit": "1"}, {"skip": True}])
+def test_match_nodes_refuses_counts_which_are_not_non_negative_integers(use_graph, kwargs):
+    with pytest.raises(ValueError):
+        PracticeNode.match_nodes(**kwargs)
+
+
 def test_match_nodes_with_filters_basic(use_graph):
     """Test basic filtering functionality."""
     # Create test nodes

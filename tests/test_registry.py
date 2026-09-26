@@ -257,14 +257,12 @@ class TestLabelHandling:
 
     def test_secondary_labels_are_validated(self):
         """Secondary labels reach cypher too, so they are held to the same standard."""
-        node = _node(
-            "BadSecondaryNode",
-            __primarylabel__="RegistryBadSecondaryNode",
-            __secondarylabels__=["not a valid label!"],
-        )
-
-        with pytest.warns(UserWarning, match="Secondary Label"):
-            node(pp="x")
+        with pytest.raises(ValueError, match="BadSecondaryNode.__secondarylabels__ is 'not a valid label!'"):
+            _node(
+                "BadSecondaryNode",
+                __primarylabel__="RegistryBadSecondaryNode",
+                __secondarylabels__=["not a valid label!"],
+            )
 
 
 class TestDeprecations:
@@ -353,19 +351,30 @@ class TestAbstractModels:
 
         assert [w for w in caught if "alphanumeric" in str(w.message)] == []
 
-    def test_a_malformed_primary_label_still_warns(self):
-        """Skipping the check for abstract models must not skip it for real ones."""
-        node = _node("MalformedLabelNode", __primarylabel__="Not A Valid Label!")
+    def test_a_malformed_primary_label_raises_when_the_class_is_defined(self):
+        """Skipping the check for abstract models must not skip it for real ones.
 
-        with pytest.warns(UserWarning, match="Primary Label should contain"):
-            node(pp="x")
+        It is raised as the class is defined, rather than warned about when it is
+        instantiated, so a class which could never be queried safely never registers.
+        """
+        with pytest.raises(ValueError, match="MalformedLabelNode.__primarylabel__ is 'Not A Valid Label!'"):
+            _node("MalformedLabelNode", __primarylabel__="Not A Valid Label!")
 
-    def test_a_malformed_relationship_type_still_warns(self):
+        assert "Not A Valid Label!" not in get_node_types()
+
+    def test_a_malformed_primary_property_raises_when_the_class_is_defined(self):
+        with pytest.raises(ValueError, match="MalformedPropertyNode.__primaryproperty__ is 'not valid'"):
+            _node("MalformedPropertyNode", __primarylabel__="RegistryMalformedPropertyNode", __primaryproperty__="not valid")
+
+    def test_a_malformed_relationship_type_raises_when_the_class_is_defined(self):
         node = _node("MalformedRelHome", __primarylabel__="RegistryMalformedRelHome")
-        rel = _rel("MalformedRel", node, node, "Not A Valid Type!")
 
-        with pytest.warns(UserWarning, match="Relationship type should contain"):
-            rel(source=node(pp="a"), target=node(pp="b"))
+        with pytest.raises(ValueError, match="MalformedRel.__relationshiptype__ is 'Not A Valid Type!'"):
+            _rel("MalformedRel", node, node, "Not A Valid Type!")
+
+    def test_single_character_identifiers_are_valid(self):
+        node = _node("SingleCharacterNode", __primarylabel__="A", __primaryproperty__="x", __annotations__={"x": str})
+        _rel("SingleCharacterRel", node, node, "R")
 
 
 class TestConnectionPropertiesAreDeprecated:
