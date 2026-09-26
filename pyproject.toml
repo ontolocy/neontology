@@ -40,7 +40,6 @@ dev = [
     "pytest-cov>=3.0,<5",
     "pytest-benchmark>=4.0,<5",
     "ruff>=0.1.0,<1",
-    "types-PyYAML>=6.0,<7",
     "mkdocs>=1.0,<2",
 ]
 

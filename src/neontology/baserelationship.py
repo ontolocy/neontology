@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 R = TypeVar("R", bound="BaseRelationship")
 
 
-class BaseRelationship(CommonModel):  # pyre-ignore[13]
+class BaseRelationship(CommonModel):
     source: BaseNode
     target: BaseNode
 

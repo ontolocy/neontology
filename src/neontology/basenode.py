@@ -132,7 +132,7 @@ def _record_key(record: dict) -> tuple:
     return tuple(key)
 
 
-class BaseNode(CommonModel):  # pyre-ignore[13]
+class BaseNode(CommonModel):
     __primaryproperty__: ClassVar[str]
     __primarylabel__: ClassVar[Optional[str]]
     __secondarylabels__: ClassVar[list[str]] = []
