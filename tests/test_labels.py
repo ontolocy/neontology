@@ -227,14 +227,12 @@ class TestInheritableLabels:
 
     def test_inheritable_labels_are_validated(self):
         """They reach cypher like any other label, so are held to the same standard."""
-        node = _node(
-            "BadInheritable",
-            __primarylabel__="LblBadInheritable",
-            __inheritablelabels__=["not a valid label!"],
-        )
-
-        with pytest.warns(UserWarning, match="should contain only alphanumeric"):
-            node(pp="x")
+        with pytest.raises(ValueError, match="BadInheritable.__inheritablelabels__ is 'not a valid label!'"):
+            _node(
+                "BadInheritable",
+                __primarylabel__="LblBadInheritable",
+                __inheritablelabels__=["not a valid label!"],
+            )
 
     def test_schema_lists_every_label(self):
         schema = LblPuppy.neontology_schema()

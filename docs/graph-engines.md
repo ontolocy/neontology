@@ -2,9 +2,6 @@
 
 By default, Neontology is set up to work with a Neo4j backend. However, it can also be configured to use other graph databases: Memgraph, the embedded LadybugDB, and NetworkX.
 
-!!! EXPERIMENTAL
-    Some of these features are still experimental so may change in the future.
-
 For large or complex queries, data science or visualization/exploration, consider using a native driver or built-in interface (like Neo4j Browser/Bloom or Memgraph Lab).
 
 ## Graph Configs
@@ -58,7 +55,7 @@ gc.evaluate_query_single("MATCH (n) RETURN COUNT(n)")
 
 ### NetworkX
 
-Neontology has experimental support for NetworkX as a backend - storing your graph in memory rather than an external database. This is enabled by [grand-cypher](https://github.com/aplbrain/grand-cypher).
+Neontology supports NetworkX as a backend - storing your graph in memory rather than an external database. This is enabled by [grand-cypher](https://github.com/aplbrain/grand-cypher).
 
 This allows you to build property graphs and query them using cypher / graph query language (GQL).
 
@@ -74,7 +71,7 @@ The NetworkX graph is held in memory with no locking, so a query running while a
 
 ### LadybugDB
 
-Neontology has experimental support for [LadybugDB](https://ladybugdb.com/) (formerly Kùzu)
+Neontology supports [LadybugDB](https://ladybugdb.com/) (formerly Kùzu)
 as a backend - an embedded graph database that runs inside your own process, speaking
 Cypher, against a directory on disk or entirely in memory. There is no server to run.
 

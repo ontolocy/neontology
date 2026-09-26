@@ -221,7 +221,7 @@ def ladybug_rows(
 
     Returns:
         list[dict[str, Any]]: one dictionary per row, from column name to the nodes,
-            relationships and paths in it.
+            relationships and paths in it, and every other value.
     """
     raw_nodes: dict[tuple, RawNode] = {}
     raw_relationships: dict[tuple, RawRelationship] = {}
@@ -292,6 +292,9 @@ def ladybug_rows(
 
             elif _is_path(value):
                 record[column] = RawPath(relationships=[relationship(step) for step in value["_RELS"]])
+
+            else:
+                record[column] = value
 
         built.append(record)
 

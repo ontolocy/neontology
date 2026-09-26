@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
 
     steps:
       - uses: actions/checkout@v7
@@ -50,10 +50,11 @@ jobs:
         # neo4j-rust-ext, where PyO3 refuses free-threaded CPython below 3.14 outright
         # and costs minutes of cargo build on 3.14t; it is a drop-in codec for the
         # driver rather than something neontology calls. [ladybug] is an embedded
-        # database in C++, which is minutes of compilation again. The other matrix
-        # entries cover both.
+        # database in C++, which is minutes of compilation again, and whose extension
+        # turns the GIL back on. The other matrix entries cover both. [all] is dropped
+        # too, since it pulls in [ladybug] and --no-extra ladybug alone does not stop it.
         run: |
-          uv sync --all-extras ${{ endsWith(matrix.python-version, 't') && '--no-extra rust --no-extra ladybug' || '' }}
+          uv sync --all-extras ${{ endsWith(matrix.python-version, 't') && '--no-extra rust --no-extra ladybug --no-extra all' || '' }}
       - name: Test default engines with pytest
         env:
           TEST_NEO4J_URI: bolt://localhost:7687
@@ -75,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
 
     steps:
       - uses: actions/checkout@v7

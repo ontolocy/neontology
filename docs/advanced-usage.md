@@ -162,6 +162,9 @@ from neontology import DuplicateLabelWarning
 warnings.simplefilter("error", DuplicateLabelWarning)
 ```
 
+`DuplicateLabelWarning` and `InheritedLabelWarning` are both `NeontologyWarning`s, the base
+class of every warning Neontology raises, so filtering on that catches them too.
+
 Re-running a notebook cell or reloading a module is not treated as a clash - that is the
 same model being defined again, not two models fighting over one label.
 
@@ -208,9 +211,6 @@ class ElephantNode(BaseNode):
 
 The power of GQL comes from the ability to quickly traverse relationships to understand what how a node relates to the rest of the graph. Neontology aims to make this easier by helping you run GQL directly from BaseNode models to find related nodes and properties - even if that involves traversing multiple hops to find what you're looking for.
 
-!!! EXPERIMENTAL
-    Support for these features is still experimental so may change in the future.
-
 ### get_related()
 
 BaseNode subclasses have a `get_related` method which can be used to find nodes and relationships which are related to a BaseNode instance.
@@ -221,7 +221,11 @@ If no arguments are given, this function will return all nodes with a direct out
 * `target_label` - the label of the target node you want to match on.
 * `incoming` - whether to include incoming relationships.
 * `outgoing` - whether to include outgoing relationships.
-* `limit` - the maximum number of nodes to return.
+* `depth` - a `(min, max)` tuple bounding the number of relationships between the node and those it is related to.
+* `limit` - the maximum number of results to return.
+* `skip` - how many results to skip, for pagination.
+
+`depth`, `limit` and `skip` must be non-negative integers - anything else, including a numeric string, raises a `ValueError`.
 
 The return type is a [NeontologyResult object](queries.md#querying-for-neontology-nodes-and-relationships) which will include identified nodes and relationships.
 

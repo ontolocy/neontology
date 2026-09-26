@@ -11,21 +11,21 @@ the backend:
   means the database's own identity, never equal contents: two parallel relationships with
   the same properties are two relationships.
 - a relationship's source and target are the same objects as the nodes in the result.
+- anything else a row returns - a property, an aggregate, a literal - is in its record's
+  `values`, under the name it was returned as, converted to native Python types.
 
 `records_raw` is the driver's own result, for anyone needing it verbatim.
 """
 
 import json
 import warnings
+from datetime import date
 from typing import ClassVar, Optional
 
 import pytest
 
-from neontology import BaseNode, BaseRelationship, get_rels_by_type
+from neontology import BaseNode, BaseRelationship, NeontologyResult, NeontologyWarning, get_rels_by_type
 from neontology.graphengines.capabilities import Capability
-from neontology.result import NeontologyResult
-
-EMPTY_RECORD = {"nodes": {}, "relationships": {}, "paths": {}}
 
 
 class ResultsPerson(BaseNode):
@@ -41,6 +41,14 @@ class ResultsPlace(BaseNode):
     __primarylabel__: ClassVar[Optional[str]] = "ResultsPlace"
 
     name: str
+
+
+class ResultsEvent(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[Optional[str]] = "ResultsEvent"
+
+    name: str
+    held_on: date
 
 
 class ResultsVisits(BaseRelationship):
@@ -88,15 +96,73 @@ def _names(items: list) -> list:
 
 class TestRecords:
     def test_a_query_returning_only_values_has_one_record_per_row(self, graph):
-        result = graph.evaluate_query("MATCH (p:ResultsPerson) RETURN p.name")
+        result = graph.evaluate_query("MATCH (p:ResultsPerson) RETURN p.name AS name")
 
-        assert result.records == [EMPTY_RECORD] * 3
+        assert len(result.records) == 3
+
+        for record in result.records:
+            assert (record["nodes"], record["relationships"], record["paths"]) == ({}, {}, {})
 
     def test_a_node_which_cannot_be_built_is_left_out_of_its_record(self, graph):
-        with pytest.warns(UserWarning, match="ResultsPlace"):
+        # the relationship to it cannot be built either, and says so
+        with (
+            pytest.warns(NeontologyWarning, match="ResultsPlace"),
+            pytest.warns(NeontologyWarning, match="RESULTS_VISITS relationship.*could not be built"),
+        ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
         assert set(result.records[0]["nodes"]) == {"p"}
+
+
+class TestValues:
+    """Values which are not nodes, relationships or paths are kept in their record."""
+
+    def test_a_value_returned_beside_a_node_is_in_the_same_record(self, graph):
+        result = graph.evaluate_query("MATCH (p:ResultsPerson) WHERE p.name = 'alice' RETURN p, p.name AS name")
+
+        (record,) = result.records
+
+        assert record["nodes"]["p"].name == "alice"
+        assert record["values"] == {"name": "alice"}
+
+    def test_a_projection_is_read_row_by_row(self, graph):
+        result = graph.evaluate_query("MATCH (p:ResultsPerson) RETURN p.name AS name, p.note AS note ORDER BY p.name")
+
+        assert [record["values"] for record in result.records] == [
+            {"name": "alice", "note": None},
+            {"name": "bob", "note": None},
+            {"name": "carol", "note": None},
+        ]
+
+    def test_an_aggregate_is_a_value(self, graph):
+        result = graph.evaluate_query("MATCH (p:ResultsPerson) RETURN COUNT(p) AS people")
+
+        assert [record["values"] for record in result.records] == [{"people": 3}]
+
+    def test_a_graph_value_is_not_repeated_in_values(self, graph):
+        result = graph.evaluate_query(VISITS)
+
+        assert result.records[0]["values"] == {}
+
+    def test_a_temporal_value_is_native(self, graph):
+        ResultsEvent(name="launch", held_on=date(2026, 9, 26)).merge()
+
+        result = graph.evaluate_query("MATCH (e:ResultsEvent) RETURN e.held_on AS held_on")
+
+        (record,) = result.records
+
+        assert record["values"]["held_on"] == date(2026, 9, 26)
+        assert type(record["values"]["held_on"]) is date
+
+    def test_a_value_which_is_a_list_is_native(self, graph):
+        ResultsEvent(name="launch", held_on=date(2026, 9, 26)).merge()
+
+        result = graph.evaluate_query("MATCH (e:ResultsEvent) RETURN COLLECT(e.held_on) AS dates")
+
+        (record,) = result.records
+
+        assert record["values"]["dates"] == [date(2026, 9, 26)]
+        assert type(record["values"]["dates"][0]) is date
 
 
 class TestNodes:
@@ -148,7 +214,11 @@ class TestRelationships:
         assert record["relationships"]["r"].target is record["nodes"]["o"]
 
     def test_a_relationship_whose_node_cannot_be_built_is_left_out_with_a_warning(self, graph):
-        with pytest.warns(UserWarning, match="RESULTS_VISITS relationship.*could not be built"):
+        # as is the node, which warns for itself
+        with (
+            pytest.warns(NeontologyWarning, match="RESULTS_VISITS relationship.*could not be built"),
+            pytest.warns(NeontologyWarning, match="ResultsPlace"),
+        ):
             result = graph.evaluate_query(VISITS, node_classes={"ResultsPerson": ResultsPerson})
 
         assert result.relationships == []
@@ -158,7 +228,7 @@ class TestRelationships:
         """A relationship type missing from the classes given is warned about, not a KeyError."""
         only_hosts = {"RESULTS_HOSTS": get_rels_by_type()["RESULTS_HOSTS"]}
 
-        with pytest.warns(UserWarning, match="RESULTS_VISITS"):
+        with pytest.warns(NeontologyWarning, match="RESULTS_VISITS"):
             result = graph.evaluate_query(VISITS, relationship_classes=only_hosts)
 
         assert result.relationships == []
@@ -207,7 +277,11 @@ class TestPaths:
     def test_a_path_including_a_relationship_which_cannot_be_built_is_left_out_with_a_warning(self, graph):
         only_visits = {"RESULTS_VISITS": get_rels_by_type()["RESULTS_VISITS"]}
 
-        with pytest.warns(UserWarning, match="[Pp]ath 'x'"):
+        # as is the relationship, which warns for itself
+        with (
+            pytest.warns(NeontologyWarning, match="[Pp]ath 'x'"),
+            pytest.warns(NeontologyWarning, match="class for the RESULTS_HOSTS relationship type"),
+        ):
             result = graph.evaluate_query(TWO_HOP_PATH, relationship_classes=only_visits)
 
         assert result.paths == []

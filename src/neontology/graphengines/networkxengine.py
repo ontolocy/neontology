@@ -8,6 +8,7 @@ from grandcypher import GrandCypher
 from typing_extensions import LiteralString
 
 from ..gql import gql_identifier_adapter
+from ..neontologywarning import NeontologyWarning
 from ..result import NeontologyResult
 from .capabilities import Capability
 from .graphengine import GraphEngineBase, GraphEngineConfig
@@ -85,10 +86,12 @@ def _is_path(value: Any) -> bool:
 
     A path is a list alternating node ids with hops, each hop mapping edge keys to edges. A
     variable length relationship is returned as a list too, but of edges on their own, and
-    is not a path.
+    is not a path. Nor is a list of one value, such as COLLECT() over a single match: a path
+    has at least one hop, as grand-cypher returns no row for a path of a single node.
     """
     return (
         isinstance(value, list)
+        and len(value) >= 3
         and len(value) % 2 == 1
         and not isinstance(value[0], dict)
         and all(isinstance(hop, dict) and hop and all(_is_edge(edge) for edge in hop.values()) for hop in value[1::2])
@@ -134,7 +137,7 @@ def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, An
 
     Returns:
         list[dict[str, Any]]: one dictionary per row, from column name to the nodes,
-            relationships and paths in it.
+            relationships and paths in it, and every other value.
     """
     # the nodes the result includes - returned as nodes, or along a path - by attributes
     included: set[int] = set()
@@ -200,6 +203,9 @@ def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, An
                 # each hop holds the edge taken between two nodes along the path
                 rows[index][name] = RawPath(relationships=[relationship(next(iter(hop.values()))) for hop in value[1::2]])
 
+            else:
+                rows[index][name] = value
+
     return rows
 
 
@@ -238,7 +244,7 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str):
+    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str, label: str):
         """Swap a property in a list of dictionaries.
 
         Args:
@@ -246,29 +252,37 @@ class NetworkxEngine(GraphEngineBase):
             props_key (str): The key in the dictionaries to update (e.g source_prop / target_prop).
             prop_to_update (str): The property to be replaced (the non-primary prop to match on).
             new_prop (str): The new property to set. (e.g. __primaryproperty__)
+            label (str): the label of the nodes to match, as MATCH would.
 
         Returns:
-            list: Updated list of dictionaries with the swapped property.
+            list: the entries whose node was found, with the swapped property. An entry whose
+                node was not found is left out, with a warning.
         """
         # index the graph once rather than scanning every node for every entry -
         # merging n relationships over a graph of m nodes was O(n * m)
         by_prop = {}
 
         for _, data in self.driver.nodes(data=True):
-            if prop_to_update in data:
+            if prop_to_update in data and label in data.get("__labels__", ()):
                 by_prop[data[prop_to_update]] = data
+
+        found = []
 
         for entry in all_props:
             this_node = by_prop.get(entry[props_key])
 
             if not this_node:
-                warnings.warn(f"Source node with property {prop_to_update}={entry[props_key]} not found.")
+                end = props_key.removesuffix("_prop").capitalize()
+
+                warnings.warn(f"{end} node with property {prop_to_update}={entry[props_key]} not found.", NeontologyWarning)
                 continue
 
             # update the source_prop to the actual node's primary property value
             entry[props_key] = this_node[new_prop]
 
-        return all_props
+            found.append(entry)
+
+        return found
 
     def verify_connection(self) -> bool:
         """Verify the connection to the backend.
@@ -485,6 +499,7 @@ class NetworkxEngine(GraphEngineBase):
                 "source_prop",
                 source_prop,
                 source_type.__primaryproperty__,
+                source_label,
             )
 
         if target_prop != target_type.__primaryproperty__:
@@ -493,6 +508,7 @@ class NetworkxEngine(GraphEngineBase):
                 "target_prop",
                 target_prop,
                 target_type.__primaryproperty__,
+                target_label,
             )
 
         rel_type_identifier = gql_identifier_adapter.validate_strings(rel_type)
@@ -510,6 +526,12 @@ class NetworkxEngine(GraphEngineBase):
 
             source_id = generate_node_id(x["source_prop"], source_label)
             target_id = generate_node_id(x["target_prop"], target_label)
+
+            # as MATCH does on the other engines: a relationship whose source or target
+            # does not exist is not created, since adding the edge would also add the
+            # missing node, with no label or properties
+            if not (self.driver.has_node(source_id) and self.driver.has_node(target_id)):
+                continue
 
             # every merge_on property is part of what identifies the relationship,
             # including one whose value is falsy - a relationship tagged 0 is not the
@@ -635,7 +657,7 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n:{node_class.__primarylabel__})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause

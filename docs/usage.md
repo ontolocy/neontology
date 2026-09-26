@@ -36,6 +36,8 @@ Lets see what we've defined here:
 * `name` this is a field on our model which is of type `str` (a string) - it will map to a property when we create a node.
 * `age` another property. In this case it is optional and by default gets set to `None`.
 
+Labels, relationship types and the primary property are written into queries, so each must begin with a letter and contain only letters, digits and underscores. A class declaring one that does not raises a `ValueError` as it is defined.
+
 ## Defining relationships
 
 We can define relationships by specifying the types node which are used for the source and target of the relationship. We must also specify the string to use for the relationship type when creating it in Neo4j.

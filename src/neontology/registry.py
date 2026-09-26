@@ -26,12 +26,14 @@ import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Optional
 
+from .neontologywarning import NeontologyWarning
+
 if TYPE_CHECKING:
     from .basenode import BaseNode
     from .baserelationship import BaseRelationship, RelationshipTypeData
 
 
-class DuplicateLabelWarning(UserWarning):
+class DuplicateLabelWarning(NeontologyWarning):
     """Two different model classes claim the same primary label or relationship type.
 
     Only one of them can be used to build results, so the other's data comes back as the
@@ -41,7 +43,7 @@ class DuplicateLabelWarning(UserWarning):
     """
 
 
-class InheritedLabelWarning(UserWarning):
+class InheritedLabelWarning(NeontologyWarning):
     """A subclass has inherited a concrete primary label instead of declaring its own.
 
     The subclass takes over that label in the registry, so rows written as the parent

@@ -22,6 +22,7 @@ import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Hashable, Iterable, Optional, Sequence, TypeVar
 
+from ..neontologywarning import NeontologyWarning
 from ..registry import _inherits_from
 from ..result import NeontologyResult
 
@@ -67,14 +68,17 @@ def node_class_for_labels(labels: Iterable[str], node_classes: dict[str, type[Ba
         else:
             reason = "Those labels belong to classes which do not inherit from one another"
 
-        warnings.warn(f"Unexpected primary labels returned: {known_labels}. {reason}, so the node is left out of the results.")
+        warnings.warn(
+            f"Unexpected primary labels returned: {known_labels}. {reason}, so the node is left out of the results.",
+            NeontologyWarning,
+        )
 
         return None
 
     node_class = most_derived[0]
 
     if node_labels != set(node_class._all_labels()):
-        warnings.warn(f"Unexpected secondary labels returned: {node_labels - {node_class.__primarylabel__}}")
+        warnings.warn(f"Unexpected secondary labels returned: {node_labels - {node_class.__primarylabel__}}", NeontologyWarning)
 
     return node_class
 
@@ -186,7 +190,8 @@ class _ResultBuilder:
         if not type_data:
             warnings.warn(
                 f"Could not find a class for the {raw.type} relationship type, so it is left out of the results."
-                " Is the class defined, and are its source and target node classes resolved?"
+                " Is the class defined, and are its source and target node classes resolved?",
+                NeontologyWarning,
             )
 
             return None
@@ -194,7 +199,8 @@ class _ResultBuilder:
         if raw.source is None or raw.target is None:
             warnings.warn(
                 f"{raw.type} relationship type query did not include nodes."
-                " To get neontology relationships, return source and target nodes as part of result."
+                " To get neontology relationships, return source and target nodes as part of result.",
+                NeontologyWarning,
             )
 
             return None
@@ -203,7 +209,10 @@ class _ResultBuilder:
         target = self.node(raw.target)
 
         if source is None or target is None:
-            warnings.warn(f"{raw.type} relationship left out of the results: its source or target node could not be built.")
+            warnings.warn(
+                f"{raw.type} relationship left out of the results: its source or target node could not be built.",
+                NeontologyWarning,
+            )
 
             return None
 
@@ -229,7 +238,10 @@ class _ResultBuilder:
             return None
 
         if any(step is None for step in steps):
-            warnings.warn(f"Path '{column}' left out of the results: it includes a relationship which could not be built.")
+            warnings.warn(
+                f"Path '{column}' left out of the results: it includes a relationship which could not be built.",
+                NeontologyWarning,
+            )
 
             return None
 
@@ -247,8 +259,9 @@ def build_result(
     Args:
         records_raw (Any): the engine's own result, kept verbatim on the NeontologyResult.
         rows (Iterable[dict[str, Any]]): one dictionary per row returned, from column name to
-            value. Only RawNode, RawRelationship and RawPath values are built; anything else
-            is available through `records_raw`.
+            value. RawNode, RawRelationship and RawPath values are built; anything else is
+            kept as it is, in the record's `values`, so the row adapter converts it to native
+            Python types first.
         node_classes (dict[str, type[BaseNode]]): node classes by primary label.
         relationship_classes (dict[str, RelationshipTypeData]): relationship type data by type.
 
@@ -265,7 +278,7 @@ def build_result(
     paths: dict[tuple, list[BaseRelationship]] = {}
 
     for row in rows:
-        record: dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
+        record: dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}, "values": {}}
 
         for column, value in row.items():
             if isinstance(value, RawNode):
@@ -288,6 +301,9 @@ def build_result(
                 if path is not None:
                     record["paths"][column] = path
                     paths.setdefault(tuple(step.key for step in value.relationships), path)
+
+            else:
+                record["values"][column] = value
 
         records.append(record)
 

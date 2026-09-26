@@ -25,7 +25,7 @@ Neontology's core works with plain Python dictionaries and has no heavyweight de
 
 ```bash
 pip install neontology[pandas]   # merge_df and other pandas dataframe helpers
-pip install neontology[grand]    # the experimental in-memory NetworkX backend
+pip install neontology[grand]    # the in-memory NetworkX backend
 pip install neontology[ladybug]  # the embedded LadybugDB backend
 pip install neontology[all]      # all of the above
 pip install neontology[rust]     # Rust extensions for the Neo4j driver (faster, needs a wheel for your platform)
@@ -127,9 +127,7 @@ With the above environment variables defined, you can just use `init_neontology(
 
 ## Executing Queries
 
-Neontology has limited, experimental support for running GQL/cypher queries.
-
-Using a GraphConnection, you can call `evaluate_query` with a GQL/cypher query which returns nodes and relationships and get them back as Neontology Nodes Relationships.
+Using a GraphConnection, you can call `evaluate_query` with a GQL/cypher query and get back a `NeontologyResult`, holding the nodes and relationships it returned as your Neontology models.
 
 Once neontology is initialized, only one connection to the database is used under the hood which can be accessed with `GraphConnection`.
 
@@ -174,7 +172,7 @@ For large or complex queries, data science or visualization/exploration, conside
 
 ## Alternative Graph Engines
 
-Neontology has experimental support for GQL/openCypher property graph databases other than Neo4j:
+Neontology also supports GQL/openCypher property graph databases other than Neo4j:
 
 * Memgraph
 * LadybugDB

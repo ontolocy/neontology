@@ -1,16 +1,15 @@
 import itertools
 import json
-import warnings
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
-from pydantic import BaseModel, PrivateAttr, ValidationError, computed_field, model_validator
+from pydantic import BaseModel, PrivateAttr, computed_field
 
 from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
-from .gql import gql_identifier_adapter
+from .gql import gql_identifier_adapter, validate_model_identifier
 from .optional_deps import require_pandas
 from .registry import registry
 
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
 R = TypeVar("R", bound="BaseRelationship")
 
 
-class BaseRelationship(CommonModel):  # pyre-ignore[13]
+class BaseRelationship(CommonModel):
     source: BaseNode
     target: BaseNode
 
@@ -55,6 +54,7 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         Raises:
             TypeError: if a property is tagged `index` or `unique`, which only node
                 properties can be.
+            ValueError: if the relationship type is not a valid identifier.
         """
         super().__pydantic_init_subclass__(**kwargs)
 
@@ -72,6 +72,10 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
                 f"Cannot tag {', '.join(tagged)} as index or unique: Neontology only indexes and constrains"
                 " node properties. Remove the tag, or create the index or constraint on the relationship yourself."
             )
+
+        # an abstract relationship deliberately has no type, which is not a malformed one
+        if not cls._is_abstract():
+            validate_model_identifier(cls, "__relationshiptype__", cls.__relationshiptype__)
 
         registry.register_relationship(cls)
 
@@ -99,32 +103,6 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
         """
         super()._set_prop_usage()
         cls._merge_on = cls._get_prop_usage("merge_on")
-
-    @model_validator(mode="after")
-    def validate_identifiers(self) -> "BaseRelationship":
-        """Validate the relationship type identifier.
-
-        This method checks that the relationship type identifier contains only alphanumeric characters and underscores,
-        and that it begins with an alphabetic character.
-        If the validation fails, it raises a warning.
-
-        Returns:
-            BaseRelationship: The instance of the relationship after validation.
-        """
-        # as for abstract nodes, a missing relationship type is deliberate rather than
-        # malformed, so it is not reported as a bad identifier
-        if not self._is_abstract():
-            try:
-                gql_identifier_adapter.validate_strings(self.__relationshiptype__)
-            except ValidationError:
-                warnings.warn(
-                    (
-                        "Relationship type should contain only alphanumeric characters and underscores."
-                        " It should begin with an alphabetic character."
-                    )
-                )
-
-        return self
 
     @classmethod
     def get_relationship_type(cls) -> Optional[str]:
@@ -411,9 +389,13 @@ class BaseRelationship(CommonModel):  # pyre-ignore[13]
             int: The count of distinct relationships of the specified type.
         """
         gc = GraphConnection()
-        cypher = f"MATCH (n)-[r:{cls.__relationshiptype__}]->(o) RETURN COUNT(r)"
+        rel_type = gql_identifier_adapter.validate_strings(cls.__relationshiptype__)
+        cypher = f"MATCH (n)-[r:{rel_type}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
-        return result
+
+        # on NetworkX a count over zero matches returns no rows at all, where the other
+        # engines return 0
+        return 0 if result is None else result
 
     def _prep_dump_dict(self, dumped_model: dict, exclude_node_props: bool = True) -> dict:
         """Prepare the dumped model dictionary for Neontology.

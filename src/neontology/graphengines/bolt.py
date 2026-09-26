@@ -84,7 +84,8 @@ def bolt_rows(records: list[Neo4jRecord]) -> Iterator[dict[str, Any]]:
         records (list[Neo4jRecord]): the driver's records.
 
     Yields:
-        dict[str, Any]: each row, from column name to the nodes, relationships and paths in it.
+        dict[str, Any]: each row, from column name to the nodes, relationships and paths in it,
+            and every other value, converted to native Python types.
     """
     raw_nodes: dict[str, RawNode] = {}
     raw_relationships: dict[str, RawRelationship] = {}
@@ -134,6 +135,9 @@ def bolt_rows(records: list[Neo4jRecord]) -> Iterator[dict[str, Any]]:
 
             elif isinstance(value, Neo4jPath):
                 row[column] = RawPath(relationships=[relationship(step) for step in value.relationships])
+
+            else:
+                row[column] = _to_native(value)
 
         yield row
 
