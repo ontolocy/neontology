@@ -247,8 +247,9 @@ def build_result(
     Args:
         records_raw (Any): the engine's own result, kept verbatim on the NeontologyResult.
         rows (Iterable[dict[str, Any]]): one dictionary per row returned, from column name to
-            value. Only RawNode, RawRelationship and RawPath values are built; anything else
-            is available through `records_raw`.
+            value. RawNode, RawRelationship and RawPath values are built; anything else is
+            kept as it is, in the record's `values`, so the row adapter converts it to native
+            Python types first.
         node_classes (dict[str, type[BaseNode]]): node classes by primary label.
         relationship_classes (dict[str, RelationshipTypeData]): relationship type data by type.
 
@@ -265,7 +266,7 @@ def build_result(
     paths: dict[tuple, list[BaseRelationship]] = {}
 
     for row in rows:
-        record: dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}}
+        record: dict[str, dict] = {"nodes": {}, "relationships": {}, "paths": {}, "values": {}}
 
         for column, value in row.items():
             if isinstance(value, RawNode):
@@ -288,6 +289,9 @@ def build_result(
                 if path is not None:
                     record["paths"][column] = path
                     paths.setdefault(tuple(step.key for step in value.relationships), path)
+
+            else:
+                record["values"][column] = value
 
         records.append(record)
 

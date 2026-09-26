@@ -85,10 +85,12 @@ def _is_path(value: Any) -> bool:
 
     A path is a list alternating node ids with hops, each hop mapping edge keys to edges. A
     variable length relationship is returned as a list too, but of edges on their own, and
-    is not a path.
+    is not a path. Nor is a list of one value, such as COLLECT() over a single match: a path
+    has at least one hop, as grand-cypher returns no row for a path of a single node.
     """
     return (
         isinstance(value, list)
+        and len(value) >= 3
         and len(value) % 2 == 1
         and not isinstance(value[0], dict)
         and all(isinstance(hop, dict) and hop and all(_is_edge(edge) for edge in hop.values()) for hop in value[1::2])
@@ -134,7 +136,7 @@ def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, An
 
     Returns:
         list[dict[str, Any]]: one dictionary per row, from column name to the nodes,
-            relationships and paths in it.
+            relationships and paths in it, and every other value.
     """
     # the nodes the result includes - returned as nodes, or along a path - by attributes
     included: set[int] = set()
@@ -199,6 +201,9 @@ def networkx_rows(raw_result: dict, graph: nx.MultiDiGraph) -> list[dict[str, An
             elif _is_path(value):
                 # each hop holds the edge taken between two nodes along the path
                 rows[index][name] = RawPath(relationships=[relationship(next(iter(hop.values()))) for hop in value[1::2]])
+
+            else:
+                rows[index][name] = value
 
     return rows
 
