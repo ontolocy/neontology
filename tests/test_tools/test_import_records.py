@@ -420,6 +420,7 @@ def test_inline_node_does_not_clobber_a_definition(use_graph):
 
     web1 = HostImportNode.match("web1")
 
+    assert web1 is not None
     assert web1.ip == "10.0.0.1"
     assert web1.owner == "web"
 
@@ -437,6 +438,7 @@ def test_inline_node_does_not_clobber_a_definition_reverse_order(use_graph):
 
     web1 = HostImportNode.match("web1")
 
+    assert web1 is not None
     assert web1.ip == "10.0.0.1"
     assert web1.owner == "web"
 
@@ -455,7 +457,9 @@ def test_identical_inline_records_for_one_node_are_fine(use_graph):
     import_records(records)
 
     assert HostImportNode.get_count() == 3
-    assert HostImportNode.match("web1").ip == "10.0.0.1"
+    web1 = HostImportNode.match("web1")
+    assert web1 is not None
+    assert web1.ip == "10.0.0.1"
 
 
 def test_inline_record_agreeing_with_a_definition_is_fine(use_graph):
@@ -469,7 +473,9 @@ def test_inline_record_agreeing_with_a_definition_is_fine(use_graph):
 
     import_records(records)
 
-    assert HostImportNode.match("web1").owner == "web"
+    web1 = HostImportNode.match("web1")
+    assert web1 is not None
+    assert web1.owner == "web"
 
 
 def test_two_definitions_of_one_node_error(use_graph):
@@ -522,4 +528,6 @@ def test_nested_dump_round_trips(use_graph):
 
     assert report.nodes == {"PersonImportLabel": 2}
     assert report.relationships == {"IMPORT_FOLLOWS": 1}
-    assert PersonImportNode.match("archy").age == 55
+    archy = PersonImportNode.match("archy")
+    assert archy is not None
+    assert archy.age == 55

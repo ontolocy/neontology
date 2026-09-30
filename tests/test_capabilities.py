@@ -48,7 +48,7 @@ def test_capability_matrix_in_docs_is_current():
 def test_supports_rejects_unknown_capability():
     """A typo must be an error, not a silently unsupported feature."""
     with pytest.raises(TypeError):
-        Neo4jEngine.supports("graph_mutatoins")
+        Neo4jEngine.supports("graph_mutatoins")  # pyrefly: ignore[bad-argument-type]
 
 
 def test_default_engines_support_everything():

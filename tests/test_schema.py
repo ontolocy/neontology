@@ -75,7 +75,7 @@ TYPE_CASES = [
     ids=[case[1] for case in TYPE_CASES],
 )
 def test_property_types_are_described(index, annotation, type_name, nullable, allowed_values):
-    node = type(
+    node: type[Any] = type(
         f"SchemaTypeCase{index}",
         (SchemaTypesBase,),
         {"__annotations__": {"value": annotation}, "__primarylabel__": f"SchemaTypeCase{index}"},
@@ -87,7 +87,7 @@ def test_property_types_are_described(index, annotation, type_name, nullable, al
 
 
 def test_a_schema_with_every_type_serialises_to_json():
-    node = type(
+    node: type[Any] = type(
         "SchemaEveryType",
         (SchemaTypesBase,),
         {
@@ -237,7 +237,7 @@ class TestSchemaOfModels:
 
     def test_models_must_be_node_or_relationship_classes(self):
         with pytest.raises(TypeError, match="str"):
-            get_ontology_schema(models=[str])
+            get_ontology_schema(models=[str])  # pyrefly: ignore[bad-argument-type]
 
 
 class TestNodes:

@@ -254,7 +254,9 @@ class ShoutyNode(BaseNode):
 def test_an_uppercase_model_property_is_not_mistaken_for_a_control_key(use_graph):
     import_records([[{"LABEL": "ShoutyLabel", "name": "alpha", "STATUS": "live"}]])
 
-    assert ShoutyNode.match("alpha").STATUS == "live"
+    alpha = ShoutyNode.match("alpha")
+    assert alpha is not None
+    assert alpha.STATUS == "live"
 
 
 # --- what the import did ------------------------------------------------------------

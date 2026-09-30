@@ -11,7 +11,7 @@ test files for repeated literal labels.
 
 import gc
 import warnings
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import pytest
 
@@ -27,7 +27,7 @@ from neontology.baserelationship import BaseRelationship
 from neontology.utils import get_node_types, get_rels_by_type
 
 
-def _node(name: str, base: type = BaseNode, **namespace):
+def _node(name: str, base: type = BaseNode, **namespace) -> type[Any]:
     """Build a node class dynamically, so labels can be passed rather than written."""
     namespace.setdefault("__annotations__", {"pp": str})
     namespace.setdefault("__primaryproperty__", "pp")
@@ -35,7 +35,7 @@ def _node(name: str, base: type = BaseNode, **namespace):
     return type(name, (base,), namespace)
 
 
-def _rel(name: str, source: type, target: type, rel_type: Optional[str], base: type = BaseRelationship):
+def _rel(name: str, source: type, target: type, rel_type: Optional[str], base: type = BaseRelationship) -> type[Any]:
     """Build a relationship class dynamically."""
     return type(
         name,
@@ -445,8 +445,11 @@ class TestDefiningAModelDuringALookup:
     """
 
     @staticmethod
-    def _base_type_defining(define):
-        """A base type to scope a lookup with, which defines a model the first time it is asked."""
+    def _base_type_defining(define) -> Any:
+        """A base type to scope a lookup with, which defines a model the first time it is asked.
+
+        Not a type at all, but it answers issubclass() as one - so it is typed as anything.
+        """
 
         class DefinesAModel:
             defined = False

@@ -9,7 +9,7 @@ after the write had already happened.
 """
 
 from datetime import date, datetime, time, timedelta, timezone
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import pytest
 
@@ -43,7 +43,8 @@ class TemporalRel(BaseRelationship):
     seen: Optional[list[datetime]] = None
 
 
-VALUES = {
+# a value of a different type per property, so typed loosely
+VALUES: dict[str, Any] = {
     "naive_datetime": datetime(2024, 5, 6, 7, 8, 9, 123456),
     "aware_datetime": datetime(2024, 5, 6, 7, 8, 9, 123456, tzinfo=timezone.utc),
     "day": date(2024, 5, 6),

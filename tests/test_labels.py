@@ -19,7 +19,7 @@ Labels needed by more than one class are passed as values through `_node`, becau
 """
 
 import warnings
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import pytest
 from rawresult import raw_labels
@@ -27,7 +27,7 @@ from rawresult import raw_labels
 from neontology import BaseNode, BaseRelationship, Capability, DuplicateLabelError, DuplicateLabelWarning, registry
 
 
-def _node(name: str, base: type = BaseNode, **namespace):
+def _node(name: str, base: type = BaseNode, **namespace) -> type[Any]:
     """Build a node class dynamically, so labels can be passed rather than written."""
     namespace.setdefault("__annotations__", {"pp": str})
     namespace.setdefault("__primaryproperty__", "pp")
