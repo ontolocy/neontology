@@ -39,7 +39,7 @@ class CommonModel(BaseModel):
     _always_set: list[str] = PrivateAttr()
     _field_names_by_key: ClassVar[dict[str, str]]
 
-    def __init__(self, **data: dict):
+    def __init__(self, **data: Any) -> None:
         super().__init__(**data)
 
         # Property usage is derived from the model definition, so it is the same for

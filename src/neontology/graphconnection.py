@@ -327,13 +327,13 @@ class GraphConnection(object):
 
     def get_count(
         self,
-        node_class: type,
+        node_class: type[BaseNode],
         filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes of a specific type in the graph database with optional filtering.
 
         Args:
-            node_class (type): The class of the node to count.
+            node_class (type[BaseNode]): The class of the node to count.
             filters (dict | None): Dictionary of filters using Django-like syntax.
 
         Returns:
@@ -533,7 +533,7 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
             engine and its own environment variables supply the connection details,
             defaulting to Neo4j.
     """
-    graph_engines = {
+    graph_engines: dict[str, type[GraphEngineConfig]] = {
         "NEO4J": Neo4jConfig,
         "MEMGRAPH": MemgraphConfig,
     }

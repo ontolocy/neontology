@@ -1,11 +1,10 @@
 import re
 import warnings
 from string import Template
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 import networkx as nx
 from grandcypher import GrandCypher
-from typing_extensions import LiteralString
 
 from ..gql import gql_identifier_adapter
 from ..neontologywarning import NeontologyWarning
@@ -21,7 +20,7 @@ if TYPE_CHECKING:
 BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
 
 
-def generate_node_id(pp, label):
+def generate_node_id(pp: Any, label: Optional[str]) -> int:
     """Take primary property and label to generate a unique node ID.
 
     NetworkX does not natively differentiate nodes by label, so we use a combination of
@@ -30,7 +29,7 @@ def generate_node_id(pp, label):
     return hash((pp, label))  # Simple hash for unique ID generation
 
 
-def escape_cypher_string(value):
+def escape_cypher_string(value: Any) -> str:
     """Escape string values for Cypher queries."""
     if isinstance(value, str):
         # Escape single quotes and wrap in quotes
@@ -47,7 +46,7 @@ def escape_cypher_string(value):
         raise ValueError(f"Unsupported type: {type(value)}")
 
 
-def escape_cypher_identifier(identifier):
+def escape_cypher_identifier(identifier: str) -> str:
     """Escape identifiers (labels, property names, etc.)."""
     # Check if identifier needs backticks
     if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", identifier):
@@ -55,7 +54,7 @@ def escape_cypher_identifier(identifier):
     return identifier
 
 
-def substitute_cypher(query, params):
+def substitute_cypher(query: str, params: dict[str, Any]) -> str:
     """Convert $param to ${param} format and substitute."""
     # Convert Cypher $param format to Python ${param} format
     template_query = re.sub(r"\$(\w+)", r"${\1}", query)
@@ -244,7 +243,7 @@ class NetworkxEngine(GraphEngineBase):
         """
         self.driver = nx.MultiDiGraph()
 
-    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str, label: str):
+    def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str, label: str) -> list[dict]:
         """Swap a property in a list of dictionaries.
 
         Args:
@@ -448,7 +447,7 @@ class NetworkxEngine(GraphEngineBase):
 
         self.driver.remove_nodes_from(matched)
 
-    def _existing_edges(self, node1, node2, **attributes):
+    def _existing_edges(self, node1: int, node2: int, **attributes: Any) -> Optional[list]:
         """Find matching edges in the graph."""
         if self.driver.has_edge(node1, node2):
             edge_dict = self.driver.get_edge_data(node1, node2)
@@ -590,7 +589,7 @@ class NetworkxEngine(GraphEngineBase):
 
     def evaluate_query(
         self,
-        cypher: LiteralString,
+        cypher: str,
         params: Optional[dict] = None,
         node_classes: Optional[dict] = None,
         relationship_classes: Optional[dict] = None,
@@ -617,7 +616,7 @@ class NetworkxEngine(GraphEngineBase):
 
         return build_result(raw_result, networkx_rows(raw_result, self.driver), node_classes, relationship_classes)
 
-    def evaluate_query_single(self, cypher: LiteralString, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
@@ -645,19 +644,20 @@ class NetworkxEngine(GraphEngineBase):
 
     def get_count(
         self,
-        node_class: type,
+        node_class: type["BaseNode"],
         filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes based on the given node class and filters.
 
         Args:
-            node_class (type): The class of the nodes to count.
+            node_class (type[BaseNode]): The class of the nodes to count.
             filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
 
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
+        # an abstract class has no label, and label_pattern refuses it
+        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause

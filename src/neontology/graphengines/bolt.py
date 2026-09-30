@@ -18,7 +18,7 @@ from neo4j.time import Date as Neo4jDate
 from neo4j.time import DateTime as Neo4jDateTime
 from neo4j.time import Duration as Neo4jDuration
 from neo4j.time import Time as Neo4jTime
-from typing_extensions import LiteralString
+from typing_extensions import LiteralString, cast
 
 from ..result import NeontologyResult
 from .graphengine import GraphEngineBase
@@ -177,7 +177,7 @@ class BoltEngine(GraphEngineBase):
 
     def evaluate_query(
         self,
-        cypher: LiteralString,
+        cypher: str,
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
@@ -194,11 +194,13 @@ class BoltEngine(GraphEngineBase):
         Returns:
             NeontologyResult: Result object containing the records, nodes, relationships, and paths.
         """
-        result = self.driver.execute_query(cypher, parameters_=params)
+        # the driver asks for a literal to discourage interpolating values; ours are
+        # passed as parameters, and anything interpolated is a validated identifier
+        result = self.driver.execute_query(cast(LiteralString, cypher), parameters_=params)
 
         return build_result(result.records, bolt_rows(result.records), node_classes, relationship_classes)
 
-    def evaluate_query_single(self, cypher: LiteralString, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
@@ -208,7 +210,9 @@ class BoltEngine(GraphEngineBase):
         Returns:
             Optional[Any]: Query result, or None if no result is found.
         """
-        result = self.driver.execute_query(cypher, parameters_=params, result_transformer_=Neo4jResult.single)
+        result = self.driver.execute_query(
+            cast(LiteralString, cypher), parameters_=params, result_transformer_=Neo4jResult.single
+        )
 
         if result:
             return result.value()

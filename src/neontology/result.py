@@ -1,8 +1,12 @@
 import json
 from collections.abc import Callable
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from pydantic import BaseModel, computed_field
+
+if TYPE_CHECKING:
+    from .basenode import BaseNode
+    from .baserelationship import BaseRelationship
 
 # the keys a relationship declared under its source node does not need: which node it
 # leaves is the node declaring it, and its target is named as a list instead
@@ -75,14 +79,25 @@ def _nested_records(nodes: list, relationships: list, dump: Callable[[Any], dict
 
 class NeontologyResult(BaseModel):
     records_raw: Any
-    records: list
-    nodes: list
-    relationships: list
-    paths: list
+
+    if TYPE_CHECKING:
+        # typed for a type checker only: the models import this module, so the fields
+        # cannot name them at runtime, and as plain lists pydantic neither validates
+        # nor re-serialises what the engine already built
+        records: list[dict[str, dict[str, Any]]]
+        nodes: list[BaseNode]
+        relationships: list[BaseRelationship]
+        paths: list[list[BaseRelationship]]
+
+    else:
+        records: list
+        nodes: list
+        relationships: list
+        paths: list
 
     # built on demand by dumping every node and relationship, so it is left out of the
     # repr - printing or logging a result should not pay for it
-    @computed_field(repr=False)  # type: ignore[misc]
+    @computed_field(repr=False)
     @property
     def node_link_data(self) -> dict:
         """Get the result as a dictionary with 'nodes' and 'edges' keys.

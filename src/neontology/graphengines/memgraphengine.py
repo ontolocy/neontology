@@ -100,7 +100,7 @@ class MemgraphEngine(BoltEngine):
         constraints = []
 
         for record in self._run_autocommit("SHOW CONSTRAINT INFO"):
-            constraint_type = MEMGRAPH_CONSTRAINT_TYPES.get(record.get("constraint type"), ConstraintType.OTHER)
+            constraint_type = MEMGRAPH_CONSTRAINT_TYPES.get(record.get("constraint type", ""), ConstraintType.OTHER)
 
             constraints.append(
                 Constraint(

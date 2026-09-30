@@ -1,9 +1,10 @@
 import itertools
 import json
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
 
 from pydantic import BaseModel, PrivateAttr, computed_field
+from typing_extensions import Self
 
 from neontology.graphconnection import GraphConnection
 
@@ -23,8 +24,23 @@ R = TypeVar("R", bound="BaseRelationship")
 
 
 class BaseRelationship(CommonModel):
-    source: BaseNode
-    target: BaseNode
+    if TYPE_CHECKING:
+        # read-only to a type checker, so a subclass can narrow them to its own node
+        # classes - `source: Person` - which it could not do to a mutable attribute
+
+        @property
+        def source(self) -> BaseNode:
+            """The node the relationship leaves."""
+            ...
+
+        @property
+        def target(self) -> BaseNode:
+            """The node the relationship arrives at."""
+            ...
+
+    else:
+        source: BaseNode
+        target: BaseNode
 
     __relationshiptype__: ClassVar[Optional[str]] = None
 
@@ -79,7 +95,7 @@ class BaseRelationship(CommonModel):
 
         registry.register_relationship(cls)
 
-    def __init__(self, **data: dict):
+    def __init__(self, **data: Any) -> None:
         super().__init__(**data)
 
         # we can define 'abstract' relationships which don't have a label
@@ -347,10 +363,12 @@ class BaseRelationship(CommonModel):
         if df.empty is False:
             # see the note in BaseNode.merge_df: casting to object first is what
             # makes the None replacement stick across dtypes
-            cleaned_df = df.astype(object).where(df.notna(), None)
+            # pandas' own hints leave out None, which where() accepts
+            cleaned_df = df.astype(object).where(df.notna(), None)  # pyrefly: ignore[bad-argument-type]
             records = cleaned_df.to_dict(orient="records")
             cls.merge_records(
-                records,
+                # the keys are column names, which name the properties
+                cast(list[dict[str, Any]], records),
                 source_type=source_type,
                 source_prop=source_prop,
                 target_type=target_type,
@@ -358,7 +376,7 @@ class BaseRelationship(CommonModel):
             )
 
     @classmethod
-    def match_relationships(cls, limit: Optional[int] = None, skip: Optional[int] = None) -> list["BaseRelationship"]:
+    def match_relationships(cls, limit: Optional[int] = None, skip: Optional[int] = None) -> list[Self]:
         """Match relationships of this type in the graph.
 
         Constructs a Cypher query to match relationships of the specified type in the graph database.
@@ -370,7 +388,7 @@ class BaseRelationship(CommonModel):
             skip (Optional[int]): The number of relationships to skip before returning results.
 
         Returns:
-            list[BaseRelationship]: A list of relationships of the specified type.
+            list[Self]: A list of relationships of the specified type.
         """
         gc = GraphConnection()
         result = gc.match_relationships(cls, limit, skip)
@@ -378,7 +396,7 @@ class BaseRelationship(CommonModel):
         return result
 
     @classmethod
-    def get_count(cls):
+    def get_count(cls) -> int:
         """Get the count of relationships of this type in the graph.
 
         Constructs a Cypher query to count the number of distinct relationships
@@ -437,7 +455,7 @@ class BaseRelationship(CommonModel):
         exclude_node_props: bool = True,
         exclude: Optional[set] = None,
         exclude_none: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict:
         """Dump the relationship as a dictionary.
 
@@ -465,7 +483,7 @@ class BaseRelationship(CommonModel):
         exclude_node_props: bool = True,
         exclude: Optional[set] = None,
         exclude_none: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """Dump the relationship as a JSON string.
 
@@ -518,7 +536,7 @@ class RelationshipTypeData(BaseModel):
     # query, and nothing on that path reads them - walking the node hierarchy twice per
     # relationship to populate them was most of the cost of the walk.
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @cached_property
     def all_source_classes(self) -> list[type[BaseNode]]:
         """The source class and every class which inherits from it."""
@@ -526,7 +544,7 @@ class RelationshipTypeData(BaseModel):
 
         return list(get_node_types(self.source_class).values())
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field
     @cached_property
     def all_target_classes(self) -> list[type[BaseNode]]:
         """The target class and every class which inherits from it."""

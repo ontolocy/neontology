@@ -263,8 +263,9 @@ def _schema_of_models(models: Iterable[type]) -> OntologySchema:
 
         elif isinstance(model, type) and issubclass(model, BaseRelationship):
             # described first, which raises if it is abstract, with no relationship type
-            described.append(_relationship_schema(model))
-            relationships.append((model.__relationshiptype__, generate_relationship_type_data(model)))
+            schema = _relationship_schema(model)
+            described.append(schema)
+            relationships.append((schema.relationship_type, generate_relationship_type_data(model)))
 
         else:
             raise TypeError(f"{model!r} is not a node or relationship class.")
@@ -441,6 +442,9 @@ def _relationship_schema(cls: type[BaseRelationship], data: Optional[Relationshi
     """
     if cls._is_abstract():
         raise ValueError(f"{cls.__name__} has no __relationshiptype__, so it is abstract and has no relationship to describe.")
+
+    # _is_abstract() is what rules out None, which the checker cannot see through
+    assert cls.__relationshiptype__ is not None
 
     if data is None:
         data = generate_relationship_type_data(cls)

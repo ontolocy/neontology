@@ -193,6 +193,9 @@ def _import_nodes(
     for label, node_records in mapped_records.items():
         node_class = node_class_for_label(label)
 
+        # node_class_for_label has refused a record naming no label
+        assert label is not None
+
         records = [x.output_record for x in node_records]
         origins = [x.origin for x in node_records]
 
@@ -354,13 +357,13 @@ def _import_relationships(
         origins = [x.origin for x in rel_entries]
 
         def hydrate(
-            record,
-            rel_class=rel_class,
-            source_type=source_type,
-            target_type=target_type,
-            source_prop=source_prop,
-            target_prop=target_prop,
-        ):
+            record: dict,
+            rel_class: type = rel_class,
+            source_type: type = source_type,
+            target_type: type = target_type,
+            source_prop: Optional[str] = source_prop,
+            target_prop: Optional[str] = target_prop,
+        ) -> Any:
             return _hydrate_relationship(record, rel_class, source_type, target_type, source_prop, target_prop)
 
         for batch, batch_origins in _batches_with_origins(records, origins, batch_size):
@@ -533,7 +536,8 @@ def import_sourced_records(
             _check_endpoints(input_rels, combined_nodes, error_on_unmatched, context, report)
 
         for record in combined_nodes:
-            report.nodes[record.label] = report.nodes.get(record.label, 0) + 1
+            label = record.label or "?"
+            report.nodes[label] = report.nodes.get(label, 0) + 1
 
         for rel_record in input_rels:
             rel_type = rel_record.relationship_type or "?"

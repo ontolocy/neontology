@@ -4,7 +4,7 @@ Every error here subclasses `ValueError`, which is what the importer has always
 raised for malformed content, so existing `except ValueError` callers keep working.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 
@@ -76,7 +76,7 @@ class ImportValidationError(ImportContentError):
         issues: every problem found, in the order the content was read.
     """
 
-    def __init__(self, issues: list[ImportIssue]):
+    def __init__(self, issues: list[ImportIssue]) -> None:
         self.issues = issues
 
         super().__init__(self._describe(issues))
@@ -133,7 +133,7 @@ class ErrorCollector:
     nothing to be gained by carrying on.
     """
 
-    def __init__(self, collect: bool = False):
+    def __init__(self, collect: bool = False) -> None:
         self.collect = collect
         self.issues: list[ImportIssue] = []
 
@@ -154,7 +154,7 @@ class ErrorCollector:
         raise self._located(origin, error) from error
 
     @contextmanager
-    def catching(self, origin: RecordOrigin) -> Iterator[None]:
+    def catching(self, origin: RecordOrigin) -> Generator[None, None, None]:
         """Report whatever a block raises as a problem with one record.
 
         This is what puts a file and an entry on a model's own validation error, which

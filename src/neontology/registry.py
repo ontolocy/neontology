@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from .neontologywarning import NeontologyWarning
 
@@ -181,7 +181,7 @@ class Registry:
             f" Make {carrier.__name__} a subclass of {owner.__name__}, or use a different label."
         )
 
-    def _check_carried_labels(self, cls: type[BaseNode]) -> None:
+    def _check_carried_labels(self, cls: type[BaseNode], label: str) -> None:
         """Report a class carrying the primary label of a class it does not inherit from.
 
         A class may carry another class' primary label only if it inherits from it: an
@@ -194,21 +194,25 @@ class Registry:
 
         Args:
             cls (type[BaseNode]): the node class being registered.
+            label (str): its primary label.
         """
-        for label in cls._all_labels()[1:]:
-            owner = self._nodes.get(label)
+        for carried in cls._all_labels()[1:]:
+            owner = self._nodes.get(carried)
 
             if owner is not None and not _inherits_from(cls, owner):
-                self._report_carried_label(label, owner, cls)
+                self._report_carried_label(carried, owner, cls)
 
-        for carrier in dict(self._carriers.get(cls.__primarylabel__, {})).values():
+        for carrier in dict(self._carriers.get(label, {})).values():
+            # only registered classes carry labels, and those are never abstract
+            assert carrier.__primarylabel__ is not None
+
             # a class since redefined is no longer registered under its label, and the
             # definition that replaced it may not carry this one
             if self._nodes.get(carrier.__primarylabel__) is not carrier or _is_redefinition(carrier, cls):
                 continue
 
             if not _inherits_from(carrier, cls):
-                self._report_carried_label(cls.__primarylabel__, cls, carrier)
+                self._report_carried_label(label, cls, carrier)
 
     def register_node(self, cls: type[BaseNode]) -> None:
         """Register a node class under its primary label.
@@ -225,6 +229,9 @@ class Registry:
             return
 
         label = cls.__primarylabel__
+
+        # _is_abstract() is what rules out None, which the checker cannot see through
+        assert label is not None
 
         existing = self._nodes.get(label)
 
@@ -246,7 +253,7 @@ class Registry:
         elif existing is not None and existing is not cls and not _is_redefinition(existing, cls):
             self._report_clash("primary label", label, existing, cls)
 
-        self._check_carried_labels(cls)
+        self._check_carried_labels(cls, label)
 
         self._nodes[label] = cls
 
@@ -271,6 +278,9 @@ class Registry:
             return
 
         rel_type = cls.__relationshiptype__
+
+        # _is_abstract() is what rules out None, which the checker cannot see through
+        assert rel_type is not None
 
         existing = self._relationships.get(rel_type)
 
@@ -312,7 +322,9 @@ class Registry:
 
         if cached is None:
             cached = {label: node_class for label, node_class in dict(self._nodes).items() if _inherits_from(node_class, cls)}
-            cached[cls.__primarylabel__] = cls
+            # an abstract class has no label of its own to keep
+            if cls.__primarylabel__ is not None:
+                cached[cls.__primarylabel__] = cls
 
             self._result_classes[cls] = cached
 
@@ -337,8 +349,9 @@ class Registry:
         from .utils import _resolved_relationship_nodes, generate_relationship_type_data
 
         # a defaultdict, as this has always returned, so reading a relationship type
-        # that is not defined gives an empty entry rather than a KeyError
-        resolved: dict[str, RelationshipTypeData] = defaultdict(dict)  # type: ignore[arg-type]
+        # that is not defined gives an empty entry rather than a KeyError - which is not
+        # a RelationshipTypeData, hence the cast
+        resolved = cast("dict[str, RelationshipTypeData]", defaultdict(dict))
 
         for rel_type, cls in dict(self._relationships).items():
             if base_type is not None and not issubclass(cls, base_type):
