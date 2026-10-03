@@ -82,7 +82,9 @@ def test_a_node_record_and_a_relationship_record(use_graph, tmp_path_factory):
 
     assert report.nodes == {"Host": 1, "IPAddress": 1}
     assert report.relationships == {"RESOLVES_TO": 1}
-    assert Host.match("web1").owner == "platform-team"
+    web1 = Host.match("web1")
+    assert web1 is not None
+    assert web1.owner == "platform-team"
 
 
 def test_combined_layout(use_graph, tmp_path_factory):
@@ -264,7 +266,9 @@ def test_a_markdown_record(use_graph, tmp_path_factory):
     report = import_md(dir_path)
 
     assert report.nodes == {"Host": 1}
-    assert Host.match("web1").description == "This host serves the public website."
+    web1 = Host.match("web1")
+    assert web1 is not None
+    assert web1.description == "This host serves the public website."
 
 
 def test_the_report_fields_documented(use_graph):
@@ -395,7 +399,9 @@ def test_a_csv_of_nodes(use_graph, tmp_path_factory):
     report = import_csv(dir_path)
 
     assert report.nodes == {"Host": 2}
-    assert Host.match("web1").owner == "platform-team"
+    web1 = Host.match("web1")
+    assert web1 is not None
+    assert web1.owner == "platform-team"
 
 
 def test_a_csv_with_defaults(use_graph, tmp_path_factory):

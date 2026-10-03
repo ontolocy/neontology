@@ -50,6 +50,7 @@ def test_evaluate_query_single_node(use_graph):
 
     result = gc.evaluate_query_single(create_cypher)
 
+    assert result is not None
     assert dict(result)["name"] == "Foo Bar"
 
 
@@ -149,6 +150,8 @@ def test_evaluate_query_nodes(use_graph):
     gc = GraphConnection()
     result = gc.evaluate_query(cypher)
 
+    assert isinstance(result.nodes[0], PracticeNodeGC)
+    assert isinstance(result.nodes[1], PracticeNodeGC)
     assert result.nodes[0].pp == "foo"
     assert result.nodes[1].pp == "bar"
 
@@ -168,6 +171,7 @@ def test_evaluate_query_relationships(use_graph):
     result = gc.evaluate_query(cypher)
 
     assert result.relationships[0].__relationshiptype__ == "PRACTICE_RELATIONSHIP_GC"
+    assert isinstance(result.relationships[0], PracticeRelationshipGC)
     assert result.relationships[0].source.pp == "foo"
     assert result.relationships[0].target.pp == "bar"
 
@@ -223,6 +227,7 @@ def test_evaluate_query_params(use_graph):
     result = gc.evaluate_query(cypher)
 
     assert len(result.records) == 1
+    assert isinstance(result.nodes[0], PracticeNodeGC)
     assert result.nodes[0].pp == "bar"
 
 
@@ -607,7 +612,7 @@ class TestConnectionLifecycle:
 
         try:
             with pytest.raises(RuntimeError, match="could not connect"):
-                init_neontology(ExplodingConfig())
+                init_neontology(ExplodingConfig())  # pyrefly: ignore[bad-argument-type]
 
             assert GraphConnection._instance is None, "a failed connection must not be cached"
 

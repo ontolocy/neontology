@@ -185,15 +185,19 @@ def test_merge_df_with_lists(use_graph):
     Person2.merge_df(people_df, deduplicate=False)
 
     arthur = Person2.match("arthur")
+    assert arthur is not None
     assert arthur.favorite_colors == ["red"]
 
     betty = Person2.match("betty")
+    assert betty is not None
     assert betty.favorite_colors == ["red", "blue"]
 
     ted = Person2.match("ted")
+    assert ted is not None
     assert ted.favorite_colors == []
 
     ben = Person2.match("ben")
+    assert ben is not None
     assert ben.favorite_colors is None
 
 
@@ -231,7 +235,7 @@ class ComplexPerson(BaseNode):
     __primaryproperty__: ClassVar[str] = "identifier"
     __primarylabel__: ClassVar[str] = "PersonLabel1RetrieveNone"  # optionally specify the label to use
 
-    name: str = Field(default_factory=uuid4)
+    name: str = Field(default_factory=lambda: str(uuid4()))
     age: int
     favorite_colors: list = ["red", "green", "blue"]
     favorite_numbers: list = [1, 2, 3]
@@ -293,6 +297,9 @@ def test_aliased_properties(use_graph):
     """
 
     result: NeontologyResult = use_graph.evaluate_query(cypher)
+    assert isinstance(result.nodes[0], UserWithAliases)
+    assert isinstance(result.nodes[1], UserWithAliases)
+    assert isinstance(result.nodes[2], UserWithAliases)
     assert result.nodes[0].user_name == "User1"
     assert not hasattr(result.nodes[0], "userName")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union, cast
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError, model_validator
@@ -316,6 +316,21 @@ class GraphEngineBase:
         return nodes
 
     @staticmethod
+    def _concrete_label(node: NodeSchema) -> str:
+        """Get the primary label of a described node class, which only an abstract one lacks.
+
+        Args:
+            node (NodeSchema): a concrete node class, described.
+
+        Returns:
+            str: its primary label.
+        """
+        # _describe() and initialise_graph() both leave abstract classes out
+        assert node.label is not None
+
+        return node.label
+
+    @staticmethod
     def _unique_properties(node: NodeSchema) -> list[str]:
         """Get the properties a described node requires to be unique.
 
@@ -325,6 +340,9 @@ class GraphEngineBase:
         Returns:
             list[str]: its primary property, then any property tagged `unique`.
         """
+        # only concrete classes are constrained, and every one of those has a primary property
+        assert node.primary_property is not None
+
         return list(dict.fromkeys([node.primary_property, *(prop.name for prop in node.properties if prop.unique)]))
 
     def apply_constraints(self, node_types: Iterable[type[BaseNode]]) -> list[Constraint]:
@@ -361,7 +379,7 @@ class GraphEngineBase:
             list[Constraint]: the constraints applied.
         """
         constraints = [
-            Constraint(label=node.label, properties=(prop,), constraint_type=ConstraintType.UNIQUENESS)
+            Constraint(label=self._concrete_label(node), properties=(prop,), constraint_type=ConstraintType.UNIQUENESS)
             for node in nodes
             for prop in self._unique_properties(node)
         ]
@@ -472,7 +490,7 @@ class GraphEngineBase:
             else:
                 properties = list(dict.fromkeys([*unique, *tagged]))
 
-            indexes += [Index(label=node.label, properties=(prop,)) for prop in properties]
+            indexes += [Index(label=self._concrete_label(node), properties=(prop,)) for prop in properties]
 
         for index in indexes:
             self.apply_index(index.label, index.properties)
@@ -540,7 +558,8 @@ class GraphEngineBase:
 
         results = self.evaluate_query(cypher, params, node_classes)
 
-        return results.nodes
+        # built only as node_class, the one class they were given
+        return cast(list[BaseNodeT], results.nodes)
 
     def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Merge nodes with specified labels and property.
@@ -582,7 +601,8 @@ class GraphEngineBase:
 
         results = self.evaluate_query(cypher, params, node_classes)
 
-        return results.nodes
+        # built only as node_class, the one class they were given
+        return cast(list[BaseNodeT], results.nodes)
 
     def delete_nodes(self, label: str, pp_key: str, pp_values: list[Any]) -> None:
         """Delete nodes with a specific label and primary property value.
@@ -753,21 +773,21 @@ class GraphEngineBase:
 
     def match_nodes(
         self,
-        node_class: type,
+        node_class: type[BaseNodeT],
         limit: Optional[int] = None,
         skip: Optional[int] = None,
         filters: Optional[dict] = None,
-    ) -> list:
+    ) -> list[BaseNodeT]:
         """Match nodes based on the given node class, limit, skip, and filters.
 
         Args:
-            node_class (type): The class of the nodes to match.
+            node_class (type[BaseNodeT]): The class of the nodes to match.
             limit (int | None): The maximum number of nodes to return. If None, all matching nodes are returned.
             skip (int | None): The number of nodes to skip before collecting the result set. If None, no nodes are skipped.
             filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
 
         Returns:
-            list: A list of nodes that match the given criteria.
+            list[BaseNodeT]: A list of nodes that match the given criteria.
         """
         # checked before anything is asked of the database
         if skip is not None:
@@ -775,7 +795,8 @@ class GraphEngineBase:
         if limit is not None:
             limit = non_negative_int_adapter.validate_python(limit)
 
-        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
+        # an abstract class has no label, and label_pattern refuses it
+        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause
@@ -790,23 +811,25 @@ class GraphEngineBase:
         # subclasses carrying this label match the query too, and come back as themselves
         result = self.evaluate_query(cypher, params, node_classes=registry.result_classes(node_class))
 
-        return result.nodes
+        # built only as node_class or a subclass of it, by result_classes
+        return cast(list[BaseNodeT], result.nodes)
 
     def get_count(
         self,
-        node_class: type,
+        node_class: type[BaseNode],
         filters: Optional[dict] = None,
     ) -> int:
         """Get the count of nodes based on the given node class and filters.
 
         Args:
-            node_class (type): The class of the nodes to count.
+            node_class (type[BaseNode]): The class of the nodes to count.
             filters (dict | None): A dictionary of filters to apply. If None, no filters are applied.
 
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        cypher = f"MATCH (n{self.label_pattern(node_class.__primarylabel__)})"
+        # an abstract class has no label, and label_pattern refuses it
+        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause
@@ -858,7 +881,8 @@ class GraphEngineBase:
             relationship_classes=rel_types,
         )
 
-        return result.relationships
+        # built as the class registered under the type matched, which is relationship_class
+        return cast(list[BaseRelationshipT], result.relationships)
 
 
 class GraphEngineConfig(BaseModel):

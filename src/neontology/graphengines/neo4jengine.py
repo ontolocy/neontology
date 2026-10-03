@@ -81,7 +81,7 @@ class Neo4jEngine(BoltEngine):
         REQUIRE {self._property_pattern(normalise_properties(properties))} IS UNIQUE
         """
 
-        self.evaluate_query_single(cast(LiteralString, cypher))
+        self.evaluate_query_single(cypher)
 
     def apply_existence_constraint(self, label: str, properties: Union[str, Sequence[str]]) -> None:
         """Require a property to be present on every node with a label.
@@ -102,7 +102,7 @@ class Neo4jEngine(BoltEngine):
             REQUIRE n.{gql_identifier_adapter.validate_strings(property_name)} IS NOT NULL
             """
 
-            self.evaluate_query_single(cast(LiteralString, cypher))
+            self.evaluate_query_single(cypher)
 
     def get_constraints(self) -> list[Constraint]:
         """Get the constraints defined in the graph.
@@ -161,7 +161,7 @@ class Neo4jEngine(BoltEngine):
         DROP CONSTRAINT {gql_identifier_adapter.validate_strings(name)} IF EXISTS
         """
 
-        self.evaluate_query_single(cast(LiteralString, cypher))
+        self.evaluate_query_single(cypher)
 
     def apply_index(self, label: str, properties: Union[str, Sequence[str], None] = None) -> None:
         """Index a label/property combination, without requiring uniqueness.
@@ -188,7 +188,7 @@ class Neo4jEngine(BoltEngine):
         ON {self._property_pattern(property_names)}
         """
 
-        self.evaluate_query_single(cast(LiteralString, cypher))
+        self.evaluate_query_single(cypher)
 
     def get_indexes(self) -> list[Index]:
         """Get the indexes defined in the graph.
@@ -248,7 +248,7 @@ class Neo4jEngine(BoltEngine):
         DROP INDEX {gql_identifier_adapter.validate_strings(name)} IF EXISTS
         """
 
-        self.evaluate_query_single(cast(LiteralString, cypher))
+        self.evaluate_query_single(cypher)
 
 
 class Neo4jConfig(GraphEngineConfig):

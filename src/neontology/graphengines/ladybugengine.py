@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, cast
 
 import ladybug as lb
 from dotenv import load_dotenv
@@ -934,7 +934,8 @@ class LadybugEngine(GraphEngineBase):
 
         results = self.evaluate_query(cypher, {"node_list": rows}, {node_class.__primarylabel__: node_class})
 
-        return results.nodes
+        # built only as node_class, the one class they were given
+        return cast(list[BaseNodeT], results.nodes)
 
     def merge_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Merge nodes on their primary label and primary property.
@@ -987,7 +988,8 @@ class LadybugEngine(GraphEngineBase):
 
         results = self.evaluate_query(cypher, {"node_list": rows}, {node_class.__primarylabel__: node_class})
 
-        return results.nodes
+        # built only as node_class, the one class they were given
+        return cast(list[BaseNodeT], results.nodes)
 
     def delete_nodes(self, label: str, pp_key: str, pp_values: list[Any]) -> None:
         """Delete nodes with a specific label and primary property value.

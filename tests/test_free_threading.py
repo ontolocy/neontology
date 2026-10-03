@@ -33,4 +33,6 @@ def test_the_gil_stays_disabled():
         if importlib.util.find_spec(module):
             importlib.import_module(module)
 
-    assert sys._is_gil_enabled() is False
+    # new in 3.13, the first release with a free-threaded build, so it is always there
+    # when this runs - but not in the 3.10 the type check is run as
+    assert sys._is_gil_enabled() is False  # pyrefly: ignore[missing-attribute]

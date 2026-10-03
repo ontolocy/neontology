@@ -127,6 +127,7 @@ def test_related_nodes(engine, use_graph):
     related_nodes = [x for x in alice_rels.nodes if x.get_pp() != alice.get_pp()]
 
     assert len(related_nodes) == 1
+    assert isinstance(related_nodes[0], AugmentedPerson)
     assert related_nodes[0].name == "Bob"
 
     # grand cypher has limited support for relationship property queries
@@ -139,11 +140,13 @@ def test_related_nodes(engine, use_graph):
         )
 
         assert len(bobs_followers.nodes) == 2  # this will include bob himself
+        assert isinstance(bobs_followers.nodes[0], AugmentedPerson)
         assert bobs_followers.nodes[0].name == "Alice"
 
         bobs_rels = bob.get_related(incoming=True, distinct=True)
 
         assert len(bobs_rels.nodes) == 2
+        assert isinstance(bobs_rels.nodes[0], AugmentedPerson)
         assert bobs_rels.nodes[0].name == "Alice"
 
         assert len(bobs_rels.relationships) == 2

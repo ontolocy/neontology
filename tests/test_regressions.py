@@ -59,9 +59,9 @@ class TestRemovedDeprecations:
         """The deprecated connection kwargs are gone; passing them is an error."""
         with pytest.raises(TypeError, match="neo4j_uri"):
             init_neontology(
-                neo4j_uri="bolt://example:7687",
-                neo4j_username="someone",
-                neo4j_password="secret",
+                neo4j_uri="bolt://example:7687",  # pyrefly: ignore[unexpected-keyword]
+                neo4j_username="someone",  # pyrefly: ignore[unexpected-keyword]
+                neo4j_password="secret",  # pyrefly: ignore[unexpected-keyword]
             )
 
     def test_get_primary_property_value_is_gone(self):

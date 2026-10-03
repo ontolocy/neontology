@@ -1,6 +1,6 @@
 import functools
 import json
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Concatenate, Optional, TypeVar, Union, cast
 
 from typing_extensions import ParamSpec, Self
 
@@ -19,9 +19,10 @@ if TYPE_CHECKING:
 
 P = ParamSpec("P")
 R = TypeVar("R")
+N = TypeVar("N", bound="BaseNode")
 
 
-def _find_this_node(query, params, node):
+def _find_this_node(query: str, params: dict, node: "BaseNode") -> tuple[str, dict]:
     label = gql_identifier_adapter.validate_strings(node.__primarylabel__)
     pp_key = gql_identifier_adapter.validate_strings(node.__primaryproperty__)
     this_node = f"(ThisNode:{label} {{{pp_key}: $_neontology_pp}})"
@@ -69,11 +70,11 @@ def _prepare_related_query(node: "BaseNode", wrapped_function: Callable, *args: 
     return new_query, params
 
 
-def related_property(f: Callable[P, R]) -> Callable:
+def related_property(f: Callable[Concatenate[N, P], R]) -> Callable[Concatenate[N, P], Optional[Any]]:
     """Decorator to wrap functions on BaseNode subclasses and return a single result."""
 
     @functools.wraps(f)
-    def wrapper(self: "BaseNode", *args: P.args, **kwargs: P.kwargs) -> Optional[Any]:
+    def wrapper(self: N, *args: P.args, **kwargs: P.kwargs) -> Optional[Any]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -81,16 +82,16 @@ def related_property(f: Callable[P, R]) -> Callable:
 
         return result
 
-    wrapper.neontology_related_prop = True  # type: ignore
+    setattr(wrapper, "neontology_related_prop", True)
 
     return wrapper
 
 
-def related_nodes(f: Callable[P, R]) -> Callable:
+def related_nodes(f: Callable[Concatenate[N, P], R]) -> Callable[Concatenate[N, P], list["BaseNode"]]:
     """Decorator to wrap functions on BaseNode subclasses and return a list of nodes."""
 
     @functools.wraps(f)
-    def wrapper(self: "BaseNode", *args: P.args, **kwargs: P.kwargs) -> list["BaseNode"]:
+    def wrapper(self: N, *args: P.args, **kwargs: P.kwargs) -> list["BaseNode"]:
         new_query, params = _prepare_related_query(self, f, *args, **kwargs)
 
         gc = GraphConnection()
@@ -98,7 +99,7 @@ def related_nodes(f: Callable[P, R]) -> Callable:
 
         return result.nodes
 
-    wrapper.neontology_related_nodes = True  # type: ignore
+    setattr(wrapper, "neontology_related_nodes", True)
 
     return wrapper
 
@@ -135,7 +136,7 @@ def _record_key(record: dict) -> tuple:
 class BaseNode(CommonModel):
     __primaryproperty__: ClassVar[str]
     __primarylabel__: ClassVar[Optional[str]]
-    __secondarylabels__: ClassVar[list[str]] = []
+    __secondarylabels__: ClassVar[Optional[list[str]]] = []
 
     # labels carried by the declaring class and every class inheriting from it. Unlike
     # __secondarylabels__, a subclass cannot replace these - it can only add its own.
@@ -206,12 +207,14 @@ class BaseNode(CommonModel):
         """
         inheritable = [label for klass in cls.__mro__ for label in vars(klass).get("__inheritablelabels__") or []]
 
-        # read as _is_abstract does: an abstract class may never have declared a label
+        # read as _is_abstract does: an abstract class may never have declared a label. It
+        # keeps None in the primary label's place, so [1:] is still its other labels; every
+        # caller wanting the primary label has a concrete class, hence the cast.
         labels = [getattr(cls, "__primarylabel__", None), *(cls.__secondarylabels__ or []), *inheritable]
 
-        return list(dict.fromkeys(labels))
+        return cast(list[str], list(dict.fromkeys(labels)))
 
-    def __init__(self, **data: dict):
+    def __init__(self, **data: Any) -> None:
         super().__init__(**data)
 
         # we can define 'abstract' nodes which don't have a label
@@ -429,7 +432,7 @@ class BaseNode(CommonModel):
 
         by_pp = {getattr(node, pp_field): node for node in merged}
 
-        return [by_pp.get(getattr(node, pp_field)) for node in nodes]
+        return [by_pp[getattr(node, pp_field)] for node in nodes]
 
     @classmethod
     def merge_df(cls, df: "pd.DataFrame", deduplicate: bool = True) -> "pd.Series":
@@ -455,9 +458,11 @@ class BaseNode(CommonModel):
         # dtype; the models expect None. Casting to object first is what makes the
         # replacement stick: on a typed column, filling with None coerces back to the
         # column's own missing value instead.
-        records = df.astype(object).where(df.notna(), None).to_dict(orient="records")
+        # pandas' own hints leave out None, which where() accepts
+        records = df.astype(object).where(df.notna(), None).to_dict(orient="records")  # pyrefly: ignore[bad-argument-type]
 
-        nodes = cls.merge_records(records, deduplicate=deduplicate)
+        # the keys are column names, which name the properties
+        nodes = cls.merge_records(cast(list[dict], records), deduplicate=deduplicate)
 
         return pd.Series(nodes, index=df.index, dtype=object)
 
@@ -473,8 +478,9 @@ class BaseNode(CommonModel):
         """
         gc = GraphConnection()
 
+        # an abstract class has no label, and label_pattern refuses it
         cypher = f"""
-        MATCH (n{gc.engine.label_pattern(cls.__primarylabel__)})
+        MATCH (n{gc.engine.label_pattern(cast(str, cls.__primarylabel__))})
         WHERE n.{gql_identifier_adapter.validate_strings(cls.__primaryproperty__)} = $pp
         RETURN n
         """
@@ -485,7 +491,8 @@ class BaseNode(CommonModel):
         result = gc.evaluate_query(cypher, params, node_classes=registry.result_classes(cls))
 
         if result.nodes:
-            return result.nodes[0]
+            # built only as this class or a subclass of it, by result_classes
+            return cast(Self, result.nodes[0])
 
         else:
             return None
@@ -690,7 +697,7 @@ class BaseNode(CommonModel):
 
         return dumped_model
 
-    def neontology_dump(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs) -> dict:
+    def neontology_dump(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs: Any) -> dict:
         """Dump the model as a dictionary which can be reimported.
 
         Args:
@@ -707,7 +714,7 @@ class BaseNode(CommonModel):
 
         return self._prep_dump_dict(dumped_model)
 
-    def neontology_dump_json(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs) -> str:
+    def neontology_dump_json(self, exclude: Optional[set] = None, exclude_none: bool = True, **kwargs: Any) -> str:
         """Dump the model as a JSON string which can be reimported.
 
         Args:

@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=42"]
+# 69 or later packages py.typed, which tells type checkers the package carries its types
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -40,6 +41,10 @@ dev = [
     "pytest-cov>=3.0,<5",
     "pytest-benchmark>=4.0,<5",
     "ruff>=0.1.0,<1",
+    "pyrefly>=1.3,<2",
+    # typeshed's stubs, for the dependencies which carry no types of their own
+    "types-PyYAML>=6.0,<7",
+    "types-networkx>=3.2,<4",
     "mkdocs>=1.0,<2",
 ]
 
@@ -106,3 +111,20 @@ ignore = ["D100", "D101", "D104", "D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pyrefly]
+project-includes = ["src", "tests"]
+# tests import their shared models and helpers as top level modules, as pytest does
+search-path = ["src", "tests"]
+# the oldest supported version, so anything newer - typing.Self, say - is reported
+python-version = "3.10"
+preset = "default"
+
+# every function in the library is annotated, so its public API is typed for users;
+# tests are checked too, as the code using that API, but need not annotate themselves
+[[tool.pyrefly.sub-config]]
+matches = "src/**"
+
+[tool.pyrefly.sub-config.errors]
+unannotated-return = "error"
+implicit-any-parameter = "error"

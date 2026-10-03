@@ -9,7 +9,7 @@ and how a class is matched when a node can only carry one label.
 """
 
 from contextlib import contextmanager
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import pytest
 
@@ -53,7 +53,7 @@ def ladybug_connection(**kwargs):
             established.engine.close_connection()
 
 
-def _node(label, **fields):
+def _node(label, **fields) -> type[Any]:
     """Define a node class with the given primary label and properties.
 
     Built rather than declared so that a label can be reused with different properties,
@@ -154,7 +154,7 @@ class TestWhatInitialiseGraphReports:
 
         assert all(isinstance(table, Table) for table in applied)
 
-        by_label = {table.label: table for table in applied}
+        by_label = {table.label: table for table in applied if isinstance(table, Table)}
 
         assert by_label["LbugPerson"].entity is SchemaEntity.NODE
         assert by_label["LbugPerson"].properties == ("name",)
@@ -335,7 +335,8 @@ class TestMatchingAClass:
 
             assert len(result.relationships) == 1
 
-            found = result.relationships[0]
+            # the models are built at runtime, so their properties are unknown to a type checker
+            found: Any = result.relationships[0]
 
             assert (found.source.name, type(found.source)) == ("a", Machine)
             assert (found.target.name, type(found.target)) == ("b", Server)

@@ -27,6 +27,7 @@ uv run pytest --cov=src/neontology
 
 uv run ruff check src tests
 uv run ruff format --check --diff src tests
+uv run pyrefly check                     # type check src and tests; config is in pyproject.toml
 
 uv run mkdocs serve
 ```
@@ -107,4 +108,5 @@ Three invariants hold the format together. **Every record carries a `RecordOrigi
 - Ruff with `line-length = 128` and pydocstyle (google convention) — docstrings are required on public functions/methods (`D100`, `D101`, `D104`, `D107` are ignored). Lint `src` and `tests`; `tests/**` ignores the `D` rules via `per-file-ignores`, so test functions don't need docstrings.
 - `requires-python = ">=3.10"`: `X | Y` unions and `ParamSpec` are available from the stdlib, but `Self` still needs `typing_extensions` (stdlib only from 3.11). Existing modules use `Optional`/`Union` and `from __future__ import annotations` from the 3.9 era — match the surrounding file rather than converting it piecemeal.
 - A warning about the user's models, queries or results is a `NeontologyWarning` ([neontologywarning.py](src/neontology/neontologywarning.py)), or a subclass of it, so users can filter the library's warnings as a class; a deprecation is a `DeprecationWarning`. Never a bare `warnings.warn(message)`.
+- **Type checking is pyrefly, over `src` and `tests`, and CI fails on any error.** It checks as Python 3.10, the oldest supported. Every function in `src` must be fully annotated (enforced for `src/**` only; tests need not annotate themselves, but are checked as code using the API). The package ships `py.typed`, so the annotations are the public API's types. A pydantic field's annotation is runtime behaviour - it decides validation and serialisation - so where the checker needs a different view of one (`BaseRelationship.source`/`target`, which subclasses narrow; `NeontologyResult`'s lists, which cannot name the models at runtime), declare it under `if TYPE_CHECKING:` with the runtime annotation in the `else`, rather than changing the field. In tests, narrow `Model.match()` with `assert x is not None` and results with `isinstance`, and mark deliberate misuse with `# pyrefly: ignore[<kind>]` on the offending line.
 - New user-facing behaviour normally needs a `docs/` update and a `CHANGELOG.md` entry under the next version.

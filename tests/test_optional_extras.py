@@ -108,7 +108,7 @@ def test_merge_df_explains_how_to_install_pandas():
         name: str
 
     with pytest.raises(ImportError, match="neontology\\[pandas\\]") as excinfo:
-        PandaslessNode.merge_df(None)
+        PandaslessNode.merge_df(None)  # pyrefly: ignore[bad-argument-type]
 
     assert "merge_records" in str(excinfo.value)
 

@@ -226,7 +226,8 @@ class NeontologyNodeRecord(BaseModel):
 
     input_record: NeontologyNodeRaw
     label: Optional[str] = None
-    output_record: Optional[dict[str, Any]] = None
+    # always filled in from input_record by the validator below
+    output_record: dict[str, Any] = {}
 
     # a node declared inside a relationship's TARGET_NODES, rather than by a record of
     # its own. Inline records bring a node into the graph without it needing an entry
@@ -236,7 +237,7 @@ class NeontologyNodeRecord(BaseModel):
     origin: RecordOrigin = RecordOrigin(source="<records>")
 
     @model_validator(mode="before")
-    def populate_node_fields(cls, data):
+    def populate_node_fields(cls, data: Any) -> Any:
         """Use the raw input data (from input_record) to populate the fields of the model."""
         if not data.get("label"):
             data["label"] = data.get("input_record", {}).get("LABEL")
@@ -260,7 +261,8 @@ class NeontologyRelationshipRecord(BaseModel):
     source: Optional[Any] = None
     target: Optional[Any] = None
 
-    output_record: Optional[dict] = None
+    # always filled in from input_record by the validator below
+    output_record: dict = {}
 
     origin: RecordOrigin = RecordOrigin(source="<records>")
 
@@ -309,7 +311,7 @@ class NeontologyRelationshipRecord(BaseModel):
         return data
 
     @model_validator(mode="after")
-    def populate_fields(self):
+    def populate_fields(self) -> "NeontologyRelationshipRecord":
         """Use the raw input data (from input_record) to populate the fields of the model."""
         # where an end's property wasn't named explicitly, match on the primary property
         if self.source_prop is None:

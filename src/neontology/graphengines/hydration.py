@@ -137,7 +137,7 @@ class _ResultBuilder:
     rather than on every row it appears on.
     """
 
-    def __init__(self, node_classes: dict[str, type[BaseNode]], relationship_classes: dict[str, RelationshipTypeData]):
+    def __init__(self, node_classes: dict[str, type[BaseNode]], relationship_classes: dict[str, RelationshipTypeData]) -> None:
         self._node_classes = node_classes
         self._relationship_classes = relationship_classes
 
@@ -237,7 +237,9 @@ class _ResultBuilder:
         if not steps:
             return None
 
-        if any(step is None for step in steps):
+        built = [step for step in steps if step is not None]
+
+        if len(built) < len(steps):
             warnings.warn(
                 f"Path '{column}' left out of the results: it includes a relationship which could not be built.",
                 NeontologyWarning,
@@ -245,7 +247,7 @@ class _ResultBuilder:
 
             return None
 
-        return steps  # type: ignore[return-value]
+        return built
 
 
 def build_result(

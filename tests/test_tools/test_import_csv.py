@@ -52,7 +52,9 @@ def test_import_nodes_with_a_label_column(use_graph, tmp_path_factory):
     report = import_csv(dir_path)
 
     assert report.nodes == {"CsvHost": 2}
-    assert CsvHost.match("web1").owner == "platform"
+    web1 = CsvHost.match("web1")
+    assert web1 is not None
+    assert web1.owner == "platform"
 
 
 def test_import_nodes_with_the_label_given_once(use_graph, tmp_path_factory):
@@ -85,6 +87,7 @@ def test_values_are_converted_by_the_model(use_graph, tmp_path_factory):
 
     host = CsvHost.match("web1")
 
+    assert host is not None
     assert host.cores == 16
     assert host.retired is True
 
@@ -99,6 +102,7 @@ def test_an_empty_cell_means_the_property_was_not_given(use_graph, tmp_path_fact
 
     host = CsvHost.match("web1")
 
+    assert host is not None
     assert host.owner is None
     assert host.cores is None
     assert host.retired is False

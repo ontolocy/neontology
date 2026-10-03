@@ -2,7 +2,7 @@ import csv
 import json
 from logging import getLogger
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import yaml
 
@@ -211,7 +211,7 @@ def _read_csv(file_path: Path, defaults: Optional[dict[str, Any]] = None) -> lis
 def _import_files(
     path: Union[str, Path],
     path_pattern: str,
-    reader,
+    reader: Callable[[Path], list[SourcedRecord]],
     batch_size: Optional[int],
     check_unmatched: bool,
     error_on_unmatched: bool,

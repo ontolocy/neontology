@@ -401,7 +401,10 @@ def test_a_tagged_model_works_on_every_engine(use_graph):
     """Tags only take effect when applied, so a tagged model can be used on any backend."""
     DBSchemaTaggedNode(pp="tagged", email="tagged@example.com", name="Tagged").merge()
 
-    assert DBSchemaTaggedNode.match("tagged").email == "tagged@example.com"
+    tagged = DBSchemaTaggedNode.match("tagged")
+
+    assert tagged is not None
+    assert tagged.email == "tagged@example.com"
 
 
 def test_tagging_a_relationship_property_raises_when_the_class_is_defined():

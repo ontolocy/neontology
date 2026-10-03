@@ -66,6 +66,26 @@ jobs:
         run: |
           uv run pytest -x --benchmark-disable
 
+  type-check:
+    # One run is enough: pyrefly checks against the python-version its config names,
+    # not the interpreter's, so the matrix would only repeat the same check.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        # every extra, so the optional engines and pandas support are checked
+        # against the libraries they use rather than treated as unknown
+        run: |
+          uv sync --all-extras
+      - name: Type check with pyrefly
+        run: |
+          uv run pyrefly check --output-format full-text-with-github
+
   minimal-install:
     # neontology must work without its optional extras - [grand] for the NetworkX
     # engine, [ladybug] for the LadybugDB engine and [pandas] for dataframe support. No

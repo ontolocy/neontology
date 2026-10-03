@@ -165,6 +165,7 @@ def test_empty_list_property(use_graph):
 
     result = TestModelListProp.match(pp)
 
+    assert result is not None
     assert result.list_prop == []
 
 

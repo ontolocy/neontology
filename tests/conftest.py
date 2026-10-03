@@ -1,14 +1,15 @@
-# type: ignore
-
 import logging
 import os
+from typing import Any, Optional, TypedDict
 
 import pytest
 from dotenv import load_dotenv
+from typing_extensions import NotRequired
 
 from neontology import GraphConnection, init_neontology
 from neontology.graphengines import MemgraphConfig, Neo4jConfig
 from neontology.graphengines.capabilities import Capability
+from neontology.graphengines.graphengine import GraphEngineConfig
 
 try:
     from neontology.graphengines import NetworkxConfig
@@ -31,16 +32,26 @@ except ImportError:
     HAS_LADYBUG = False
 
 
-# The single source of truth for the engines the suite runs against. To add a
-# backend, add one entry here: the parametrisation, the config construction and
-# the capability lookup are all derived from it.
+# One engine the suite runs against:
 #
 #   id:         the pytest param id, used to select an engine with -k
-#   config:     the GraphEngineConfig subclass
+#   config:     the GraphEngineConfig subclass, or None when its extra is missing
 #   env_vars:   config field -> environment variable holding its value
 #   kwargs:     config arguments that are the same on every run
 #   available:  False when an optional dependency is missing, so the param skips
-ENGINES = [
+class EngineEntry(TypedDict):
+    id: str
+    config: Optional[type[GraphEngineConfig]]
+    env_vars: dict[str, str]
+    kwargs: NotRequired[dict[str, Any]]
+    available: bool
+    skip_reason: str
+
+
+# The single source of truth for the engines the suite runs against. To add a
+# backend, add one entry here: the parametrisation, the config construction and
+# the capability lookup are all derived from it.
+ENGINES: list[EngineEntry] = [
     {
         "id": "neo4j-engine",
         "config": Neo4jConfig,
@@ -145,6 +156,9 @@ def get_graph_config(engine_id) -> object:
 
         graph_config[field] = value
 
+    # an engine whose extra is missing is skipped before anything asks for its config
+    assert entry["config"] is not None
+
     return entry["config"](**graph_config)
 
 
@@ -243,7 +257,12 @@ def engine(engine_id):
     Derived from engine_id rather than the config, so tests that only ask what an
     engine supports do not require database credentials.
     """
-    return ENGINES_BY_ID[engine_id]["config"].engine
+    config = ENGINES_BY_ID[engine_id]["config"]
+
+    # an engine whose extra is missing is skipped before anything asks for its config
+    assert config is not None
+
+    return config.engine
 
 
 @pytest.fixture(scope="function")
