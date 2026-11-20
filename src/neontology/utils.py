@@ -99,14 +99,6 @@ def get_rels_by_type(
     return registry.relationships(None if base_type is BaseRelationship else base_type)
 
 
-def all_subclasses(cls: type) -> set:
-    """Recursively get all subclasses of a given class."""
-    subclasses = set(cls.__subclasses__())
-    for subclass in cls.__subclasses__():
-        subclasses.update(all_subclasses(subclass))
-    return subclasses
-
-
 def get_rels_by_node(base_type: type[BaseRelationship] = BaseRelationship, by_source: bool = True) -> dict[str, set[str]]:
     """Get a dictionary of relationship types by source or target node type."""
     if by_source is True:
@@ -125,15 +117,10 @@ def get_rels_by_node(base_type: type[BaseRelationship] = BaseRelationship, by_so
         # unchanged anyway
         node_class = getattr(entry, node_dir)
 
-        node_label = getattr(node_class, "__primarylabel__", None)
-
-        if node_label is not None:
-            by_node[node_label].add(rel_type)
-
-        for node_subclass in all_subclasses(node_class):
-            subclass_label = node_subclass.__primarylabel__
-            if subclass_label is not None:
-                by_node[subclass_label].add(rel_type)
+        # the concrete classes at that end - the declared class and every class inheriting
+        # from it - as a relationship schema's source and target labels are
+        for label in get_node_types(node_class):
+            by_node[label].add(rel_type)
 
     return by_node
 

@@ -11,6 +11,7 @@
 - `BaseNode.get_primary_property_value()`, deprecated since v2.0. Use `get_pp()`.
 - **The `config` argument to `GraphConnection()`.** `GraphConnection()` now takes no arguments and is purely an accessor: it returns the connection that `init_neontology(config)` established. The argument was honoured on the first call in a process and silently ignored on every later one, so the signature promised to define the connection and did not. It was never a documented way to connect - every documented path is `init_neontology(config)` followed by `GraphConnection()` - but it did work for a first call, so any code using it needs changing to `init_neontology(config)`. Passing anything now raises a `TypeError` saying exactly that, rather than failing silently or with a bare argument-count error.
 - The `neo4j_uri`, `neo4j_username` and `neo4j_password` keyword arguments to `init_neontology`, deprecated since v2.0. Pass a `Neo4jConfig` instead. `init_neontology` no longer accepts arbitrary keyword arguments, so the old call raises a `TypeError` naming the argument rather than being silently ignored.
+- `neontology.utils.all_subclasses()`, which walked a class' `__subclasses__()`. Nothing uses it now that every lookup reads the registry of model classes, and it was never exported from the package root or documented.
 
 ### Added
 
@@ -115,6 +116,7 @@
 
 ### Fixed
 
+- **`get_rels_by_source()` and `get_rels_by_target()` no longer fail when a relationship's end has an abstract subclass which never declared `__primarylabel__`.** They raised `AttributeError` from every lookup, not only those involving that class, while `__primarylabel__ = None` worked. They now read the concrete classes at each end from the registry, as a relationship schema's `source_labels` and `target_labels` are.
 - **On the NetworkX engine, a relationship matched on a property other than the primary one now connects a node of the right class.** The lookup ignored labels, so a node of another class holding the same value could be picked instead, and an end that was not found kept its lookup value as though it were a primary property - connecting the relationship to whichever node happened to have that primary property value. Its warning also said "Source node" for a missing target.
 - **On the NetworkX engine, merging a relationship whose source or target node does not exist no longer creates it.** Adding the edge also added the missing node, with no label or properties, leaving an edge the other engines would never have written - `MATCH` finds no node there, so they create nothing.
 - `BaseRelationship.get_count()` returns 0 on the NetworkX engine when there are no relationships of the type, rather than `None`.
