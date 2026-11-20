@@ -216,6 +216,7 @@ def _import_files(
     check_unmatched: bool,
     error_on_unmatched: bool,
     validate_only: bool,
+    partial: bool,
 ) -> ImportReport:
     """Read every matching file and import what they hold as one set of records.
 
@@ -230,6 +231,7 @@ def _import_files(
         check_unmatched (bool): check relationship endpoints resolve.
         error_on_unmatched (bool): raise rather than warn where they do not.
         validate_only (bool): do not populate the graph.
+        partial (bool): change existing nodes only in the properties the content gives.
 
     Returns:
         ImportReport: what the import did, and which files it read.
@@ -256,6 +258,7 @@ def _import_files(
         validate_only=validate_only,
         batch_size=batch_size,
         report=report,
+        partial=partial,
     )
 
 
@@ -266,6 +269,7 @@ def import_json(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
+    partial: bool = True,
 ) -> ImportReport:
     """Import JSON files into the graph.
 
@@ -277,6 +281,11 @@ def import_json(
         check_unmatched (bool): check relationship endpoints resolve, warn if not.
         error_on_unmatched (bool): raise rather than warn where they do not.
         validate_only (bool): do not populate the graph.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did, and which files it read.
@@ -289,6 +298,7 @@ def import_json(
         check_unmatched,
         error_on_unmatched,
         validate_only,
+        partial,
     )
 
 
@@ -299,6 +309,7 @@ def import_yaml(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
+    partial: bool = True,
 ) -> ImportReport:
     """Import YAML files into the graph.
 
@@ -313,6 +324,11 @@ def import_yaml(
         check_unmatched (bool): check relationship endpoints resolve, warn if not.
         error_on_unmatched (bool): raise rather than warn where they do not.
         validate_only (bool): do not populate the graph.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did, and which files it read.
@@ -325,6 +341,7 @@ def import_yaml(
         check_unmatched,
         error_on_unmatched,
         validate_only,
+        partial,
     )
 
 
@@ -336,6 +353,7 @@ def import_csv(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
+    partial: bool = True,
 ) -> ImportReport:
     """Import CSV files into the graph, a record per row.
 
@@ -347,7 +365,8 @@ def import_csv(
     say - can be given once in `defaults` rather than as a column, and a row which has a
     column of its own for one of them overrides it.
 
-    An empty cell means the property was not given, so the model's default applies.
+    An empty cell means the property was not given: a new node takes the model's
+    default, and one already in the graph keeps its value unless `partial` is False.
     Every value is read as text and converted by the model, so a column of numbers,
     booleans or dates arrives as the type the model declares.
 
@@ -361,6 +380,11 @@ def import_csv(
         check_unmatched (bool): check relationship endpoints resolve, warn if not.
         error_on_unmatched (bool): raise rather than warn where they do not.
         validate_only (bool): do not populate the graph.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did, and which files it read.
@@ -377,6 +401,7 @@ def import_csv(
         check_unmatched,
         error_on_unmatched,
         validate_only,
+        partial,
     )
 
 
@@ -387,6 +412,7 @@ def import_md(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     validate_only: bool = False,
+    partial: bool = True,
 ) -> ImportReport:
     """Import markdown files with frontmatter into the graph.
 
@@ -401,6 +427,11 @@ def import_md(
         check_unmatched (bool): check relationship endpoints resolve, warn if not.
         error_on_unmatched (bool): raise rather than warn where they do not.
         validate_only (bool): do not populate the graph.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did, and which files it read.
@@ -413,4 +444,5 @@ def import_md(
         check_unmatched,
         error_on_unmatched,
         validate_only,
+        partial,
     )

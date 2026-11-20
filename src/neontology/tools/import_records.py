@@ -176,6 +176,7 @@ def _import_nodes(
     context: ImportContext,
     report: ImportReport,
     batch_size: Optional[int] = None,
+    partial: bool = True,
 ) -> None:
     """Merge node records into the graph, one node at a time however often it is described.
 
@@ -184,6 +185,7 @@ def _import_nodes(
         context (ImportContext): the run they are part of.
         report (ImportReport): counts what was merged.
         batch_size (Optional[int]): how many records to merge per query, or None for all.
+        partial (bool): change existing nodes only in the properties their records give.
     """
     mapped_records = defaultdict(list)
 
@@ -201,7 +203,7 @@ def _import_nodes(
 
         for batch, batch_origins in _batches_with_origins(records, origins, batch_size):
             try:
-                node_class.merge_records(batch)
+                node_class.merge_records(batch, partial=partial)
 
             except Exception as exc:
                 _locate_failure(exc, batch, batch_origins, lambda x, cls=node_class: cls(**x), context)
@@ -501,6 +503,7 @@ def import_sourced_records(
     error_on_unmatched: bool = False,
     batch_size: Optional[int] = None,
     report: Optional[ImportReport] = None,
+    partial: bool = True,
 ) -> ImportReport:
     """Import records which already know which file and entry they came from.
 
@@ -514,6 +517,7 @@ def import_sourced_records(
         error_on_unmatched (bool): raise rather than warn where they do not.
         batch_size (Optional[int]): how many records to write per query.
         report (Optional[ImportReport]): a report to add to, if one is already started.
+        partial (bool): change existing nodes only in the properties the content gives.
 
     Returns:
         ImportReport: what the import did.
@@ -547,7 +551,7 @@ def import_sourced_records(
 
         return report
 
-    _import_nodes(combined_nodes, context, report, batch_size)
+    _import_nodes(combined_nodes, context, report, batch_size, partial)
 
     if check_unmatched is True:
         _check_endpoints(input_rels, combined_nodes, error_on_unmatched, context, report)
@@ -563,6 +567,7 @@ def import_records(
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     batch_size: Optional[int] = None,
+    partial: bool = True,
 ) -> ImportReport:
     """Import 'Neontology' records into the graph database.
 
@@ -581,6 +586,11 @@ def import_records(
         batch_size (int, optional): how many records to write per query. Defaults to
             None, which writes each label and relationship type in one query. It limits
             the size of each write, not what a relationship can refer to.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did - how many of each label and relationship type
@@ -609,4 +619,5 @@ def import_records(
         check_unmatched=check_unmatched,
         error_on_unmatched=error_on_unmatched,
         batch_size=batch_size,
+        partial=partial,
     )

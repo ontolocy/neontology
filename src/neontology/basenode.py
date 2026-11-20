@@ -282,8 +282,13 @@ class BaseNode(CommonModel):
         """String representation of the node, showing the primary property value by default."""
         return str(self.get_pp())
 
-    def _get_merge_parameters(self) -> dict[str, Any]:
+    def _get_merge_parameters(self, partial: bool = False) -> dict[str, Any]:
         """Get the parameters defined for merging on when merging into the graph.
+
+        Args:
+            partial (bool): change an existing node only in the properties this one was
+                given, rather than in every property. A new node is still written in full,
+                defaults included.
 
         Returns:
         dict[str, Any]: a dictionary of key/value pairs.
@@ -297,6 +302,20 @@ class BaseNode(CommonModel):
                 "pp": all_props[self.__primaryproperty__],
             }
         )
+
+        if partial:
+            # a property is given when it was passed in, assigned, or supplied by a
+            # validator - an explicit None included, which is how one is cleared. The
+            # buckets are keyed by alias, and model_fields_set by field name.
+            given = {key for key, field in self._field_names_by_key.items() if field in self.model_fields_set}
+            given.add(self.__primaryproperty__)
+
+            always_set = params["always_set"]
+
+            # one not given is written only where the node is new, so it still gets its default
+            params["set_on_create"] = {**params["set_on_create"], **{k: v for k, v in always_set.items() if k not in given}}
+            params["always_set"] = {k: v for k, v in always_set.items() if k in given}
+            params["set_on_match"] = {k: v for k, v in params["set_on_match"].items() if k in given}
 
         return params
 
@@ -409,11 +428,16 @@ class BaseNode(CommonModel):
         return results
 
     @classmethod
-    def merge_nodes(cls, nodes: list[Self]) -> list[Self]:
+    def merge_nodes(cls, nodes: list[Self], partial: bool = False) -> list[Self]:
         """Merge multiple nodes into the database.
 
         Args:
             nodes (list[B]): A list of nodes to merge.
+            partial (bool): change existing nodes only in the properties each one was
+                given - passed in, assigned, or supplied by a validator - leaving the rest
+                as they are in the graph. An explicit None is given, so it still clears a
+                property. New nodes are written in full, defaults included. Defaults to
+                False, which writes every property.
 
         Returns:
             list: A list of the primary property values
@@ -421,7 +445,7 @@ class BaseNode(CommonModel):
         Raises:
             TypeError: Raised if any of the nodes provided don't match this class.
         """
-        node_list = [x._get_merge_parameters() for x in nodes]
+        node_list = [x._get_merge_parameters(partial=partial) for x in nodes]
 
         all_labels = cls._all_labels()
 
@@ -434,7 +458,7 @@ class BaseNode(CommonModel):
         return results
 
     @classmethod
-    def merge_records(cls, records: list[dict], deduplicate: bool = True) -> list[Self]:
+    def merge_records(cls, records: list[dict], deduplicate: bool = True, partial: bool = False) -> list[Self]:
         """Take a list of dictionaries and use them to merge in nodes in the graph.
 
         Each dictionary will be used to merge a node where dictionary key/value pairs
@@ -449,6 +473,10 @@ class BaseNode(CommonModel):
             deduplicate (bool): merge identical records only once. Defaults to True.
                 The result is unaffected either way, but merging a record repeatedly
                 is wasted work.
+            partial (bool): change existing nodes only in the properties each record
+                gives, leaving the rest as they are in the graph. A property given as
+                None is still cleared. New nodes are written in full, defaults included.
+                Defaults to False, which writes every property.
 
         Returns:
             list: the merged nodes, one per input record, in input order
@@ -473,7 +501,7 @@ class BaseNode(CommonModel):
         else:
             to_merge = nodes
 
-        merged = cls.merge_nodes(to_merge)
+        merged = cls.merge_nodes(to_merge, partial=partial)
 
         # Map every input record onto its merged node by primary property, so the
         # result lines up with the input however much was deduplicated. The property
@@ -486,7 +514,7 @@ class BaseNode(CommonModel):
         return [by_pp[getattr(node, pp_field)] for node in nodes]
 
     @classmethod
-    def merge_df(cls, df: "pd.DataFrame", deduplicate: bool = True) -> "pd.Series":
+    def merge_df(cls, df: "pd.DataFrame", deduplicate: bool = True, partial: bool = False) -> "pd.Series":
         """Merge in new nodes based on data in a dataframe.
 
         The dataframe columns must correspond to the Node properties. This is a thin
@@ -496,6 +524,9 @@ class BaseNode(CommonModel):
         Args:
             df (pd.DataFrame): A pandas dataframe of node properties
             deduplicate (bool): merge identical rows only once. Defaults to True.
+            partial (bool): change existing nodes only in the properties the dataframe has
+                columns for. A missing value in a column is None, so it still clears the
+                property. Defaults to False, which writes every property.
 
         Returns:
             pd.Series: the merged nodes, one per input row, indexed like the input
@@ -513,7 +544,7 @@ class BaseNode(CommonModel):
         records = df.astype(object).where(df.notna(), None).to_dict(orient="records")  # pyrefly: ignore[bad-argument-type]
 
         # the keys are column names, which name the properties
-        nodes = cls.merge_records(cast(list[dict], records), deduplicate=deduplicate)
+        nodes = cls.merge_records(cast(list[dict], records), deduplicate=deduplicate, partial=partial)
 
         return pd.Series(nodes, index=df.index, dtype=object)
 

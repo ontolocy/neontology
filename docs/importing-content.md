@@ -217,6 +217,29 @@ Because records are combined before anything is written, the inline record canno
 !!! note
     Give every node record an explicit primary property value, or one your model computes deterministically from the record. That value is how other content points at the node, and how records describing the same node are recognised as being about one node.
 
+## Nodes already in the graph
+
+A node the graph already holds changes only in the properties the content gives it. Content from different sources can therefore be imported separately and add to the same node, rather than each import replacing what the last one stored:
+
+```yaml
+# inventory.yaml
+LABEL: Host
+hostname: dns1
+owner: network-team
+asset_tag: asset-0091
+```
+
+```yaml
+# scan.yaml
+LABEL: Host
+hostname: dns1
+description: internal resolver
+```
+
+Importing `inventory.yaml` and then `scan.yaml` leaves `dns1` with its owner, its asset tag and its description. A node the graph does not yet hold is written in full, so the properties the content does not give take your model's defaults.
+
+To clear a property, give it as `null`. If your content is the complete record of its nodes - so that removing a property from a file should remove it from the graph - pass `partial=False`, which writes every property the way `merge_records()` does by default.
+
 ## Matching on another property
 
 Where nodes carry a second unique identifier, a relationship can match on it instead of the primary property:
@@ -311,7 +334,7 @@ import_csv(
 
 Two rules are worth knowing:
 
-- **An empty cell means the property was not given**, so the model's default applies rather than the property being set to an empty string. A CSV cannot express an empty string as a value.
+- **An empty cell means the property was not given**, rather than being an empty string: a new node takes the model's default, and one already in the graph [keeps its value](#nodes-already-in-the-graph). A CSV cannot express an empty string as a value.
 - **Every value is read as text and converted by the model**, so columns of numbers, booleans and dates arrive as the type the model declares. A property holding a list needs a format that nests.
 
 A row which does not validate is reported with the line it is on, counting the header as line 1.
@@ -325,6 +348,7 @@ A row which does not validate is reported with the line it is on, counting the h
 | `error_on_unmatched` | `False` | raise rather than warn where one does not |
 | `validate_only` | `False` | check the content, write nothing |
 | `batch_size` | `None` | how many records to write per query |
+| `partial` | `True` | change a node already in the graph only in the properties the content gives it; `False` writes every property |
 
 `batch_size` limits the size of each write. It does not limit what a relationship can refer to.
 

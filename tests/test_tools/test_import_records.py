@@ -1,8 +1,9 @@
 import logging
-from typing import ClassVar, Optional
+from datetime import datetime
+from typing import Any, ClassVar, Optional
 
 import pytest
-from pydantic import ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 from neontology import BaseNode, BaseRelationship, GraphConnection
 from neontology.graphengines.capabilities import Capability
@@ -531,3 +532,85 @@ def test_nested_dump_round_trips(use_graph):
     archy = PersonImportNode.match("archy")
     assert archy is not None
     assert archy.age == 55
+
+
+class PartialImportNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "PartialImportLabel"
+    __primaryproperty__: ClassVar[str] = "pp"
+
+    pp: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+
+def _stored(pp: str) -> PartialImportNode:
+    node = PartialImportNode.match(pp)
+    assert node is not None
+    return node
+
+
+def test_import_keeps_what_the_content_does_not_give(use_graph):
+    """Content describing a node in part used to blank every property it left out."""
+    PartialImportNode(pp="1", name="Ada", email="ada@example.com").merge()
+
+    import_records([{"LABEL": "PartialImportLabel", "pp": "1", "name": "Ada L"}])
+
+    assert (_stored("1").name, _stored("1").email) == ("Ada L", "ada@example.com")
+
+    # naming the node and nothing else changes nothing
+    import_records([{"LABEL": "PartialImportLabel", "pp": "1"}])
+
+    assert (_stored("1").name, _stored("1").email) == ("Ada L", "ada@example.com")
+
+    # null is given, so it clears
+    import_records([{"LABEL": "PartialImportLabel", "pp": "1", "email": None}])
+
+    assert (_stored("1").name, _stored("1").email) == ("Ada L", None)
+
+
+def test_import_without_partial_writes_every_property(use_graph):
+    PartialImportNode(pp="1", name="Ada", email="ada@example.com").merge()
+
+    import_records([{"LABEL": "PartialImportLabel", "pp": "1", "name": "Ada L"}], partial=False)
+
+    assert (_stored("1").name, _stored("1").email) == ("Ada L", None)
+
+
+class StampedImportNode(BaseNode):
+    """The created and merged timestamps of the recipe in docs/recipes.md."""
+
+    __primarylabel__: ClassVar[str] = "StampedImportLabel"
+    __primaryproperty__: ClassVar[str] = "pp"
+
+    pp: str
+    name: Optional[str] = None
+    merged: datetime
+    created: Optional[datetime] = Field(default=None, json_schema_extra={"set_on_create": True})
+
+    # supplied here rather than by a default_factory so that they count as given, and a
+    # partial merge writes them
+    @model_validator(mode="before")
+    @classmethod
+    def stamp(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("merged", datetime.now())
+            data.setdefault("created", data["merged"])
+        return data
+
+
+def test_import_refreshes_a_merged_timestamp_and_keeps_created(use_graph):
+    import_records([{"LABEL": "StampedImportLabel", "pp": "1", "name": "Ada"}])
+
+    first = StampedImportNode.match("1")
+    assert first is not None
+    assert first.created == first.merged
+
+    import_records([{"LABEL": "StampedImportLabel", "pp": "1"}])
+
+    second = StampedImportNode.match("1")
+    assert second is not None
+
+    assert second.merged > first.merged
+    assert second.created == first.created
+    assert second.name == "Ada"

@@ -957,6 +957,18 @@ class LadybugEngine(GraphEngineBase):
         if not properties:
             return []
 
+        # The SET clauses are read from the first row, so every row of one query has to
+        # carry the same keys in each bucket. A partial merge gives each node only the
+        # properties it was given, so rows differing in that are merged separately.
+        groups: dict[tuple, list] = {}
+
+        for entry in properties:
+            keys = tuple(tuple(sorted(entry.get(bucket) or {})) for bucket in ("always_set", "set_on_match", "set_on_create"))
+            groups.setdefault(keys, []).append(entry)
+
+        if len(groups) > 1:
+            return [node for group in groups.values() for node in self.merge_nodes(labels, pp_key, group, node_class)]
+
         self._ensure_node_table(node_class)
 
         label = gql_identifier_adapter.validate_strings(node_class.__primarylabel__)

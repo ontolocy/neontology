@@ -177,6 +177,35 @@ def test_an_inline_record_and_a_definition_of_one_node(use_graph, tmp_path_facto
     assert IPAddress.get_count() == 1
 
 
+def test_content_adds_to_a_node_already_in_the_graph(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "inventory.yaml", "LABEL: Host\nhostname: dns1\nowner: network-team\nasset_tag: asset-0091\n")
+    _write(dir_path, "scan.yaml", "LABEL: Host\nhostname: dns1\ndescription: internal resolver\n")
+
+    import_yaml(dir_path / "inventory.yaml")
+    import_yaml(dir_path / "scan.yaml")
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag, host.description) == ("network-team", "asset-0091", "internal resolver")
+
+    # null clears
+    _write(dir_path, "scan.yaml", "LABEL: Host\nhostname: dns1\nowner: null\n")
+    import_yaml(dir_path / "scan.yaml")
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag) == (None, "asset-0091")
+
+    # partial=False writes every property, so what the file leaves out is cleared
+    import_yaml(dir_path / "inventory.yaml", partial=False)
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag, host.description) == ("network-team", "asset-0091", None)
+
+
 def test_an_inline_node_cannot_declare_relationships(use_graph):
     records = [
         {

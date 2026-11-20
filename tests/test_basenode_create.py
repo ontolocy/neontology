@@ -396,3 +396,68 @@ def test_creation_datetime(use_graph):
     result = use_graph.evaluate_query_single(cypher)
 
     assert result == 2022
+
+
+class PartialMergeNode(BaseNode):
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = "PartialMergeNode"
+    pp: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    status: str = "active"
+    seen: Optional[str] = Field(default=None, json_schema_extra={"set_on_match": True})
+
+
+class TestPartialMerge:
+    """merge_records(partial=True) changes an existing node only in the properties it is given."""
+
+    @pytest.fixture
+    def ada(self, use_graph):
+        PartialMergeNode(pp="1", name="Ada", email="ada@example.com", status="retired").merge()
+
+    @staticmethod
+    def stored(pp: str) -> PartialMergeNode:
+        node = PartialMergeNode.match(pp)
+        assert node is not None
+        return node
+
+    def test_properties_not_given_are_kept(self, ada):
+        [returned] = PartialMergeNode.merge_records([{"pp": "1", "name": "Ada L"}], partial=True)
+
+        for node in (returned, self.stored("1")):
+            assert (node.name, node.email, node.status) == ("Ada L", "ada@example.com", "retired")
+
+    def test_a_property_given_as_none_is_cleared(self, ada):
+        PartialMergeNode.merge_records([{"pp": "1", "email": None}], partial=True)
+
+        assert (self.stored("1").name, self.stored("1").email) == ("Ada", None)
+
+    def test_a_new_node_is_written_with_its_defaults(self, use_graph):
+        PartialMergeNode.merge_records([{"pp": "2", "name": "Bob"}], partial=True)
+
+        assert (self.stored("2").name, self.stored("2").status) == ("Bob", "active")
+
+    def test_without_partial_every_property_is_written(self, ada):
+        PartialMergeNode.merge_records([{"pp": "1"}])
+
+        assert (self.stored("1").name, self.stored("1").status) == (None, "active")
+
+    def test_a_set_on_match_property_not_given_is_kept(self, ada):
+        PartialMergeNode.merge_records([{"pp": "1", "seen": "today"}], partial=True)
+        PartialMergeNode.merge_records([{"pp": "1", "name": "Ada L"}], partial=True)
+
+        assert (self.stored("1").name, self.stored("1").seen) == ("Ada L", "today")
+
+    def test_records_giving_different_properties_merge_together(self, ada):
+        PartialMergeNode(pp="2", name="Bob", email="bob@example.com").merge()
+
+        returned = PartialMergeNode.merge_records(
+            [{"pp": "1", "name": "Ada L"}, {"pp": "2", "email": "robert@example.com"}, {"pp": "3"}],
+            partial=True,
+        )
+
+        assert [node.pp for node in returned] == ["1", "2", "3"]
+
+        assert (self.stored("1").name, self.stored("1").email) == ("Ada L", "ada@example.com")
+        assert (self.stored("2").name, self.stored("2").email) == ("Bob", "robert@example.com")
+        assert self.stored("3").status == "active"
