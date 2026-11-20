@@ -323,8 +323,8 @@ class BaseRelationship(CommonModel):
         for record in records:
             hydrated = dict(record)
 
-            hydrated["source"] = source_type.model_construct(**{source_prop: record["source"]})
-            hydrated["target"] = target_type.model_construct(**{target_prop: record["target"]})
+            hydrated["source"] = source_type._matching_node(source_prop, record["source"])
+            hydrated["target"] = target_type._matching_node(target_prop, record["target"])
 
             hydrated_list.append(cls(**hydrated))
 

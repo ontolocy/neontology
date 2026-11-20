@@ -133,6 +133,10 @@ def _record_key(record: dict) -> tuple:
     return tuple(key)
 
 
+# one unvalidated instance per node class, copied by BaseNode._matching_node()
+_matching_templates: dict[type["BaseNode"], "BaseNode"] = {}
+
+
 class BaseNode(CommonModel):
     __primaryproperty__: ClassVar[str]
     __primarylabel__: ClassVar[Optional[str]]
@@ -196,6 +200,32 @@ class BaseNode(CommonModel):
             " it exists to share properties with subclasses and is never written to the"
             " graph. Give it a __primarylabel__ to use it directly."
         )
+
+    @classmethod
+    def _matching_node(cls, prop: str, value: Any) -> Self:
+        """A node standing in for one a relationship merge matches on, carrying only that property.
+
+        Nothing is validated, so the node's other required properties need not be known.
+        It is copied from one instance per class rather than built with model_construct(),
+        which calls every default_factory again each time - through inspect.signature(), so
+        that building these dominated a large relationship import.
+
+        Args:
+            prop (str): the property the node is matched on.
+            value (Any): its value.
+
+        Returns:
+            Self: an unvalidated node, with `prop` the only property set and the rest at their defaults.
+        """
+        template = _matching_templates.get(cls)
+
+        if template is None:
+            template = _matching_templates[cls] = cls.model_construct()
+
+        # deep, so copies do not share the template's mutable defaults: a validator
+        # changing one in place - source.tags.append(...) - would otherwise change it for
+        # every node built afterwards
+        return cast(Self, template.model_copy(update={prop: value}, deep=True))
 
     @classmethod
     def _primary_label(cls) -> str:

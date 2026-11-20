@@ -440,8 +440,8 @@ def _hydrate_relationship(
     resolved_source_prop = source_prop or source_type.__primaryproperty__
     resolved_target_prop = target_prop or target_type.__primaryproperty__
 
-    hydrated["source"] = source_type.model_construct(**{resolved_source_prop: record["source"]})
-    hydrated["target"] = target_type.model_construct(**{resolved_target_prop: record["target"]})
+    hydrated["source"] = source_type._matching_node(resolved_source_prop, record["source"])
+    hydrated["target"] = target_type._matching_node(resolved_target_prop, record["target"])
 
     return rel_class(**hydrated)
 
