@@ -28,7 +28,8 @@ class Capability(str, Enum):
     # parent's label. LadybugDB stores each label as its own table and a node
     # belongs to exactly one of them, so secondary and inheritable labels are not
     # written and a query naming one directly finds nothing. Class scoped queries
-    # still find subclasses - see GraphEngineBase.label_pattern().
+    # still find the subclasses carrying a class' label - see
+    # GraphEngineBase.label_pattern().
     SECONDARY_LABELS = "secondary_labels"
 
     # Naming a label, relationship type or property the database has not been told

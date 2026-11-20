@@ -628,8 +628,8 @@ class BaseNode(CommonModel):
         gc = GraphConnection()
 
         if target_label:
-            # the engine decides how a class is matched, so a backend where a subclass
-            # node does not carry its parent's label still finds subclasses here
+            # the engine decides how a class is matched, so a backend where a node carries
+            # only one label still finds the subclasses inheriting this one
             target = f"o{gc.engine.label_pattern(target_label)}"
         else:
             target = "o"

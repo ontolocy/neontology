@@ -79,9 +79,9 @@ class GraphEngineBase:
     def label_pattern(self, label: str) -> str:
         """Build the label fragment that matches every node of a class, for a MATCH pattern.
 
-        A class is matched by its primary label, because a subclass node carries its
-        ancestors' labels as well as its own. A backend where that is not true - where a
-        node has exactly one label - overrides this to name the class and its subclasses
+        A class is matched by its primary label, which also matches the subclasses carrying
+        it - through `__inheritablelabels__` - but not those that do not. A backend where a
+        node has exactly one label overrides this to name the class and those subclasses
         instead, which is why every class scoped query goes through here rather than
         interpolating `__primarylabel__` itself.
 

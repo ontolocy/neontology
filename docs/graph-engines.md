@@ -135,10 +135,12 @@ A Ladybug node lives in the table named by its primary label, and carries no oth
 label, so `__secondarylabels__` and `__inheritablelabels__` are not written to the graph.
 
 Querying through your models is unaffected: `match_nodes()`, `match()`, `get_count()`,
-`delete()` and `related_nodes()` match a class as the union of its own and its
-subclasses' primary labels, so asking for `Person` still returns the `Employee` nodes
-and builds each one as itself. What does not work is a raw query naming a secondary
-label directly, since there is no table behind it.
+`delete()` and `related_nodes()` match a class as the union of its own primary label and
+those of the subclasses which [inherit it](advanced-usage.md#inheritable-labels), so they
+find the same nodes as on any other engine. If `Employee` inherits the `Person` label,
+asking for `Person` still returns the `Employee` nodes and builds each one as itself.
+What does not work is a raw query naming a secondary label directly, since there is no
+table behind it.
 
 Constraints and indexes are not available either. A node table's primary key is its
 class' primary property, so uniqueness there is enforced by the database - a second

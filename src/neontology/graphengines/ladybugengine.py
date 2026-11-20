@@ -14,7 +14,7 @@ the label, unless the config asks for `auto_create`.
 A node belongs to **exactly one table**, so it carries exactly one label - hence
 `SECONDARY_LABELS` is not supported. Several labels in a pattern are a *union* in
 Ladybug rather than an intersection, which is what makes `label_pattern()` able to
-match a class together with its subclasses.
+match a class together with the subclasses carrying its label.
 
 Two properties of Ladybug's parameter binding drive the way queries are built:
 
@@ -325,8 +325,8 @@ class LadybugEngine(GraphEngineBase):
             "A Ladybug node lives in the table named by its primary label and carries no"
             " other label, so a query naming a secondary or inheritable label directly"
             " finds nothing. Class scoped queries - match_nodes(), match(), get_count(),"
-            " related_nodes() - still find subclasses, because the engine matches a class"
-            " as the union of its own and its subclasses' primary labels."
+            " related_nodes() - still find the subclasses carrying a class' label, because"
+            " the engine matches a class as the union of its own and their primary labels."
         ),
         Capability.DUPLICATE_CREATE: (
             "Every node table is keyed on its class' primary property, so creating a"
@@ -579,11 +579,11 @@ class LadybugEngine(GraphEngineBase):
     # -- declaring the schema -----------------------------------------------
 
     def label_pattern(self, label: str) -> str:
-        """Match a class as the union of its own and its subclasses' primary labels.
+        """Match a class as the union of its own primary label and those of the subclasses carrying it.
 
-        A Ladybug node carries one label, so a subclass node is not also labelled with
-        its parent's label the way it is on Neo4j. Several labels in a Ladybug pattern
-        are a union rather than an intersection, so naming the class and its subclasses
+        A Ladybug node carries one label, so a subclass node inheriting its parent's label
+        is not labelled with it the way it is on Neo4j. Several labels in a Ladybug pattern
+        are a union rather than an intersection, so naming the class and those subclasses
         matches exactly the nodes the parent's label matches elsewhere.
 
         Labels with no table are left out: Ladybug rejects a pattern naming one, where
@@ -601,7 +601,7 @@ class LadybugEngine(GraphEngineBase):
         return ":" + ":".join(self._class_tables(label))
 
     def _class_tables(self, label: str) -> list[str]:
-        """The tables holding a class' nodes: its own, then its subclasses' that exist.
+        """The tables holding a class' nodes: its own, then those of the subclasses carrying its label.
 
         Args:
             label (str): the class' primary label.
@@ -623,10 +623,14 @@ class LadybugEngine(GraphEngineBase):
         if node_class is None:
             return [primary]
 
+        # only the subclasses carrying the class' label, which is what that label matches
+        # on the other engines: a subclass not inheriting it is a different kind of node
         return [primary] + [
             other
-            for other in get_node_types(node_class)
-            if other != primary and self._has_table(gql_identifier_adapter.validate_strings(other))
+            for other, other_class in get_node_types(node_class).items()
+            if other != primary
+            and primary in other_class._all_labels()
+            and self._has_table(gql_identifier_adapter.validate_strings(other))
         ]
 
     def _column_definitions(self, properties: Iterable["PropertySchema"]) -> dict[str, str]:

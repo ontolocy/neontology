@@ -264,10 +264,14 @@ class TestWhereTheDatabaseLives:
 
 
 class TestMatchingAClass:
-    """A node carries one label, so a class is matched as itself and its subclasses."""
+    """A node carries one label, so a class is matched as itself and the subclasses carrying its label."""
 
     def test_a_parent_class_finds_its_subclasses(self):
-        Animal = _node("LbugAnimal")
+        class Animal(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugAnimal"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugAnimal"]
+            name: str
 
         class Dog(Animal):
             __primarylabel__: ClassVar[Optional[str]] = "LbugDog"
@@ -287,7 +291,11 @@ class TestMatchingAClass:
             assert Dog.get_count() == 1
 
     def test_the_pattern_names_the_class_and_its_subclasses(self):
-        Vehicle = _node("LbugVehicle")
+        class Vehicle(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugVehicle"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugVehicle"]
+            name: str
 
         class Car(Vehicle):
             __primarylabel__: ClassVar[Optional[str]] = "LbugCar"
@@ -306,7 +314,12 @@ class TestMatchingAClass:
         Ladybug will not create a relationship whose ends are bound by several labels,
         so the union pattern a read uses is not available for the write.
         """
-        Machine = _node("LbugMachine")
+
+        class Machine(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugMachine"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugMachine"]
+            name: str
 
         class Server(Machine):
             __primarylabel__: ClassVar[Optional[str]] = "LbugServer"
