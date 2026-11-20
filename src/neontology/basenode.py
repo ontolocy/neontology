@@ -189,6 +189,31 @@ class BaseNode(CommonModel):
         return getattr(cls, "__primarylabel__", None) is None
 
     @classmethod
+    def _abstract_error(cls) -> NotImplementedError:
+        """The error for using an abstract class as a concrete one, raised by the caller."""
+        return NotImplementedError(
+            f"{cls.__name__} has no __primarylabel__, so it is an abstract node:"
+            " it exists to share properties with subclasses and is never written to the"
+            " graph. Give it a __primarylabel__ to use it directly."
+        )
+
+    @classmethod
+    def _primary_label(cls) -> str:
+        """The primary label of a concrete node class, for a query scoped to the class.
+
+        Returns:
+            str: the class' primary label.
+
+        Raises:
+            NotImplementedError: if the class is abstract, as instantiating it does.
+        """
+        if cls._is_abstract():
+            raise cls._abstract_error()
+
+        # _is_abstract() is what rules out None, which the checker cannot see through
+        return cast(str, cls.__primarylabel__)
+
+    @classmethod
     def _all_labels(cls) -> list[str]:
         """Every label this node carries in the graph, primary first.
 
@@ -221,11 +246,7 @@ class BaseNode(CommonModel):
         # these are to provide common properties to be used by subclassed nodes
         # but shouldn't be put in the graph or even instantiated
         if self._is_abstract():
-            raise NotImplementedError(
-                f"{type(self).__name__} has no __primarylabel__, so it is an abstract node:"
-                " it exists to share properties with subclasses and is never written to the"
-                " graph. Give it a __primarylabel__ to use it directly."
-            )
+            raise self._abstract_error()
 
     def __str__(self) -> str:
         """String representation of the node, showing the primary property value by default."""
@@ -478,9 +499,8 @@ class BaseNode(CommonModel):
         """
         gc = GraphConnection()
 
-        # an abstract class has no label, and label_pattern refuses it
         cypher = f"""
-        MATCH (n{gc.engine.label_pattern(cast(str, cls.__primarylabel__))})
+        MATCH (n{gc.engine.label_pattern(cls._primary_label())})
         WHERE n.{gql_identifier_adapter.validate_strings(cls.__primaryproperty__)} = $pp
         RETURN n
         """
@@ -507,10 +527,7 @@ class BaseNode(CommonModel):
         Args:
             pp (str): Primary property value to match on.
         """
-        label = cls.__primarylabel__
-
-        if label is None:
-            raise ValueError("Cannot delete nodes without a primary label.")
+        label = cls._primary_label()
 
         pp_key = cls.__primaryproperty__
         pp_value = pp

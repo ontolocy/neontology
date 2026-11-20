@@ -1,7 +1,7 @@
 import re
 import warnings
 from string import Template
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
 import networkx as nx
 from grandcypher import GrandCypher
@@ -656,8 +656,7 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        # an abstract class has no label, and label_pattern refuses it
-        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
+        cypher = f"MATCH (n{self.label_pattern(node_class._primary_label())})"
         where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause

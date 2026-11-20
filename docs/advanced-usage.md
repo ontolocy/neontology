@@ -115,8 +115,8 @@ already knew about, and go on building results without the new one.
 
 Abstract classes - those with `__primarylabel__ = None`, or which never declare a
 `__primarylabel__` at all - exist to share properties between models. They are never
-registered, because they are never written to the graph, and instantiating one raises
-`NotImplementedError`.
+registered, because they are never written to the graph, and instantiating or querying one
+raises `NotImplementedError`.
 
 To look up the models Neontology knows about, use `get_node_types()` and
 `get_rels_by_type()`. They do not need a database connection, so they work anywhere your

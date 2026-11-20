@@ -690,3 +690,39 @@ class TestFilterKeySafety:
 
         with pytest.raises(ValueError, match="Invalid filter lookup"):
             engine._split_filter_key("created__startswit")
+
+
+class AbstractUndeclared(BaseNode):
+    """Abstract because it never declares a primary label."""
+
+    __primaryproperty__: ClassVar[str] = "pp"
+    pp: str
+
+
+class AbstractNone(BaseNode):
+    """Abstract because its primary label is None."""
+
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = None
+    pp: str
+
+
+@pytest.mark.parametrize("abstract", [AbstractUndeclared, AbstractNone], ids=["undeclared", "none"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        lambda cls: cls.match_nodes(),
+        lambda cls: cls.get_count(),
+        lambda cls: cls.match("x"),
+        lambda cls: cls.delete("x"),
+    ],
+    ids=["match_nodes", "get_count", "match", "delete"],
+)
+def test_querying_an_abstract_class_says_it_is_abstract(use_graph, abstract, query):
+    """Both spellings used to fail with errors that did not mention the class being abstract.
+
+    Never declaring a label raised an AttributeError, and setting it to None a pydantic
+    ValidationError - or, from delete(), a ValueError.
+    """
+    with pytest.raises(NotImplementedError, match=f"{abstract.__name__} has no __primarylabel__, so it is an abstract node"):
+        query(abstract)
