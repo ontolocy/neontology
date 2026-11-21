@@ -76,6 +76,28 @@ class GraphEngineBase:
 
         return capability in cls.supported_capabilities
 
+    def identifier(self, name: str) -> str:
+        """Validate a name and return it as it is written into a query.
+
+        Every label, relationship type, property key or schema object name interpolated
+        into query text goes through here - values are always passed as parameters.
+        Validation is what keeps the query safe; returning the name lets an engine quote it.
+
+        Here it is returned unchanged: Neo4j, Memgraph and NetworkX accept a reserved word
+        such as `end` or `order` as a name, and NetworkX's query parser rejects backtick
+        quoting. Ladybug reserves some of them, so it overrides this to quote every name.
+
+        Args:
+            name (str): the name to write.
+
+        Returns:
+            str: the name, ready to interpolate.
+
+        Raises:
+            ValidationError: if the name is not a valid identifier.
+        """
+        return gql_identifier_adapter.validate_strings(name)
+
     def label_pattern(self, label: str) -> str:
         """Build the label fragment that matches every node of a class, for a MATCH pattern.
 
@@ -91,7 +113,7 @@ class GraphEngineBase:
         Returns:
             str: the fragment to follow the node variable with, such as ":Person".
         """
-        return f":{gql_identifier_adapter.validate_strings(label)}"
+        return f":{self.identifier(label)}"
 
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:
@@ -543,11 +565,11 @@ class GraphEngineBase:
         Returns:
             list: list of created Nodes
         """
-        label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+        label_identifiers = [self.identifier(x) for x in labels]
 
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        create (n:{":".join(label_identifiers)} {{{self.identifier(pp_key)}: node.pp}})
         SET n += node.props
         RETURN n
         """
@@ -575,9 +597,9 @@ class GraphEngineBase:
         Returns:
             list: list of merged Nodes
         """
-        primary_label = gql_identifier_adapter.validate_strings(node_class.__primarylabel__)
+        primary_label = self.identifier(node_class._primary_label())
 
-        other_labels = [gql_identifier_adapter.validate_strings(x) for x in labels if x != node_class.__primarylabel__]
+        other_labels = [self.identifier(x) for x in labels if x != node_class.__primarylabel__]
 
         # MERGE on the primary label alone: with the primary property, that is what
         # identifies a node. Merging on every label stopped matching existing nodes as soon
@@ -587,7 +609,7 @@ class GraphEngineBase:
 
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{primary_label} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        MERGE (n:{primary_label} {{{self.identifier(pp_key)}: node.pp}})
         ON MATCH SET n += node.set_on_match
         ON CREATE SET n += node.set_on_create
         SET n += node.always_set
@@ -615,7 +637,7 @@ class GraphEngineBase:
         cypher = f"""
         UNWIND $pp_values AS pp
         MATCH (n{self.label_pattern(label)})
-        WHERE n.{gql_identifier_adapter.validate_strings(pp_key)} = pp
+        WHERE n.{self.identifier(pp_key)} = pp
         DETACH DELETE n
         """
 
@@ -647,15 +669,15 @@ class GraphEngineBase:
                 to set on the relationship.
         """
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}" for x in merge_on_props])
+        merge_props = ", ".join([f"{self.identifier(x)}: rel.{self.identifier(x)}" for x in merge_on_props])
 
         cypher = f"""
         UNWIND $rel_list AS rel
-        MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
-        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
-        MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
-        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
-        MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
+        MATCH (source:{self.identifier(source_label)})
+        WHERE source.{self.identifier(source_prop)} = rel.source_prop
+        MATCH (target:{self.identifier(target_label)})
+        WHERE target.{self.identifier(target_prop)} = rel.target_prop
+        MERGE (source)-[r:{self.identifier(rel_type)} {{ {merge_props} }}]->(target)
         ON MATCH SET r += rel.set_on_match
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
@@ -742,26 +764,27 @@ class GraphEngineBase:
                 field_name, lookup_type = self._split_filter_key(key)
                 param_name = f"filter_{field_name}_{lookup_type}"
                 params[param_name] = value
+                prop = f"n.{self.identifier(field_name)}"
                 if lookup_type == "exact":
-                    clause = f"n.{field_name} = ${param_name}"
+                    clause = f"{prop} = ${param_name}"
                 elif lookup_type == "iexact":
-                    clause = f"toLower(n.{field_name}) = toLower(${param_name})"
+                    clause = f"toLower({prop}) = toLower(${param_name})"
                 elif lookup_type == "contains":
-                    clause = f"n.{field_name} CONTAINS ${param_name}"
+                    clause = f"{prop} CONTAINS ${param_name}"
                 elif lookup_type == "icontains":
-                    clause = f"toLower(n.{field_name}) CONTAINS toLower(${param_name})"
+                    clause = f"toLower({prop}) CONTAINS toLower(${param_name})"
                 elif lookup_type == "startswith":
-                    clause = f"n.{field_name} STARTS WITH ${param_name}"
+                    clause = f"{prop} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    clause = f"toLower({prop}) STARTS WITH toLower(${param_name})"
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
                     operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
 
-                    clause = f"n.{field_name} {operator} ${param_name}"
+                    clause = f"{prop} {operator} ${param_name}"
                 elif lookup_type == "in":
-                    clause = f"n.{field_name} IN ${param_name}"
+                    clause = f"{prop} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                    clause = f"{prop} IS NULL" if value else f"{prop} IS NOT NULL"
 
                 else:
                     raise ValueError(f"Invalid filter: {lookup_type}")
@@ -854,8 +877,11 @@ class GraphEngineBase:
         """
         from ..utils import get_node_types, get_rels_by_type
 
+        # an abstract relationship has no type, which identifier() rejects
+        rel_type = self.identifier(cast(str, relationship_class.__relationshiptype__))
+
         cypher = f"""
-        MATCH (n)-[r:{gql_identifier_adapter.validate_strings(relationship_class.__relationshiptype__)}]->(o)
+        MATCH (n)-[r:{rel_type}]->(o)
         RETURN n, r, o
         """
 

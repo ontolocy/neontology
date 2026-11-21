@@ -10,7 +10,7 @@ from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
-from .gql import gql_identifier_adapter, validate_model_identifier
+from .gql import validate_model_identifier
 from .optional_deps import require_pandas
 from .registry import registry
 
@@ -407,7 +407,8 @@ class BaseRelationship(CommonModel):
             int: The count of distinct relationships of the specified type.
         """
         gc = GraphConnection()
-        rel_type = gql_identifier_adapter.validate_strings(cls.__relationshiptype__)
+        # an abstract relationship has no type, which identifier() rejects
+        rel_type = gc.engine.identifier(cast(str, cls.get_relationship_type()))
         cypher = f"MATCH (n)-[r:{rel_type}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
 

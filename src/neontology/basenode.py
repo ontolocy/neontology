@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar, Concatenate, Optional
 from typing_extensions import ParamSpec, Self
 
 from .commonmodel import CommonModel
-from .gql import gql_identifier_adapter, non_negative_int_adapter, validate_model_identifier
+from .gql import non_negative_int_adapter, validate_model_identifier
 from .graphconnection import GraphConnection
 from .optional_deps import require_pandas
 from .registry import registry
@@ -23,8 +23,9 @@ N = TypeVar("N", bound="BaseNode")
 
 
 def _find_this_node(query: str, params: dict, node: "BaseNode") -> tuple[str, dict]:
-    label = gql_identifier_adapter.validate_strings(node.__primarylabel__)
-    pp_key = gql_identifier_adapter.validate_strings(node.__primaryproperty__)
+    engine = GraphConnection().engine
+    label = engine.identifier(node._primary_label())
+    pp_key = engine.identifier(node.__primaryproperty__)
     this_node = f"(ThisNode:{label} {{{pp_key}: $_neontology_pp}})"
     params["_neontology_pp"] = node.get_pp()
     new_query = query.replace("(#ThisNode)", this_node)
@@ -562,7 +563,7 @@ class BaseNode(CommonModel):
 
         cypher = f"""
         MATCH (n{gc.engine.label_pattern(cls._primary_label())})
-        WHERE n.{gql_identifier_adapter.validate_strings(cls.__primaryproperty__)} = $pp
+        WHERE n.{gc.engine.identifier(cls.__primaryproperty__)} = $pp
         RETURN n
         """
 
@@ -696,17 +697,19 @@ class BaseNode(CommonModel):
             target = "o"
 
         if relationship_types:
-            rel_type_match = "r:" + "|".join([gql_identifier_adapter.validate_strings(x) for x in relationship_types])
+            rel_type_match = "r:" + "|".join([gc.engine.identifier(x) for x in relationship_types])
 
         else:
             rel_type_match = "r"
 
         if relationship_properties:
+            # parameters are named apart from the properties they match, since a property
+            # may be spelled as a reserved word, which some engines cannot parse as a name
             rel_prop_match = (
-                "{" + ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: ${x}" for x in relationship_properties]) + "}"
+                "{" + ", ".join([f"{gc.engine.identifier(x)}: $_neontology_rel_{x}" for x in relationship_properties]) + "}"
             )
 
-            pass_on_params = dict(relationship_properties)
+            pass_on_params = {f"_neontology_rel_{key}": value for key, value in relationship_properties.items()}
 
         else:
             rel_prop_match = ""
@@ -738,8 +741,7 @@ class BaseNode(CommonModel):
         RETURN {return_distinct} o, r, ThisNode
         """
 
-        # relationship properties are passed as parameters under their own names, so these
-        # take a prefix no identifier can begin with
+        # every parameter takes a prefix no identifier can begin with, so none can collide
         if skip:
             query += " SKIP $_neontology_skip "
             pass_on_params["_neontology_skip"] = skip

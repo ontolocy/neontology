@@ -578,6 +578,29 @@ class LadybugEngine(GraphEngineBase):
 
     # -- declaring the schema -----------------------------------------------
 
+    def identifier(self, name: str) -> str:
+        """Validate a name and quote it with backticks, as it is written into a query.
+
+        Ladybug reserves some words the other engines accept as names - `end` and `order`
+        among them - so a property, label or relationship type spelled as one would not
+        parse. Every name is quoted rather than only reserved ones, so nothing depends on
+        a list of Ladybug's keywords. Quoting changes nothing else: a quoted name refers
+        to the same table or column as an unquoted one, in any case.
+
+        Names are kept unquoted everywhere else in this engine - the catalog is looked up
+        by name, and `table_info()` takes one as a string - and quoted only here.
+
+        Args:
+            name (str): the name to write.
+
+        Returns:
+            str: the name, validated and quoted.
+
+        Raises:
+            ValidationError: if the name is not a valid identifier.
+        """
+        return f"`{super().identifier(name)}`"
+
     def label_pattern(self, label: str) -> str:
         """Match a class as the union of its own primary label and those of the subclasses carrying it.
 
@@ -593,12 +616,12 @@ class LadybugEngine(GraphEngineBase):
             label (str): the class' primary label.
 
         Returns:
-            str: the fragment to follow the node variable with, such as ":Person:Employee".
+            str: the fragment to follow the node variable with, such as ":`Person`:`Employee`".
 
         Raises:
             RuntimeError: if the class itself has no table.
         """
-        return ":" + ":".join(self._class_tables(label))
+        return ":" + ":".join(self.identifier(table) for table in self._class_tables(label))
 
     def _class_tables(self, label: str) -> list[str]:
         """The tables holding a class' nodes: its own, then those of the subclasses carrying its label.
@@ -667,9 +690,12 @@ class LadybugEngine(GraphEngineBase):
         if not self._has_table(label):
             # the primary property is declared like any other column and then named as the
             # key, so a composite definition would be the same statement with more names
-            definitions = ", ".join(f"{name} {column_type}" for name, column_type in columns.items())
+            definitions = ", ".join(f"{self.identifier(name)} {column_type}" for name, column_type in columns.items())
 
-            self._ddl(f"CREATE NODE TABLE IF NOT EXISTS {label} ({definitions}, PRIMARY KEY ({primary}))")
+            self._ddl(
+                f"CREATE NODE TABLE IF NOT EXISTS {self.identifier(label)}"
+                f" ({definitions}, PRIMARY KEY ({self.identifier(primary)}))"
+            )
 
         else:
             self._add_columns(label, columns)
@@ -713,17 +739,19 @@ class LadybugEngine(GraphEngineBase):
 
         if not self._has_table(rel_type):
             definitions = ", ".join(
-                [f"FROM {source} TO {target}" for source, target in pairs]
-                + [f"{name} {column_type}" for name, column_type in columns.items()]
+                [f"FROM {self.identifier(source)} TO {self.identifier(target)}" for source, target in pairs]
+                + [f"{self.identifier(name)} {column_type}" for name, column_type in columns.items()]
             )
 
-            self._ddl(f"CREATE REL TABLE IF NOT EXISTS {rel_type} ({definitions})")
+            self._ddl(f"CREATE REL TABLE IF NOT EXISTS {self.identifier(rel_type)} ({definitions})")
 
         else:
             self._add_columns(rel_type, columns)
 
             for source, target in set(pairs) - self._pairs(rel_type):
-                self._ddl(f"ALTER TABLE {rel_type} ADD FROM {source} TO {target}")
+                self._ddl(
+                    f"ALTER TABLE {self.identifier(rel_type)} ADD FROM {self.identifier(source)} TO {self.identifier(target)}"
+                )
 
         return Table(
             label=rel_type,
@@ -745,7 +773,7 @@ class LadybugEngine(GraphEngineBase):
 
         for name, column_type in columns.items():
             if name not in existing:
-                self._ddl(f"ALTER TABLE {table} ADD IF NOT EXISTS {name} {column_type}")
+                self._ddl(f"ALTER TABLE {self.identifier(table)} ADD IF NOT EXISTS {self.identifier(name)} {column_type}")
 
     def initialise_graph(self, schema: "OntologySchema") -> list[SchemaObject]:
         """Declare the node and relationship tables an ontology needs.
@@ -873,12 +901,11 @@ class LadybugEngine(GraphEngineBase):
                     " GraphConnection().initialise_graph() to bring the database up to date."
                 )
 
-            expressions[name] = f"CAST({variable}.{name} AS {column_type})"
+            expressions[name] = f"CAST({variable}.{self.identifier(name)} AS {column_type})"
 
         return expressions
 
-    @staticmethod
-    def _set_clause(keyword: str, variable: str, expressions: dict[str, str]) -> str:
+    def _set_clause(self, keyword: str, variable: str, expressions: dict[str, str]) -> str:
         """Build one SET clause, or nothing where there is nothing to set.
 
         Args:
@@ -892,7 +919,9 @@ class LadybugEngine(GraphEngineBase):
         if not expressions:
             return ""
 
-        assignments = ", ".join(f"{variable}.{name} = {expression}" for name, expression in expressions.items())
+        assignments = ", ".join(
+            f"{variable}.{self.identifier(name)} = {expression}" for name, expression in expressions.items()
+        )
 
         return f"{keyword} {assignments}"
 
@@ -931,7 +960,7 @@ class LadybugEngine(GraphEngineBase):
 
         cypher = f"""
         UNWIND $node_list AS node
-        CREATE (n:{label} {{{primary}: {key_expression}}})
+        CREATE (n:{self.identifier(label)} {{{self.identifier(primary)}: {key_expression}}})
         {self._set_clause("SET", "n", expressions)}
         RETURN n
         """
@@ -995,7 +1024,7 @@ class LadybugEngine(GraphEngineBase):
 
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{label} {{{primary}: {key_expression}}})
+        MERGE (n:{self.identifier(label)} {{{self.identifier(primary)}: {key_expression}}})
         {clause("ON MATCH SET", "set_on_match")}
         {clause("ON CREATE SET", "set_on_create")}
         {clause("SET", "always_set")}
@@ -1068,7 +1097,7 @@ class LadybugEngine(GraphEngineBase):
         merge_expressions = self._casts(rel_table, merge_on_props, "rel")
 
         merge_pattern = (
-            " {" + ", ".join(f"{name}: {expression}" for name, expression in merge_expressions.items()) + "}"
+            " {" + ", ".join(f"{self.identifier(name)}: {expression}" for name, expression in merge_expressions.items()) + "}"
             if merge_expressions
             else ""
         )
@@ -1108,11 +1137,11 @@ class LadybugEngine(GraphEngineBase):
 
             cypher = f"""
             UNWIND $rel_list AS rel
-            MATCH (source:{source_table})
-            WHERE source.{source_key} = {source_cast}
-            MATCH (target:{target_table})
-            WHERE target.{target_key} = {target_cast}
-            MERGE (source)-[r:{rel_table}{merge_pattern}]->(target)
+            MATCH (source:{self.identifier(source_table)})
+            WHERE source.{self.identifier(source_key)} = {source_cast}
+            MATCH (target:{self.identifier(target_table)})
+            WHERE target.{self.identifier(target_key)} = {target_cast}
+            MERGE (source)-[r:{self.identifier(rel_table)}{merge_pattern}]->(target)
             {clause("ON MATCH SET", "set_on_match")}
             {clause("ON CREATE SET", "set_on_create")}
             {clause("SET", "always_set")}

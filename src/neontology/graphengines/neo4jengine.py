@@ -2,7 +2,6 @@ from typing import Any, ClassVar, Optional, Sequence, Union
 
 from typing_extensions import LiteralString, cast
 
-from ..gql import gql_identifier_adapter
 from .bolt import BoltEngine
 from .capabilities import Capability
 from .dbschema import Constraint, ConstraintType, Index, SchemaEntity, normalise_properties
@@ -61,7 +60,7 @@ class Neo4jEngine(BoltEngine):
         Returns:
             str: the rendered pattern.
         """
-        rendered = ", ".join(f"n.{gql_identifier_adapter.validate_strings(x)}" for x in properties)
+        rendered = ", ".join(f"n.{self.identifier(x)}" for x in properties)
 
         return f"({rendered})"
 
@@ -77,7 +76,7 @@ class Neo4jEngine(BoltEngine):
 
         cypher = f"""
         CREATE CONSTRAINT IF NOT EXISTS
-        FOR (n:{gql_identifier_adapter.validate_strings(label)})
+        FOR (n:{self.identifier(label)})
         REQUIRE {self._property_pattern(normalise_properties(properties))} IS UNIQUE
         """
 
@@ -98,8 +97,8 @@ class Neo4jEngine(BoltEngine):
         for property_name in normalise_properties(properties):
             cypher = f"""
             CREATE CONSTRAINT IF NOT EXISTS
-            FOR (n:{gql_identifier_adapter.validate_strings(label)})
-            REQUIRE n.{gql_identifier_adapter.validate_strings(property_name)} IS NOT NULL
+            FOR (n:{self.identifier(label)})
+            REQUIRE n.{self.identifier(property_name)} IS NOT NULL
             """
 
             self.evaluate_query_single(cypher)
@@ -158,7 +157,7 @@ class Neo4jEngine(BoltEngine):
             return
 
         cypher = f"""
-        DROP CONSTRAINT {gql_identifier_adapter.validate_strings(name)} IF EXISTS
+        DROP CONSTRAINT {self.identifier(name)} IF EXISTS
         """
 
         self.evaluate_query_single(cypher)
@@ -184,7 +183,7 @@ class Neo4jEngine(BoltEngine):
 
         cypher = f"""
         CREATE INDEX IF NOT EXISTS
-        FOR (n:{gql_identifier_adapter.validate_strings(label)})
+        FOR (n:{self.identifier(label)})
         ON {self._property_pattern(property_names)}
         """
 
@@ -245,7 +244,7 @@ class Neo4jEngine(BoltEngine):
             return
 
         cypher = f"""
-        DROP INDEX {gql_identifier_adapter.validate_strings(name)} IF EXISTS
+        DROP INDEX {self.identifier(name)} IF EXISTS
         """
 
         self.evaluate_query_single(cypher)

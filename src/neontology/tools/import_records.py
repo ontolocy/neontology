@@ -7,7 +7,6 @@ from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from typing import Any, Callable, Optional
 
-from ..gql import gql_identifier_adapter
 from ..graphconnection import GraphConnection
 from .errors import (
     ConflictingNodeRecordError,
@@ -295,13 +294,13 @@ def _check_endpoints(
     gc = GraphConnection()
 
     for (label, prop), wanted in required.items():
-        gql_identifier_adapter.validate_strings(label)
-        gql_identifier_adapter.validate_strings(prop)
+        label_id = gc.engine.identifier(label)
+        prop_id = gc.engine.identifier(prop)
 
         cypher = f"""
-            MATCH (n:{label})
-            WHERE n.{prop} IN $values
-            RETURN COLLECT(n.{prop})
+            MATCH (n:{label_id})
+            WHERE n.{prop_id} IN $values
+            RETURN COLLECT(n.{prop_id})
             """
 
         found = Counter(gc.evaluate_query_single(cypher, {"values": list(wanted)}) or [])

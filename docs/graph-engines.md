@@ -129,6 +129,11 @@ only covers Neontology's own writes: a query you write yourself still has to nam
 labels, relationship types and properties the database already knows about, because
 Ladybug rejects a query naming one that does not exist rather than matching nothing.
 
+Ladybug also reserves some words the other engines accept as names, such as `end` and
+`order`. Neontology quotes every name it writes into a Ladybug query, so a model using
+one works as it does elsewhere, but a query you write yourself has to quote it with
+backticks: ``MATCH (n:`Order`) RETURN n.`end` ``.
+
 #### One label per node
 
 A Ladybug node lives in the table named by its primary label, and carries no other

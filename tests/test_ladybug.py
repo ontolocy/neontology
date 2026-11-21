@@ -305,8 +305,8 @@ class TestMatchingAClass:
 
             pattern = gc.engine.label_pattern("LbugVehicle")
 
-        assert pattern.startswith(":LbugVehicle")
-        assert "LbugCar" in pattern
+        # each name is quoted, as every name written into a Ladybug query is
+        assert pattern == ":`LbugVehicle`:`LbugCar`"
 
     def test_a_relationship_declared_to_a_parent_class_reaches_a_subclass_node(self):
         """The end is a parent class, the node is a subclass - and lives in its own table.

@@ -2,7 +2,6 @@ from typing import ClassVar, Optional, Sequence, Union
 
 from typing_extensions import LiteralString, cast
 
-from ..gql import gql_identifier_adapter
 from .bolt import BoltEngine
 from .capabilities import Capability
 from .dbschema import Constraint, ConstraintType, Index, normalise_properties
@@ -54,9 +53,9 @@ class MemgraphEngine(BoltEngine):
         Returns:
             str: the rendered fragment.
         """
-        rendered = ", ".join(f"n.{gql_identifier_adapter.validate_strings(x)}" for x in properties)
+        rendered = ", ".join(f"n.{self.identifier(x)}" for x in properties)
 
-        return f"(n:{gql_identifier_adapter.validate_strings(label)}) ASSERT {rendered}"
+        return f"(n:{self.identifier(label)}) ASSERT {rendered}"
 
     def apply_uniqueness_constraint(self, label: str, properties: Union[str, Sequence[str]]) -> None:
         """Require a label/property combination to be unique.
@@ -84,8 +83,8 @@ class MemgraphEngine(BoltEngine):
         self._require(Capability.CONSTRAINTS)
 
         for property_name in normalise_properties(properties):
-            label_id = gql_identifier_adapter.validate_strings(label)
-            property_id = gql_identifier_adapter.validate_strings(property_name)
+            label_id = self.identifier(label)
+            property_id = self.identifier(property_name)
 
             self._run_autocommit(f"CREATE CONSTRAINT ON (n:{label_id}) ASSERT EXISTS (n.{property_id})")
 
@@ -134,10 +133,10 @@ class MemgraphEngine(BoltEngine):
             self._run_autocommit(f"DROP CONSTRAINT ON {pattern} IS UNIQUE")
 
         elif constraint.constraint_type == ConstraintType.EXISTENCE:
-            label_id = gql_identifier_adapter.validate_strings(constraint.label)
+            label_id = self.identifier(constraint.label)
 
             for property_name in constraint.properties:
-                property_id = gql_identifier_adapter.validate_strings(property_name)
+                property_id = self.identifier(property_name)
 
                 self._run_autocommit(f"DROP CONSTRAINT ON (n:{label_id}) ASSERT EXISTS (n.{property_id})")
 
@@ -194,8 +193,7 @@ class MemgraphEngine(BoltEngine):
 
         self._run_autocommit(f"DROP INDEX ON {self._index_pattern(index.label, index.properties)}")
 
-    @staticmethod
-    def _index_pattern(label: str, properties: tuple[str, ...]) -> str:
+    def _index_pattern(self, label: str, properties: tuple[str, ...]) -> str:
         """Render the `:Label(prop)` fragment Memgraph indexes use.
 
         Args:
@@ -209,7 +207,7 @@ class MemgraphEngine(BoltEngine):
             ValueError: if more than one property is given - Memgraph has no composite
                 index.
         """
-        label_id = gql_identifier_adapter.validate_strings(label)
+        label_id = self.identifier(label)
 
         if not properties:
             return f":{label_id}"
@@ -217,7 +215,7 @@ class MemgraphEngine(BoltEngine):
         if len(properties) > 1:
             raise ValueError("Memgraph indexes a single property - it has no composite index.")
 
-        return f":{label_id}({gql_identifier_adapter.validate_strings(properties[0])})"
+        return f":{label_id}({self.identifier(properties[0])})"
 
 
 class MemgraphConfig(GraphEngineConfig):
