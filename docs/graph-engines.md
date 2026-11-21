@@ -129,6 +129,14 @@ only covers Neontology's own writes: a query you write yourself still has to nam
 labels, relationship types and properties the database already knows about, because
 Ladybug rejects a query naming one that does not exist rather than matching nothing.
 
+So run `initialise_graph()` when your application starts, before it queries - and
+again at startup whenever your models change, rather than leaving `auto_create` to grow
+a table while the application runs. Ladybug 0.20.4 remembers how it ran each query on a
+connection, and does not forget when the schema changes: a query that failed for want of
+a table goes on failing once the table exists, and a read run before a column was added
+goes on returning nodes without it, so that property comes back as its default.
+Reconnecting to an on-disk database clears both.
+
 Ladybug also reserves some words the other engines accept as names, such as `end` and
 `order`. Neontology quotes every name it writes into a Ladybug query, so a model using
 one works as it does elsewhere, but a query you write yourself has to quote it with

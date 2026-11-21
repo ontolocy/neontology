@@ -124,6 +124,34 @@ class TestSchemaFirstByDefault:
             assert after.match("y").size == 7
             assert after.match("x").size is None
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Ladybug 0.20.4 caches each query's plan on the connection and keeps it across schema changes",
+    )
+    def test_a_read_run_before_a_column_was_added_returns_it_afterwards(self):
+        """A Ladybug bug, documented rather than worked around: the fix needs its private API.
+
+        A read run before the column existed goes on returning nodes without it, so the
+        property comes back as its default although the database holds a value. The docs
+        say to run initialise_graph() at startup, before querying, which avoids it. Strict,
+        so a Ladybug release that fixes it fails this and says the docs can be relaxed.
+        """
+        before = _node("LbugCachedRead")
+
+        with ladybug_connection() as gc:
+            gc.initialise_graph(get_ontology_schema(models=[before]))
+
+            before(name="x").merge()
+            assert before.match("x") is not None
+
+            after = _node("LbugCachedRead", size=Optional[int])
+
+            gc.initialise_graph(get_ontology_schema(models=[after]))
+
+            after(name="x", size=7).merge()
+
+            assert after.match("x").size == 7
+
     def test_a_write_naming_a_column_the_table_lacks_points_at_initialise_graph(self):
         """The model changed but the database was not re-initialised."""
         before = _node("LbugStale")
