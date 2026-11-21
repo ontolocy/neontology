@@ -36,7 +36,7 @@ Work happens on branches which get merged when complete to a work-in-progress `d
 
 ### Test environment
 
-Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USER`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers. The networkx engine needs no configuration, but does need the `grand` extra installed.
+Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USERNAME`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers. The networkx engine needs no configuration, but does need the `grand` extra installed.
 
 ## Architecture
 

@@ -100,7 +100,7 @@ services:
       - 9687:7687
       - 7445:7444
     environment:
-      - MEMGRAPH_USER=${TEST_MEMGRAPH_USER:?not set - copy .env.example to .env}
+      - MEMGRAPH_USER=${TEST_MEMGRAPH_USERNAME:?not set - copy .env.example to .env}
       - MEMGRAPH_PASSWORD=${TEST_MEMGRAPH_PASSWORD:?not set - copy .env.example to .env}
     # /var/lib/memgraph holds the graph AND the auth store, so it must be
     # ephemeral for credentials from .env to apply on every start
