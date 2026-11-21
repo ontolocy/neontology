@@ -409,7 +409,20 @@ the same object either way, so anything holding one keeps working after a reconn
 
 Because `init_neontology` replaces the connection, it is an application startup call
 rather than something to call defensively - calling it repeatedly will reconnect each
-time.
+time. For an in-memory database (Ladybug's default `:memory:`, or NetworkX) a reconnect
+is a new, empty database.
+
+Where it may be called more than once with the same settings - an application factory,
+or a test fixture - pass `reuse_connection=True`. If the live connection was made with an
+equal config it is kept as it is, and otherwise Neontology connects as usual:
+
+```python
+init_neontology(LadybugConfig(), reuse_connection=True)
+init_neontology(LadybugConfig(), reuse_connection=True)   # same database, data kept
+```
+
+Configs are compared by value, after any fields left out have been filled from the
+environment, so a config built the same way again counts as the same one.
 
 Use `GraphConnection().close()` to close the connection. Neontology can be initialised
 again afterwards.

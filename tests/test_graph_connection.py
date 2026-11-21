@@ -7,6 +7,7 @@ from neontology import NeontologyWarning
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphconnection import GraphConnection, init_neontology
+from neontology.graphengines import NetworkxConfig
 from neontology.graphengines.capabilities import Capability
 
 
@@ -654,9 +655,102 @@ class TestConnectionIsUniversal:
 
         assert GraphConnection() is connection
 
+    def test_reuse_connection_keeps_the_live_database(self, use_graph, get_graph_config):
+        """An equal config keeps the connection, so an in-memory database keeps its data.
+
+        Compared by value: a config built the same way again counts as the same one.
+        """
+        PracticeNodeGC(pp="kept").merge()
+        engine = GraphConnection().engine
+
+        init_neontology(get_graph_config.model_copy(), reuse_connection=True)
+
+        assert GraphConnection().engine is engine
+        assert PracticeNodeGC.match("kept") is not None
+
     def test_change_engine_is_deprecated(self, use_graph, get_graph_config):
         """Superseded by init_neontology, which now does the same thing."""
         with pytest.warns(DeprecationWarning, match="change_engine"):
             GraphConnection.change_engine(get_graph_config)
 
         assert GraphConnection().engine.verify_connection() is True
+
+
+class NamedNetworkxConfig(NetworkxConfig):
+    """Configs which differ from one another, for an engine needing no database."""
+
+    name: str = "a"
+
+
+@pytest.fixture
+def connection_of_its_own():
+    """Start with no connection, then put the suite's back, closing any made meanwhile."""
+    session_instance = GraphConnection._instance
+
+    GraphConnection._instance = None
+
+    try:
+        yield
+
+    finally:
+        established = GraphConnection._instance
+
+        GraphConnection._instance = session_instance
+
+        if established is not None:
+            established.engine.close_connection()
+
+
+@pytest.mark.usefixtures("connection_of_its_own")
+class TestReuseConnection:
+    """reuse_connection keeps the live connection only when it was made with an equal config."""
+
+    def test_connects_when_nothing_is_live(self):
+        init_neontology(NamedNetworkxConfig(), reuse_connection=True)
+
+        assert GraphConnection().engine.verify_connection() is True
+
+    def test_keeps_a_connection_made_with_an_equal_config(self):
+        init_neontology(NamedNetworkxConfig())
+        engine = GraphConnection().engine
+
+        init_neontology(NamedNetworkxConfig(), reuse_connection=True)
+
+        assert GraphConnection().engine is engine
+
+    def test_reconnects_with_a_different_config(self):
+        init_neontology(NamedNetworkxConfig(name="a"))
+        engine = GraphConnection().engine
+
+        init_neontology(NamedNetworkxConfig(name="b"), reuse_connection=True)
+
+        assert GraphConnection().engine is not engine
+
+    def test_reconnects_when_the_config_has_changed_since_connecting(self):
+        """The config is recorded as it was when connecting, not as the caller's object is now."""
+        config = NamedNetworkxConfig(name="a")
+        init_neontology(config)
+        engine = GraphConnection().engine
+
+        config.name = "b"
+        init_neontology(config, reuse_connection=True)
+
+        assert GraphConnection().engine is not engine
+
+    def test_compares_a_config_read_from_the_environment(self, monkeypatch):
+        monkeypatch.setenv("NEONTOLOGY_ENGINE", "NETWORKX")
+
+        init_neontology()
+        engine = GraphConnection().engine
+
+        init_neontology(reuse_connection=True)
+
+        assert GraphConnection().engine is engine
+
+    def test_reconnects_by_default(self):
+        init_neontology(NamedNetworkxConfig())
+        engine = GraphConnection().engine
+
+        init_neontology(NamedNetworkxConfig())
+
+        assert GraphConnection().engine is not engine

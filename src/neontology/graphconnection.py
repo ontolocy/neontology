@@ -45,9 +45,13 @@ class GraphConnection(object):
 
     _instance: Optional["GraphConnection"] = None
 
-    # set in __new__ on the instance it publishes, declared here so it is annotated
-    # without __init__ having to reassign it
+    # set in _establish on the instance it publishes, declared here so they are annotated
+    # without __init__ having to reassign them
     engine: GraphEngineBase
+
+    # a copy of the config the engine was made with, so init_neontology can tell whether
+    # a config describes the live connection. Private because it holds credentials.
+    _config: GraphEngineConfig
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "GraphConnection":
         """Return the connection established by `init_neontology`.
@@ -122,15 +126,21 @@ class GraphConnection(object):
 
             raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
 
+        # copied, so changing the caller's config afterwards does not change what the
+        # live connection is recorded as having been made with
+        established_with = config.model_copy(deep=True)
+
         if cls._instance is None:
             instance = object.__new__(cls)
             instance.engine = new_engine
+            instance._config = established_with
 
             cls._instance = instance
 
         else:
             previous_engine = cls._instance.engine
             cls._instance.engine = new_engine
+            cls._instance._config = established_with
 
             _close_quietly(previous_engine)
 
@@ -524,14 +534,21 @@ class GraphConnection(object):
         return self.engine.initialise_graph(schema)
 
 
-def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
+def init_neontology(config: Optional[GraphEngineConfig] = None, reuse_connection: bool = False) -> None:
     """Initialise neontology.
+
+    Every call connects, replacing any existing connection, unless `reuse_connection`
+    is set and the existing one was made with an equal config.
 
     Args:
         config (Optional[GraphEngineConfig]): configuration for the engine to connect
             with. If not given, the NEONTOLOGY_ENGINE environment variable selects the
             engine and its own environment variables supply the connection details,
             defaulting to Neo4j.
+        reuse_connection (bool): if a connection made with an equal config is already
+            live, keep it rather than reconnecting - which for an in-memory database
+            would start a new, empty one. Configs are compared by value, after missing
+            fields are filled from the environment. Otherwise connect as usual.
     """
     graph_engines: dict[str, type[GraphEngineConfig]] = {
         "NEO4J": Neo4jConfig,
@@ -578,6 +595,12 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
         else:
             logger.info("No GraphConfig provided and no Graph Engine specified, using Neo4j.")
             config = Neo4jConfig()
+
+    live = GraphConnection._instance
+
+    if reuse_connection and live is not None and live._config == config:
+        logger.info("Neontology is already connected with this config, reusing the connection.")
+        return
 
     GraphConnection._establish(config)
     logger.info("Neontology initialized.")
