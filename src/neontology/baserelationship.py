@@ -442,10 +442,10 @@ class BaseRelationship(CommonModel):
 
         else:
             dumped_model["source"]["LABEL"] = self.source.__primarylabel__
-            dumped_model["source"]["PK"] = self.source.get_pp()
+            dumped_model["source"]["__pp__"] = self.source.get_pp()
 
             dumped_model["target"]["LABEL"] = self.target.__primarylabel__
-            dumped_model["target"]["PK"] = self.target.get_pp()
+            dumped_model["target"]["__pp__"] = self.target.get_pp()
 
         dumped_model["RELATIONSHIP_TYPE"] = self.__relationshiptype__
 

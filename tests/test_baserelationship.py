@@ -510,6 +510,18 @@ def test_neontology_dump_uses_uppercase_endpoint_keys(use_graph):
     assert "target" not in dumped
 
 
+def test_neontology_dump_with_node_props_names_each_ends_primary_property_as_pp(use_graph):
+    # __pp__, as node-link data names it, rather than "PK"
+    rel = NewRelType(source=PracticeNode(pp="Source Node"), target=PracticeNode(pp="Target Node"), new_rel_prop="Rel 1")
+
+    dumped = rel.neontology_dump(exclude_node_props=False)
+
+    assert dumped["source"]["__pp__"] == "Source Node"
+    assert dumped["source"]["LABEL"] == "PracticeNodeRel"
+    assert dumped["target"]["__pp__"] == "Target Node"
+    assert "PK" not in dumped["source"]
+
+
 def test_neontology_dump_json_uses_uppercase_endpoint_keys(use_graph):
     source_node = PracticeNode(pp="Source Node")
     target_node = PracticeNode(pp="Target Node")

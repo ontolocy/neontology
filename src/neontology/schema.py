@@ -2,8 +2,9 @@
 
 `get_ontology_schema()` describes the models Neontology knows about as plain data, which
 serialises to JSON, so documentation and tooling can be generated from the models
-themselves. `node_markdown()`, `index_markdown()`, `mermaid_diagram()` and
-`cypher_patterns()` render that data; anything else can be built from it directly.
+themselves. `node_markdown()` renders a documentation page for a node, and
+`cypher_patterns()` the whole ontology in the notation queries are written in; anything
+else - an index, a diagram, a format of your own - can be built from the data directly.
 
 Property types, descriptions, defaults, allowed values and constraints are read from each
 model's pydantic JSON Schema, so a property is described exactly as pydantic validates it.
@@ -602,104 +603,6 @@ def node_markdown(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def index_markdown(
-    schema: OntologySchema,
-    *,
-    link: Optional[Link] = None,
-    heading_level: int = 1,
-    title: str = "Ontology",
-) -> str:
-    """Render a Markdown index of an ontology's node and relationship classes.
-
-    Args:
-        schema (OntologySchema): the ontology.
-        link (Optional[Link]): turns a node into the URL of its page. Defaults to naming
-            nodes without links.
-        heading_level (int): the level of the page's title. Defaults to 1.
-        title (str): the page's title. Defaults to "Ontology".
-
-    Returns:
-        str: the page.
-    """
-    heading = "#" * heading_level
-    by_label = {n.label: n for n in schema.nodes if n.label}
-
-    lines = [f"{heading} {title}", "", f"{heading}# Nodes", "", "| Node | Label | Description |", "| --- | --- | --- |"]
-
-    for node in schema.nodes:
-        label = f"`{node.label}`" if node.label else "abstract"
-
-        lines.append(f"| {_node_ref(node, node.class_name, link)} | {label} | {_cell(_summary(node.description))} |")
-
-    if schema.relationships:
-        lines += [
-            "",
-            f"{heading}# Relationships",
-            "",
-            "| Relationship | From | To | Description |",
-            "| --- | --- | --- | --- |",
-        ]
-
-        for rel in schema.relationships:
-            sources = ", ".join(_node_ref(by_label.get(label), label, link) for label in rel.source_labels)
-            targets = ", ".join(_node_ref(by_label.get(label), label, link) for label in rel.target_labels)
-
-            lines.append(f"| {rel.relationship_type} | {sources} | {targets} | {_cell(_summary(rel.description))} |")
-
-    return "\n".join(lines) + "\n"
-
-
-def mermaid_diagram(schema: OntologySchema, focus: Optional[NodeSchema] = None) -> str:
-    """Render a Mermaid class diagram of an ontology.
-
-    Node classes are drawn as classes, inheritance as inheritance, and each relationship
-    as an arrow between the classes it is declared on, labelled with its type.
-
-    Args:
-        schema (OntologySchema): the ontology.
-        focus (Optional[NodeSchema]): if given, draw only this node class, the classes it
-            inherits from or is inherited by, and its relationships.
-
-    Returns:
-        str: the diagram, to put in a `mermaid` code block.
-    """
-    if focus is None:
-        nodes = list(schema.nodes)
-        relationships = list(schema.relationships)
-
-    else:
-        rel_types = set(focus.outgoing_relationships) | set(focus.incoming_relationships)
-        relationships = [r for r in schema.relationships if r.relationship_type in rel_types]
-
-        wanted = {focus.qualified_name, *focus.parents}
-        wanted |= {n.qualified_name for n in schema.nodes if focus.qualified_name in n.parents}
-        wanted |= {end for r in relationships for end in (r.source, r.target)}
-
-        nodes = [n for n in schema.nodes if n.qualified_name in wanted]
-
-    drawn = {n.qualified_name for n in nodes}
-
-    def name(qualified_name: str) -> str:
-        return qualified_name.rsplit(".", 1)[-1]
-
-    lines = ["classDiagram"]
-
-    for node in nodes:
-        lines.append(f"    class {node.class_name}")
-
-        if node.abstract:
-            lines.append(f"    <<abstract>> {node.class_name}")
-
-    for node in nodes:
-        lines += [f"    {name(parent)} <|-- {node.class_name}" for parent in node.parents if parent in drawn]
-
-    # an end outside a scoped schema is still drawn, as Mermaid adds any class an arrow names
-    for rel in relationships:
-        lines.append(f"    {name(rel.source)} --> {name(rel.target)} : {rel.relationship_type}")
-
-    return "\n".join(lines) + "\n"
-
-
 def _without_none(type_name: str) -> str:
     """Drop `None` from the top level of a type written as a union, such as `list[str] | None`."""
     members, depth, start = [], 0, 0
@@ -718,7 +621,7 @@ def _without_none(type_name: str) -> str:
 
 
 def _pattern_properties(properties: list[PropertySchema]) -> str:
-    """Write properties as a Cypher map of their types, such as `{name: str PK, size: "s"|"l"}`."""
+    """Write properties as a Cypher map of their types, such as `{name: str PP, size: "s"|"l"}`."""
     written = []
 
     for prop in properties:
@@ -729,7 +632,7 @@ def _pattern_properties(properties: list[PropertySchema]) -> str:
         else:
             kind = _without_none(prop.type)
 
-        written.append(f"{prop.name}: {kind}{' PK' if prop.primary_property else ''}")
+        written.append(f"{prop.name}: {kind}{' PP' if prop.primary_property else ''}")
 
     return f" {{{', '.join(written)}}}" if written else ""
 
@@ -752,12 +655,13 @@ def cypher_patterns(
     Each node class is a pattern carrying its labels and its properties' types, and each
     relationship class a pattern between the labels at its ends:
 
-        (:Person {slug: str PK, name: str, email: str})
+        (:Person {slug: str PP, name: str, email: str})
         (:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
 
     This is Cypher-like notation for describing the graph - to a person, or to a model
-    writing queries against it - rather than Cypher to run: `PK` and the type names would
-    not parse. A primary property is marked `PK`, a property with a fixed set of values
+    writing queries against it - rather than Cypher to run: `PP` and the type names would
+    not parse. A primary property, which a node is identified and merged on, is marked
+    `PP`, a property with a fixed set of values
     lists them in place of its type, and abstract classes are left out, since their
     properties appear on the classes inheriting them.
 

@@ -2,7 +2,7 @@
 
 Your node and relationship classes already say what your ontology is: which kinds of node there are, the properties they carry, and how they relate. Neontology can describe them as data, so you can generate documentation, diagrams or other tooling from the models themselves, and keep it in step with the code.
 
-`get_ontology_schema()` returns that description. `neontology.schema` also has renderers which turn it into Markdown pages, a Mermaid diagram and Cypher patterns, and because the description is plain data, you can build anything else from it too.
+`get_ontology_schema()` returns that description. `neontology.schema` also renders it as Cypher patterns and as a Markdown page for each node, and because the description is plain data, you can render it any other way you like too.
 
 ## An example ontology
 
@@ -185,14 +185,42 @@ Person.neontology_schema()
 WorksFor.neontology_schema()
 ```
 
-## Rendering Markdown
+## Cypher patterns, for writing queries
 
-`node_markdown()` renders a page for a node: its description, labels, properties, and the relationships it can be the source of, with their properties. `index_markdown()` renders an index of every node and relationship.
+`cypher_patterns()` describes the ontology in the notation Cypher queries are written in: a pattern for each node class, with its labels and its properties' types, and one for each relationship between the labels at its ends. It is the form to put in front of a language model writing queries against your graph - far shorter than the JSON, and in the notation the model is writing - and a quick way to see the shape of an ontology yourself.
 
 ```python
-from neontology.schema import index_markdown, node_markdown
+from neontology import GraphConnection
+from neontology.schema import cypher_patterns
 
-schema = get_ontology_schema()
+print(cypher_patterns(schema, capabilities=GraphConnection().engine.supported_capabilities))
+```
+
+```text
+(:Person {slug: str PP, name: str, email: str})
+  // Someone who can work for an organisation.
+  // slug: A unique, URL-safe identifier.
+(:Organisation {slug: str PP, name: str, size: "small"|"large", founded: date})
+  // A company, charity or public body.
+  // slug: A unique, URL-safe identifier.
+
+(:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
+  // Someone's employment at an organisation.
+  // role: Their job title.
+```
+
+This is Cypher-like notation for describing the graph, rather than Cypher to run. Each node's [primary property](usage.md#defining-nodes) - the property neontology identifies and merges it on, and so the one worth matching it on - is marked `PP`. Say so when you put the patterns in front of a model, since `PP` is neontology's own shorthand. A property with a fixed set of values lists them in place of its type, since filter values are where a model writing queries is most likely to guess. Abstract classes are left out, because their properties appear on the classes inheriting them, and `descriptions=False` leaves out the `//` lines.
+
+An end of a relationship names the fewest labels that find every node it can be. Where every class there carries one label, such as an [inheritable label](advanced-usage.md#inheritable-labels), it is written alone; otherwise the classes are written as a union, `(:Actor|Group)`. Pass `capabilities` so nothing is described that the engine you will query cannot match: on Ladybug, which keeps no secondary labels, every class at an end is named. It defaults to every capability, so the function needs no connection. NetworkX cannot query a union of labels at all.
+
+For a large ontology, describe part of it with `get_ontology_schema(base_type=...)` or `models=[...]`, as [above](#describing-part-of-your-models-or-one-class).
+
+## A page for each node
+
+`node_markdown()` renders a documentation page for a node: its description, labels, properties, and the relationships it can be the source of, with their properties.
+
+```python
+from neontology.schema import node_markdown
 
 
 def link(node):
@@ -237,56 +265,11 @@ To: [Organisation](Organisation.md)
 
 The `link` function is how pages link to one another. It is given a `NodeSchema` and returns the URL of that node's page, relative to the page being rendered - or `None` to name the node without linking it. Without one, nodes are named but not linked. If two of your classes share a name, build URLs from `node.qualified_name` instead.
 
-Pass `incoming=True` to include the relationships a node can be the target of, too. On the `Organisation` page that adds:
+Pass `incoming=True` to include the relationships a node can be the target of too, and `heading_level` to render the page's title at a lower level inside a larger page. A property with allowed values lists them, and an abstract class' page says it is abstract and links to the classes inheriting from it.
 
-```markdown
-## Incoming relationships
+### A documentation site
 
-### WORKS_FOR
-
-Someone's employment at an organisation.
-
-From: [Person](Person.md)
-
-| Property | Type | Required | Description |
-| --- | --- | --- | --- |
-| role | str | Yes | Their job title. |
-| since | date \| None | No |  |
-```
-
-A property with allowed values lists them in its description, such as "One of: `small`, `large`.", and an abstract class' page says it is abstract and links to the classes inheriting from it.
-
-The index looks like this:
-
-```markdown
-# Ontology
-
-## Nodes
-
-| Node | Label | Description |
-| --- | --- | --- |
-| [Entity](Entity.md) | abstract | Anything in the ontology with a name. |
-| [Person](Person.md) | `Person` | Someone who can work for an organisation. |
-| [Organisation](Organisation.md) | `Organisation` | A company, charity or public body. |
-
-## Relationships
-
-| Relationship | From | To | Description |
-| --- | --- | --- | --- |
-| WORKS_FOR | [Person](Person.md) | [Organisation](Organisation.md) | Someone's employment at an organisation. |
-```
-
-Both take `heading_level`, to render the page's title at a lower level when you include it in a larger page, and `index_markdown()` takes a `title`.
-
-## A documentation site with a page for each node
-
-With [MkDocs](https://www.mkdocs.org/) and the [mkdocs-gen-files](https://oprypin.github.io/mkdocs-gen-files/) plugin, the pages can be generated each time the docs are built, so they never fall out of date. Install the plugin alongside MkDocs:
-
-```bash
-pip install mkdocs mkdocs-gen-files
-```
-
-Add a script which writes an index and a page for each node into an `ontology` folder:
+With [MkDocs](https://www.mkdocs.org/) and the [mkdocs-gen-files](https://oprypin.github.io/mkdocs-gen-files/) plugin (`pip install mkdocs-gen-files`), the pages can be generated each time the docs are built, so they never fall out of date. A script writes a page for each node, and an index of its own making:
 
 ```python
 # docs/gen_ontology.py
@@ -294,25 +277,27 @@ import mkdocs_gen_files
 
 import myapp.models  # noqa: F401 - defining the models is what makes them known
 from neontology import get_ontology_schema
-from neontology.schema import index_markdown, node_markdown
+from neontology.schema import node_markdown
 
 schema = get_ontology_schema()
 
 
 def link(node):
-    # every page is written to the same folder, so a link is just the file name
     return f"{node.class_name}.md"
 
 
-with mkdocs_gen_files.open("ontology/index.md", "w") as page:
-    page.write(index_markdown(schema, link=link))
+with mkdocs_gen_files.open("ontology/index.md", "w") as index:
+    index.write("# Ontology\n\n")
 
-for node in schema.nodes:
-    with mkdocs_gen_files.open(f"ontology/{node.class_name}.md", "w") as page:
-        page.write(node_markdown(node, schema, incoming=True, link=link))
+    for node in schema.nodes:
+        summary = (node.description or "").split("\n\n")[0]
+        index.write(f"- [{node.class_name}]({link(node)}): {summary}\n")
+
+        with mkdocs_gen_files.open(f"ontology/{link(node)}", "w") as page:
+            page.write(node_markdown(node, schema, incoming=True, link=link))
 ```
 
-And run it from `mkdocs.yml`. Listing plugins replaces MkDocs' defaults, so keep `search`:
+Run it from `mkdocs.yml` - listing plugins replaces MkDocs' defaults, so keep `search` - and add `ontology/index.md` to your `nav` if you have one:
 
 ```yaml
 plugins:
@@ -322,108 +307,7 @@ plugins:
         - docs/gen_ontology.py
 ```
 
-The generated pages are built like any other. If `mkdocs.yml` has no `nav`, they appear in the navigation automatically; if it does, add the index, which links to every node page:
-
-```yaml
-nav:
-  - Home: index.md
-  - Ontology: ontology/index.md
-```
-
-To list every node page in the navigation as well, the [mkdocs-literate-nav](https://oprypin.github.io/mkdocs-literate-nav/) plugin can read a navigation file which the script writes alongside the pages.
-
-The script imports your models, so your project must be importable wherever the docs are built. On Read the Docs, install it in `.readthedocs.yaml`, and add `mkdocs-gen-files` to your docs requirements.
-
-If you would rather commit the pages, so they can be reviewed, write them to files instead:
-
-```python
-from pathlib import Path
-
-folder = Path("docs/ontology")
-folder.mkdir(parents=True, exist_ok=True)
-
-(folder / "index.md").write_text(index_markdown(schema, link=link))
-
-for node in schema.nodes:
-    (folder / f"{node.class_name}.md").write_text(node_markdown(node, schema, incoming=True, link=link))
-```
-
-## Diagrams
-
-`mermaid_diagram()` draws the ontology as a [Mermaid](https://mermaid.js.org/) class diagram: node classes, which classes inherit from which, and an arrow for each relationship, labelled with its type.
-
-```python
-from neontology.schema import mermaid_diagram
-
-print(mermaid_diagram(schema))
-```
-
-```text
-classDiagram
-    class Entity
-    <<abstract>> Entity
-    class Person
-    class Organisation
-    Entity <|-- Person
-    Entity <|-- Organisation
-    Person --> Organisation : WORKS_FOR
-```
-
-Pass `focus` to draw one node with the classes it inherits from or is inherited by, and the nodes it has relationships with - a useful diagram for the top of each node's page:
-
-```python
-mermaid_diagram(schema, focus=person)
-```
-
-The diagram is Mermaid source, which needs Mermaid support where it is displayed. GitHub and GitLab render a `mermaid` code block in Markdown. In MkDocs, the [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/reference/diagrams/) theme renders one once its `superfences` extension is configured:
-
-```yaml
-theme:
-  name: material
-
-markdown_extensions:
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
-```
-
-With that in place, the script above can add a diagram to each node's page:
-
-```python
-        page.write(f"\n```mermaid\n{mermaid_diagram(schema, focus=node)}```\n")
-```
-
-## Cypher patterns, for writing queries
-
-`cypher_patterns()` describes the ontology in the notation Cypher queries are written in: a pattern for each node class, with its labels and its properties' types, and one for each relationship between the labels at its ends. It is the form to put in front of a language model writing queries against your graph - far shorter than the JSON, and in the notation the model is writing - and a quick way to see the shape of an ontology yourself.
-
-```python
-from neontology import GraphConnection
-from neontology.schema import cypher_patterns
-
-print(cypher_patterns(schema, capabilities=GraphConnection().engine.supported_capabilities))
-```
-
-```text
-(:Person {slug: str PK, name: str, email: str})
-  // Someone who can work for an organisation.
-  // slug: A unique, URL-safe identifier.
-(:Organisation {slug: str PK, name: str, size: "small"|"large", founded: date})
-  // A company, charity or public body.
-  // slug: A unique, URL-safe identifier.
-
-(:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
-  // Someone's employment at an organisation.
-  // role: Their job title.
-```
-
-This is Cypher-like notation for describing the graph, rather than Cypher to run. Each primary property is marked `PK`, the property worth matching a node on. A property with a fixed set of values lists them in place of its type, since filter values are where a model writing queries is most likely to guess. Abstract classes are left out, because their properties appear on the classes inheriting them, and `descriptions=False` leaves out the `//` lines.
-
-An end of a relationship names the fewest labels that find every node it can be. Where every class there carries one label, such as an [inheritable label](advanced-usage.md#inheritable-labels), it is written alone; otherwise the classes are written as a union, `(:Actor|Group)`. Pass `capabilities` so nothing is described that the engine you will query cannot match: on Ladybug, which keeps no secondary labels, every class at an end is named. It defaults to every capability, so the function needs no connection. NetworkX cannot query a union of labels at all.
-
-For a large ontology, describe part of it with `get_ontology_schema(base_type=...)` or `models=[...]`, as [above](#describing-part-of-your-models-or-one-class).
+The script imports your models, so your project must be importable wherever the docs are built. To commit the pages instead, so they can be reviewed, write the same strings to files.
 
 ## Your own metadata and formats
 
@@ -443,16 +327,34 @@ for node in get_ontology_schema().nodes:
             print(f"{node.class_name}.{prop.name}")
 ```
 
-The renderers are ordinary functions over the schema, so if they don't produce what you need, write your own the same way. This prints each relationship as a Cypher pattern:
+### Rendering it your own way
+
+Everyone wants their ontology presented a little differently, so beyond the two renderers above, the schema is plain data to render however you like. This draws a [Mermaid](https://mermaid.js.org/) class diagram, with inheritance and an arrow for each relationship:
 
 ```python
-for rel in get_ontology_schema().relationships:
-    sources = "|".join(rel.source_labels)
-    targets = "|".join(rel.target_labels)
+lines = ["classDiagram"]
 
-    print(f"(:{sources})-[:{rel.relationship_type}]->(:{targets})")
+for node in schema.nodes:
+    lines.append(f"    class {node.class_name}")
+
+    for parent in node.parents:
+        lines.append(f"    {parent.rsplit('.', 1)[-1]} <|-- {node.class_name}")
+
+for rel in schema.relationships:
+    source, target = rel.source.rsplit(".", 1)[-1], rel.target.rsplit(".", 1)[-1]
+    lines.append(f"    {source} --> {target} : {rel.relationship_type}")
+
+print("\n".join(lines))
 ```
 
 ```text
-(:Person)-[:WORKS_FOR]->(:Organisation)
+classDiagram
+    class Entity
+    class Person
+    Entity <|-- Person
+    class Organisation
+    Entity <|-- Organisation
+    Person --> Organisation : WORKS_FOR
 ```
+
+Each `NodeSchema` names its `parents`, its `outgoing_relationships` and `incoming_relationships`, and whether it is `abstract`, and each `RelationshipSchema` its `source` and `target` classes and the `source_labels` and `target_labels` they expand to - enough to draw one node and its neighbours, or to write the index, tables or format your project needs.
