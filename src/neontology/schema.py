@@ -2,8 +2,8 @@
 
 `get_ontology_schema()` describes the models Neontology knows about as plain data, which
 serialises to JSON, so documentation and tooling can be generated from the models
-themselves. `node_markdown()`, `index_markdown()` and `mermaid_diagram()` render that data;
-anything else can be built from it directly.
+themselves. `node_markdown()`, `index_markdown()`, `mermaid_diagram()` and
+`cypher_patterns()` render that data; anything else can be built from it directly.
 
 Property types, descriptions, defaults, allowed values and constraints are read from each
 model's pydantic JSON Schema, so a property is described exactly as pydantic validates it.
@@ -12,15 +12,17 @@ model's pydantic JSON Schema, so a property is described exactly as pydantic val
 from __future__ import annotations
 
 import inspect
+import json
 import types
 import warnings
-from typing import Any, Callable, Iterable, Literal, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Iterable, Literal, Optional, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
 from .commonmodel import _LenientJsonSchema
+from .graphengines.capabilities import Capability
 from .utils import generate_relationship_type_data, get_node_types, get_rels_by_type
 
 
@@ -694,5 +696,137 @@ def mermaid_diagram(schema: OntologySchema, focus: Optional[NodeSchema] = None) 
     # an end outside a scoped schema is still drawn, as Mermaid adds any class an arrow names
     for rel in relationships:
         lines.append(f"    {name(rel.source)} --> {name(rel.target)} : {rel.relationship_type}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _without_none(type_name: str) -> str:
+    """Drop `None` from the top level of a type written as a union, such as `list[str] | None`."""
+    members, depth, start = [], 0, 0
+
+    for position, character in enumerate(type_name):
+        depth += character == "["
+        depth -= character == "]"
+
+        if depth == 0 and type_name.startswith(" | ", position):
+            members.append(type_name[start:position])
+            start = position + 3
+
+    members.append(type_name[start:])
+
+    return " | ".join(member for member in members if member != "None") or type_name
+
+
+def _pattern_properties(properties: list[PropertySchema]) -> str:
+    """Write properties as a Cypher map of their types, such as `{name: str PK, size: "s"|"l"}`."""
+    written = []
+
+    for prop in properties:
+        if prop.allowed_values:
+            # the values themselves, written as a query would write them
+            kind = "|".join(json.dumps(value) for value in prop.allowed_values if value is not None)
+
+        else:
+            kind = _without_none(prop.type)
+
+        written.append(f"{prop.name}: {kind}{' PK' if prop.primary_property else ''}")
+
+    return f" {{{', '.join(written)}}}" if written else ""
+
+
+def _pattern_comments(description: Optional[str], properties: list[PropertySchema]) -> list[str]:
+    """Describe a class and its properties on `//` lines, one per description."""
+    texts = [_summary(description)] + [f"{prop.name}: {_summary(prop.description)}" for prop in properties if prop.description]
+
+    return [f"  // {' '.join(text.split())}" for text in texts if text]
+
+
+def cypher_patterns(
+    schema: OntologySchema,
+    *,
+    capabilities: Optional[Iterable[Capability]] = None,
+    descriptions: bool = True,
+) -> str:
+    """Describe an ontology in Cypher pattern notation, as queries against it are written.
+
+    Each node class is a pattern carrying its labels and its properties' types, and each
+    relationship class a pattern between the labels at its ends:
+
+        (:Person {slug: str PK, name: str, email: str})
+        (:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
+
+    This is Cypher-like notation for describing the graph - to a person, or to a model
+    writing queries against it - rather than Cypher to run: `PK` and the type names would
+    not parse. A primary property is marked `PK`, a property with a fixed set of values
+    lists them in place of its type, and abstract classes are left out, since their
+    properties appear on the classes inheriting them.
+
+    An end of a relationship names the fewest labels which find every node it can be. A
+    label every class there carries - an inheritable label - is written alone, and
+    otherwise a class carrying another of the classes' labels is found by that label.
+    Without `SECONDARY_LABELS` no node carries one, so every class at an end is named,
+    as `(:Person|Employee)`.
+
+    Args:
+        schema (OntologySchema): the ontology.
+        capabilities (Optional[Iterable[Capability]]): what the engine the queries are
+            for supports, so nothing is described that it cannot match - pass
+            `GraphConnection().engine.supported_capabilities`. Defaults to everything.
+        descriptions (bool): follow each pattern with the descriptions of its class and
+            properties, on `//` lines. Defaults to True.
+
+    Returns:
+        str: the patterns, nodes first and then relationships, in the order the schema
+        lists them.
+    """
+    secondary_labels = capabilities is None or Capability.SECONDARY_LABELS in set(capabilities)
+
+    by_label = {node.label: node for node in schema.nodes if node.label is not None}
+
+    def labels(node: NodeSchema) -> str:
+        return ":".join([cast(str, node.label), *(node.secondary_labels if secondary_labels else [])])
+
+    def end(end_labels: list[str]) -> str:
+        # an abstract class with no concrete subclass has no node to be
+        if not end_labels:
+            return "()"
+
+        nodes = [by_label.get(label) for label in end_labels]
+
+        if secondary_labels and all(nodes):
+            carried = [[cast(str, n.label), *n.secondary_labels] for n in cast(list[NodeSchema], nodes)]
+
+            # one label every node at this end carries - an inheritable label - finds them all
+            common = [label for label in carried[0] if all(label in held for held in carried)]
+
+            if common:
+                return f"(:{common[0]})"
+
+            # otherwise a label is not needed where its class carries another of them
+            end_labels = [label for label, held in zip(end_labels, carried) if not set(held[1:]) & set(end_labels)]
+
+        return f"(:{'|'.join(end_labels)})"
+
+    lines = []
+
+    for node in schema.nodes:
+        if node.abstract:
+            continue
+
+        lines.append(f"(:{labels(node)}{_pattern_properties(node.properties)})")
+
+        if descriptions:
+            lines += _pattern_comments(node.description, node.properties)
+
+    if schema.relationships:
+        lines.append("")
+
+    for rel in schema.relationships:
+        rel_pattern = f"[:{rel.relationship_type}{_pattern_properties(rel.properties)}]"
+
+        lines.append(f"{end(rel.source_labels)}-{rel_pattern}->{end(rel.target_labels)}")
+
+        if descriptions:
+            lines += _pattern_comments(rel.description, rel.properties)
 
     return "\n".join(lines) + "\n"

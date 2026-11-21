@@ -2,7 +2,7 @@
 
 Your node and relationship classes already say what your ontology is: which kinds of node there are, the properties they carry, and how they relate. Neontology can describe them as data, so you can generate documentation, diagrams or other tooling from the models themselves, and keep it in step with the code.
 
-`get_ontology_schema()` returns that description. `neontology.schema` also has renderers which turn it into Markdown pages and a Mermaid diagram, and because the description is plain data, you can build anything else from it too.
+`get_ontology_schema()` returns that description. `neontology.schema` also has renderers which turn it into Markdown pages, a Mermaid diagram and Cypher patterns, and because the description is plain data, you can build anything else from it too.
 
 ## An example ontology
 
@@ -394,6 +394,36 @@ With that in place, the script above can add a diagram to each node's page:
 ```python
         page.write(f"\n```mermaid\n{mermaid_diagram(schema, focus=node)}```\n")
 ```
+
+## Cypher patterns, for writing queries
+
+`cypher_patterns()` describes the ontology in the notation Cypher queries are written in: a pattern for each node class, with its labels and its properties' types, and one for each relationship between the labels at its ends. It is the form to put in front of a language model writing queries against your graph - far shorter than the JSON, and in the notation the model is writing - and a quick way to see the shape of an ontology yourself.
+
+```python
+from neontology import GraphConnection
+from neontology.schema import cypher_patterns
+
+print(cypher_patterns(schema, capabilities=GraphConnection().engine.supported_capabilities))
+```
+
+```text
+(:Person {slug: str PK, name: str, email: str})
+  // Someone who can work for an organisation.
+  // slug: A unique, URL-safe identifier.
+(:Organisation {slug: str PK, name: str, size: "small"|"large", founded: date})
+  // A company, charity or public body.
+  // slug: A unique, URL-safe identifier.
+
+(:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
+  // Someone's employment at an organisation.
+  // role: Their job title.
+```
+
+This is Cypher-like notation for describing the graph, rather than Cypher to run. Each primary property is marked `PK`, the property worth matching a node on. A property with a fixed set of values lists them in place of its type, since filter values are where a model writing queries is most likely to guess. Abstract classes are left out, because their properties appear on the classes inheriting them, and `descriptions=False` leaves out the `//` lines.
+
+An end of a relationship names the fewest labels that find every node it can be. Where every class there carries one label, such as an [inheritable label](advanced-usage.md#inheritable-labels), it is written alone; otherwise the classes are written as a union, `(:Actor|Group)`. Pass `capabilities` so nothing is described that the engine you will query cannot match: on Ladybug, which keeps no secondary labels, every class at an end is named. It defaults to every capability, so the function needs no connection. NetworkX cannot query a union of labels at all.
+
+For a large ontology, describe part of it with `get_ontology_schema(base_type=...)` or `models=[...]`, as [above](#describing-part-of-your-models-or-one-class).
 
 ## Your own metadata and formats
 

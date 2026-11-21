@@ -17,8 +17,8 @@ from uuid import UUID
 import pytest
 from pydantic import Field
 
-from neontology import BaseNode, BaseRelationship, get_ontology_schema
-from neontology.schema import index_markdown, mermaid_diagram, node_markdown
+from neontology import BaseNode, BaseRelationship, Capability, get_ontology_schema
+from neontology.schema import cypher_patterns, index_markdown, mermaid_diagram, node_markdown
 
 
 class Colour(enum.Enum):
@@ -421,6 +421,85 @@ class TestMermaid:
 
         assert "SchemaPerson --> SchemaOrganisation : SCHEMA_WORKS_FOR" in diagram
         assert "SchemaThing --> SchemaPerson : SCHEMA_KNOWS" in diagram
+
+
+class PatternAgent(BaseNode):
+    """Abstract, and carrying no label of its own for its subclasses to share."""
+
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
+
+
+class PatternActor(PatternAgent):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternActor"
+    __inheritablelabels__: ClassVar[list[str]] = ["PatternActor"]
+
+    motivation: Optional[Literal["espionage", "financial"]] = None
+
+
+class PatternSubActor(PatternActor):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternSubActor"
+
+
+class PatternGroup(PatternAgent):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternGroup"
+
+
+class PatternUses(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "PATTERN_USES"
+
+    source: PatternAgent
+    target: PatternGroup
+
+    weights: list[int] | None = None
+
+
+PATTERN_MODELS = [PatternAgent, PatternActor, PatternSubActor, PatternGroup, PatternUses]
+
+
+class TestCypherPatterns:
+    def test_the_whole_ontology(self, schema):
+        assert cypher_patterns(schema) == (
+            "(:SchemaOrganisation:SchemaThing {ident: str PK, founded: date})\n"
+            "  // An organisation people can work for.\n"
+            "  // ident: Unique identifier.\n"
+            '(:SchemaPerson:SchemaThing {ident: str PK, name: str, known_as: str, favourite: "red"|"blue",'
+            " created: datetime, updated: datetime})\n"
+            "  // Anyone we know about.\n"
+            "  // ident: Unique identifier.\n"
+            "  // name: Full name.\n"
+            '(:SchemaEmployee:SchemaPerson:SchemaThing {ident: str PK, name: str, known_as: str, favourite: "red"|"blue",'
+            " created: datetime, updated: datetime, staff_number: int})\n"
+            "  // A person employed by an organisation.\n"
+            "  // ident: Unique identifier.\n"
+            "  // name: Full name.\n"
+            "\n"
+            "(:SchemaPerson)-[:SCHEMA_WORKS_FOR {role: str, since: date}]->(:SchemaOrganisation)\n"
+            "  // Employment.\n"
+            "  // role: Job title.\n"
+            "(:SchemaThing)-[:SCHEMA_KNOWS]->(:SchemaPerson)\n"
+        )
+
+    def test_without_secondary_labels_every_class_at_an_end_is_named(self, schema):
+        patterns = cypher_patterns(schema, capabilities=set(Capability) - {Capability.SECONDARY_LABELS}, descriptions=False)
+
+        assert "(:SchemaPerson {ident: str PK," in patterns
+        assert "(:SchemaOrganisation|SchemaPerson|SchemaEmployee)-[:SCHEMA_KNOWS]->(:SchemaPerson|SchemaEmployee)\n" in patterns
+
+    def test_a_class_is_found_by_a_label_it_inherits_where_no_label_is_shared(self):
+        patterns = cypher_patterns(get_ontology_schema(models=PATTERN_MODELS), descriptions=False)
+
+        assert "(:PatternActor|PatternGroup)-[:PATTERN_USES {weights: list[int]}]->(:PatternGroup)\n" in patterns
+
+    def test_abstract_classes_are_left_out(self):
+        patterns = cypher_patterns(get_ontology_schema(models=PATTERN_MODELS), descriptions=False)
+
+        assert "PatternAgent" not in patterns
+        assert '(:PatternSubActor:PatternActor {name: str PK, motivation: "espionage"|"financial"})\n' in patterns
+
+    def test_descriptions_can_be_left_out(self, schema):
+        assert "//" not in cypher_patterns(schema, descriptions=False)
 
 
 class TestDeprecatedMarkdownMethods:
