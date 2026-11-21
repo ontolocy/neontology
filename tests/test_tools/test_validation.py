@@ -434,3 +434,38 @@ def test_a_failed_write_names_the_relationship_record_the_graph_cannot_store(use
 
     assert "'tags'" in str(raised.value)
     assert "no single record" not in str(raised.value)
+
+
+class NeverWrittenNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "NeverWrittenLabel"
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
+
+
+class NeverWrittenRel(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "NEVER_WRITTEN_LINK"
+
+    source: NeverWrittenNode
+    target: NeverWrittenNode
+
+
+def test_validate_resolves_endpoints_for_a_label_the_graph_has_never_held(use_graph):
+    """Ladybug rejects a query naming a label it has no table for, where the others match nothing."""
+    records = [
+        [
+            {"LABEL": "NeverWrittenLabel", "name": "a"},
+            {"LABEL": "NeverWrittenLabel", "name": "b"},
+            {
+                "RELATIONSHIP_TYPE": "NEVER_WRITTEN_LINK",
+                "SOURCE_LABEL": "NeverWrittenLabel",
+                "TARGET_LABEL": "NeverWrittenLabel",
+                "SOURCE": "a",
+                "TARGET": "b",
+            },
+        ]
+    ]
+
+    report = import_records(records, validate_only=True)
+
+    assert report.unresolved == []

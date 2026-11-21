@@ -887,6 +887,30 @@ class GraphEngineBase:
         cypher += " RETURN COUNT(DISTINCT n)"
         return self.evaluate_query_single(cypher, params)
 
+    def matching_property_values(self, label: str, prop: str, values: Iterable[Any]) -> list[Any]:
+        """Find which of some values a property of nodes with a label holds, once per node holding it.
+
+        This is how an import checks relationship endpoints: a value found once identifies
+        one node, a value found twice is ambiguous, and one not found does not exist.
+
+        Args:
+            label (str): the label of the nodes to look in.
+            prop (str): the property to look at.
+            values (Iterable[Any]): the values to look for.
+
+        Returns:
+            list[Any]: each value found, repeated for every node holding it.
+        """
+        prop_id = self.identifier(prop)
+
+        cypher = f"""
+            MATCH (n:{self.identifier(label)})
+            WHERE n.{prop_id} IN $values
+            RETURN COLLECT(n.{prop_id})
+            """
+
+        return self.evaluate_query_single(cypher, {"values": list(values)}) or []
+
     def match_relationships(
         self,
         relationship_class: type[BaseRelationshipT],

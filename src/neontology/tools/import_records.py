@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import Any, Callable, Optional
 
 from ..graphconnection import GraphConnection
+from ..graphengines.graphengine import GraphEngineBase
 from .errors import (
     ConflictingNodeRecordError,
     DuplicateNodeDefinitionError,
@@ -273,7 +274,8 @@ def _check_endpoints(
 
     An endpoint resolves against the graph or against the content being imported, since
     the content brings its own nodes with it. One query is issued per label and property
-    being looked up, rather than one per relationship.
+    being looked up, rather than one per relationship. With no connection, endpoints
+    resolve against the content alone.
 
     Args:
         input_records (list[NeontologyRelationshipRecord]): the relationship records.
@@ -291,19 +293,16 @@ def _check_endpoints(
 
     known = _known_endpoints(node_records)
 
-    gc = GraphConnection()
+    # without a connection there is no graph to look in, which is how content is
+    # validated where no database is available - in CI, or before anything is written
+    try:
+        engine: Optional[GraphEngineBase] = GraphConnection().engine
+
+    except RuntimeError:
+        engine = None
 
     for (label, prop), wanted in required.items():
-        label_id = gc.engine.identifier(label)
-        prop_id = gc.engine.identifier(prop)
-
-        cypher = f"""
-            MATCH (n:{label_id})
-            WHERE n.{prop_id} IN $values
-            RETURN COLLECT(n.{prop_id})
-            """
-
-        found = Counter(gc.evaluate_query_single(cypher, {"values": list(wanted)}) or [])
+        found = Counter(engine.matching_property_values(label, prop, wanted) if engine is not None else [])
 
         being_imported = known.get((label, prop), set())
 
@@ -313,7 +312,14 @@ def _check_endpoints(
             if matched == 1 or (matched == 0 and value in being_imported):
                 continue
 
-            if matched == 0:
+            if matched == 0 and engine is None:
+                message = (
+                    f"The content being imported defines no {label} node with {prop} = {value!r}, so"
+                    " relationships to or from it cannot be created. Nothing is connected, so only the"
+                    " content was checked, not a graph."
+                )
+
+            elif matched == 0:
                 message = (
                     f"No {label} node has {prop} = {value!r}, and the content being imported does not"
                     " define one, so relationships to or from it cannot be created. Ensure primary"

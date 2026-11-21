@@ -807,6 +807,26 @@ class LadybugEngine(GraphEngineBase):
 
         return applied
 
+    def matching_property_values(self, label: str, prop: str, values: Iterable[Any]) -> list[Any]:
+        """Find which of some values a property of nodes with a label holds, once per node holding it.
+
+        A label with no table holds no nodes. The other engines match nothing for a label
+        they have never seen, while Ladybug rejects a query naming one, so it is answered
+        here without asking.
+
+        Args:
+            label (str): the label of the nodes to look in.
+            prop (str): the property to look at.
+            values (Iterable[Any]): the values to look for.
+
+        Returns:
+            list[Any]: each value found, repeated for every node holding it.
+        """
+        if not self._has_table(gql_identifier_adapter.validate_strings(label)):
+            return []
+
+        return super().matching_property_values(label, prop, values)
+
     # -- writing ------------------------------------------------------------
 
     def _ensure_node_table(self, node_class: type) -> None:

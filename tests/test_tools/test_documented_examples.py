@@ -343,6 +343,33 @@ def test_validating_reports_issues_as_data(use_graph, tmp_path_factory):
         pytest.fail("expected the content not to validate")
 
 
+def test_validating_without_a_database(tmp_path_factory):
+    from neontology import GraphConnection
+
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "host.yaml", "LABEL: Host\nhostname: web1\n")
+    _write(dir_path, "ip.yaml", "LABEL: IPAddress\nip: 10.0.0.1\n")
+    _write(
+        dir_path,
+        "resolves.yaml",
+        "RELATIONSHIP_TYPE: RESOLVES_TO\nSOURCE_LABEL: Host\nTARGET_LABEL: IPAddress\nSOURCE: web1\nTARGET: 10.0.0.1\n",
+    )
+
+    # no init_neontology() - nothing is connected
+    session_instance = GraphConnection._instance
+    GraphConnection._instance = None
+
+    try:
+        report = import_yaml(dir_path, validate_only=True, error_on_unmatched=True)
+
+    finally:
+        GraphConnection._instance = session_instance
+
+    assert report.nodes == {"Host": 1, "IPAddress": 1}
+    assert report.relationships == {"RESOLVES_TO": 1}
+
+
 def test_the_dump_container_round_trips(use_graph):
     host = Host(hostname="web1", owner="platform-team")
     host.merge()
