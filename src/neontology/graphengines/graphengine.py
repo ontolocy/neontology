@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import functools
 import os
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterable, Optional, Sequence, TypeVar, Union, cast
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError, model_validator
@@ -20,6 +21,48 @@ if TYPE_CHECKING:
 
 BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
 BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
+
+
+class ReadOnlyError(RuntimeError):
+    """Raised when something would write to the graph through a read-only connection."""
+
+
+# every method which writes to the graph or its schema. Each is refused on a read-only
+# engine, wherever it is defined - see GraphEngineBase.__init_subclass__
+WRITE_METHODS = (
+    "create_nodes",
+    "merge_nodes",
+    "delete_nodes",
+    "merge_relationships",
+    "initialise_graph",
+    "apply_constraints",
+    "apply_uniqueness_constraint",
+    "apply_existence_constraint",
+    "drop_constraint",
+    "apply_indexes",
+    "apply_index",
+    "drop_index",
+)
+
+
+def _refused_when_read_only(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a write method so a read-only engine refuses it before reaching the database."""
+    if getattr(method, "_refused_when_read_only", False):
+        return method
+
+    @functools.wraps(method)
+    def guarded(self: "GraphEngineBase", *args: Any, **kwargs: Any) -> Any:
+        if self.read_only:
+            raise ReadOnlyError(
+                f"{method.__name__}() would write to the graph, and this connection is read-only."
+                " Connect with read_only=False on the config to write."
+            )
+
+        return method(self, *args, **kwargs)
+
+    setattr(guarded, "_refused_when_read_only", True)
+
+    return guarded
 
 
 class GraphEngineBase:
@@ -49,13 +92,29 @@ class GraphEngineBase:
         timedelta,
     )
 
+    # set from the config each engine is built with. A read-only engine refuses every
+    # method in WRITE_METHODS itself, and has its database refuse any other write
+    read_only: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Refuse the write methods an engine defines whenever it is read-only.
+
+        Done here rather than in each method, so an engine overriding one cannot leave
+        it unguarded.
+        """
+        super().__init_subclass__(**kwargs)
+
+        for name in WRITE_METHODS:
+            if name in cls.__dict__:
+                setattr(cls, name, _refused_when_read_only(cls.__dict__[name]))
+
     def __init__(self, config: Optional["GraphEngineConfig"]) -> None:
-        """Initialise the graph engine.
+        """Initialise the graph engine. Every engine calls this, so it honours `read_only`.
 
         Args:
             config (Optional[dict]): GraphEngine configuration
         """
-        pass
+        self.read_only = bool(config and config.read_only)
 
     @classmethod
     def supports(cls, capability: Capability) -> bool:
@@ -222,6 +281,8 @@ class GraphEngineBase:
         params: dict[str, Any] = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query against the database.
 
@@ -230,18 +291,22 @@ class GraphEngineBase:
             params (dict[str, Any], optional): Parameters for the Cypher query. Defaults to {}.
             node_classes (dict, optional): Mapping of node labels to their classes. Defaults to {}.
             relationship_classes (dict, optional): Mapping of relationship types to their classes. Defaults to {}.
+            read_only (bool): have the database refuse the query if it writes. A read-only
+                connection runs every query this way. Defaults to False.
 
         Returns:
             NeontologyResult: The result of the query execution, containing nodes and relationships.
         """
         raise NotImplementedError
 
-    def evaluate_query_single(self, cypher: str, params: dict[str, Any]) -> Any:
+    def evaluate_query_single(self, cypher: str, params: dict[str, Any], *, read_only: bool = False) -> Any:
         """Evaluate a query which returns a single result.
 
         Args:
             cypher (str): The Cypher query to execute.
             params (dict[str, Any]): Parameters for the Cypher query.
+            read_only (bool): have the database refuse the query if it writes. A read-only
+                connection runs every query this way. Defaults to False.
 
         Returns:
             Any: The result of the query execution.
@@ -963,12 +1028,26 @@ class GraphEngineBase:
         return cast(list[BaseRelationshipT], result.relationships)
 
 
+# the base class' own write methods, which __init_subclass__ does not see
+for _name in WRITE_METHODS:
+    if _name in GraphEngineBase.__dict__:
+        setattr(GraphEngineBase, _name, _refused_when_read_only(GraphEngineBase.__dict__[_name]))
+
+
 class GraphEngineConfig(BaseModel):
-    """Base class for Graph Engine configuration."""
+    """Base class for Graph Engine configuration.
+
+    Attributes:
+        read_only: connect so that nothing can be written. Neontology refuses its own
+            writes - merge(), create(), delete(), initialise_graph() and the rest - and
+            the database refuses any query which writes.
+    """
 
     engine: ClassVar[type[GraphEngineBase]]
 
     env_fields: ClassVar[dict[str, str]] = {}
+
+    read_only: bool = False
 
     @model_validator(mode="before")
     @classmethod

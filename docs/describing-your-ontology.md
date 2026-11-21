@@ -187,7 +187,7 @@ WorksFor.neontology_schema()
 
 ## Cypher patterns, for writing queries
 
-`cypher_patterns()` describes the ontology in the notation Cypher queries are written in: a pattern for each node class, with its labels and its properties' types, and one for each relationship between the labels at its ends. It is the form to put in front of a language model writing queries against your graph - far shorter than the JSON, and in the notation the model is writing - and a quick way to see the shape of an ontology yourself.
+`cypher_patterns()` describes the ontology in the notation Cypher queries are written in: a pattern for each node class, with its labels and its properties' types, and one for each relationship between the labels at its ends. It is the form to put in front of a language model writing queries against your graph - far shorter than the JSON, and in the notation the model is writing - and a quick way to see the shape of an ontology yourself. Run the queries a model writes with `evaluate_query(..., read_only=True)`, so one which writes is refused - see [read-only access](graph-engines.md#read-only-access).
 
 ```python
 from neontology import GraphConnection

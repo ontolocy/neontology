@@ -118,7 +118,7 @@ class Neo4jEngine(BoltEngine):
         RETURN name, type, entityType, labelsOrTypes, properties
         """
 
-        result = self.driver.execute_query(cast(LiteralString, cypher))
+        result = self.driver.execute_query(cast(LiteralString, cypher), routing_=self._routing())
 
         constraints = []
 
@@ -210,7 +210,7 @@ class Neo4jEngine(BoltEngine):
         RETURN name, entityType, labelsOrTypes, properties
         """
 
-        result = self.driver.execute_query(cast(LiteralString, cypher))
+        result = self.driver.execute_query(cast(LiteralString, cypher), routing_=self._routing())
 
         indexes = []
 

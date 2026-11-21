@@ -762,7 +762,7 @@ class TestReuseConnection:
         with caplog.at_level("INFO", logger="neontology.graphconnection"):
             init_neontology(NamedNetworkxConfig(name="logged"))
 
-        assert "NamedNetworkxConfig(name='logged')" in caplog.text
+        assert "NamedNetworkxConfig(read_only=False, name='logged')" in caplog.text
 
     def test_reconnects_by_default(self):
         init_neontology(NamedNetworkxConfig())

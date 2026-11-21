@@ -221,7 +221,7 @@ class GraphConnection(object):
 
         return get_rels_by_type()
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query against the graph database which returns a single result.
 
         Calls the underlying engine's evaluate_query_single method.
@@ -229,11 +229,14 @@ class GraphConnection(object):
         Args:
             cypher (str): The Cypher query to execute.
             params (dict): Parameters to pass to the Cypher query.
+            read_only (bool): have the database refuse the query if it writes - for a query
+                you did not write yourself, say. A read-only connection runs every query this
+                way. Defaults to False.
 
         Returns:
             Optional[Any]: The single result of the query execution, or None if no result.
         """
-        return self.engine.evaluate_query_single(cypher, params)
+        return self.engine.evaluate_query_single(cypher, params, read_only=read_only)
 
     def evaluate_query(
         self,
@@ -242,6 +245,8 @@ class GraphConnection(object):
         node_classes: dict = {},
         relationship_classes: dict = {},
         refresh_classes: Optional[bool] = None,
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query against the graph database.
 
@@ -252,6 +257,10 @@ class GraphConnection(object):
             relationship_classes (dict): Optional dictionary of relationship classes to use.
             refresh_classes (Optional[bool]): Deprecated and ignored. Model classes register
                 themselves as they are defined, so the type maps are never stale.
+            read_only (bool): have the database refuse the query if it writes - for a query
+                you did not write yourself, say. A read-only connection runs every query this
+                way. Ladybug can only promise it on a read-only connection, and raises
+                otherwise. Defaults to False.
 
         Returns:
             NeontologyResult: The result of the query execution.
@@ -273,7 +282,7 @@ class GraphConnection(object):
         if not relationship_classes:
             relationship_classes = get_rels_by_type()
 
-        return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes)
+        return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes, read_only=read_only)
 
     def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes in the graph database.

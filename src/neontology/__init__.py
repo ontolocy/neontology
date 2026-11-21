@@ -6,6 +6,7 @@ from .gql import GQLIdentifier, gql_identifier_adapter
 from .graphconnection import GraphConnection, init_neontology
 from .graphengines.capabilities import Capability, CapabilityNotSupportedError
 from .graphengines.dbschema import Constraint, ConstraintType, Index, Table
+from .graphengines.graphengine import ReadOnlyError
 from .graphengines.memgraphengine import MemgraphConfig
 from .graphengines.neo4jengine import Neo4jConfig
 from .neontologywarning import NeontologyWarning
@@ -43,6 +44,7 @@ __all__ = [
     "Table",
     "Capability",
     "CapabilityNotSupportedError",
+    "ReadOnlyError",
     # Deprecated, removed in v4
     "auto_constrain_neo4j",
     # Model registry

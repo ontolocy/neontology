@@ -189,6 +189,7 @@ engine supports it.
 | `undeclared_schema` | Yes | Yes | Yes | No |
 | `timezone_aware_datetimes` | Yes | Yes | Yes | No |
 | `graph_mutations` | Yes | Yes | No | Yes |
+| `read_only_queries` | Yes | Yes | Yes | No |
 | `return_star` | Yes | Yes | No | Yes |
 | `duplicate_create` | Yes | Yes | No | No |
 | `datetime_filters` | Yes | Yes | No | Yes |
@@ -458,7 +459,7 @@ can see what you are talking to:
 
 ```python
 >>> GraphConnection()
-GraphConnection(Neo4jConfig(uri='bolt://localhost:7687', username='neo4j', password=SecretStr('**********')))
+GraphConnection(Neo4jConfig(read_only=False, uri='bolt://localhost:7687', username='neo4j', password=SecretStr('**********')))
 ```
 
 `init_neontology` logs the same thing, at `INFO`, each time it connects. Passwords are
@@ -480,6 +481,34 @@ servers. Calling `init_neontology` again switches every thread at once, so it is
 different database per request. If you need to talk to two databases at once, run a
 process per database, or work with the native driver at `.engine.driver` rather than
 trying to hold two Neontology connections.
+
+### Read-only access
+
+To use Neontology with no possibility of writing, connect read-only:
+
+```python
+init_neontology(Neo4jConfig(..., read_only=True))
+```
+
+Neontology then refuses its own writes - `create()`, `merge()`, `merge_records()`, `delete()`, a relationship's `merge()`, `initialise_graph()`, and applying or dropping constraints and indexes - with a `ReadOnlyError`, before anything reaches the database. Any query you run that writes is refused by the database itself, since Neontology cannot tell what an arbitrary query does. The connection's repr shows `read_only=True`, and a read-only config is never equal to one which can write, so `reuse_connection=True` will not hand back the wrong one.
+
+To run one query read-only on a connection which can write - one a language model wrote from [`cypher_patterns()`](describing-your-ontology.md#cypher-patterns-for-writing-queries), say - pass `read_only=True`:
+
+```python
+gc.evaluate_query(generated_cypher, read_only=True)
+gc.evaluate_query_single(generated_cypher, read_only=True)
+```
+
+How each engine enforces it:
+
+| Engine | Read-only connection | Read-only query |
+| --- | --- | --- |
+| Neo4j | every query is sent as a read, which the server refuses to let write | sent as a read |
+| Memgraph | every query is sent as a read, which the server refuses to let write | sent as a read |
+| Ladybug | the database is opened read-only, which refuses every write. Only an on-disk database can be: `LadybugConfig(db_path=..., read_only=True)` | not supported: raises `CapabilityNotSupportedError` unless the connection is read-only |
+| NetworkX | Neontology refuses its own writes; a query cannot write anyway | every query is read-only already |
+
+Sending a query as a read also routes it to a read replica, where a Neo4j cluster has them. Two caveats: Memgraph only enforces it for queries sent as Neontology sends them, so a session you open on `.engine.driver` yourself with a read access mode can still write; and a read-only Ladybug database cannot have its tables declared, so open it read-only only after `initialise_graph()` has run.
 
 ## Neo4j
 

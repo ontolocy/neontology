@@ -321,6 +321,11 @@ class LadybugEngine(GraphEngineBase):
     )
 
     capability_hints: ClassVar[dict[Capability, str]] = {
+        Capability.READ_ONLY_QUERIES: (
+            "Ladybug opens a database read-only or not, with no read-only mode for one query."
+            " To run queries which cannot write, connect read-only, with"
+            " LadybugConfig(db_path=..., read_only=True)."
+        ),
         Capability.SECONDARY_LABELS: (
             "A Ladybug node lives in the table named by its primary label and carries no"
             " other label, so a query naming a secondary or inheritable label directly"
@@ -377,7 +382,10 @@ class LadybugEngine(GraphEngineBase):
             config (LadybugConfig): where the database lives, and whether to declare
                 tables on write.
         """
-        self.database = lb.Database(config.db_path)
+        super().__init__(config)
+
+        # read-only is Ladybug's own: the database refuses every write made through it
+        self.database = lb.Database(config.db_path, read_only=config.read_only)
         self.driver = lb.Connection(self.database)
 
         self.auto_create = config.auto_create
@@ -443,6 +451,8 @@ class LadybugEngine(GraphEngineBase):
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query and return the results as Neontology records.
 
@@ -453,10 +463,14 @@ class LadybugEngine(GraphEngineBase):
                 with results. Defaults to {}.
             relationship_classes (dict, optional): mapping of relationship types to classes used
                 for populating with results. Defaults to {}.
+            read_only (bool): require the query to be read-only, which only a read-only
+                connection can promise on Ladybug. Defaults to False.
 
         Returns:
             NeontologyResult: the records, and the nodes, relationships and paths in them.
         """
+        self._check_read_only(read_only)
+
         result = self._execute(cypher, params)
 
         columns = result.get_column_names()
@@ -469,22 +483,39 @@ class LadybugEngine(GraphEngineBase):
             relationship_classes,
         )
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
             cypher (str): query to evaluate.
             params (dict, optional): parameters to pass through. Defaults to {}.
+            read_only (bool): require the query to be read-only, which only a read-only
+                connection can promise on Ladybug. Defaults to False.
 
         Returns:
             Optional[Any]: the first value of the first row, or None if there are no rows.
         """
+        self._check_read_only(read_only)
+
         rows = self._run(cypher, params)
 
         if not rows or not rows[0]:
             return None
 
         return rows[0][0]
+
+    def _check_read_only(self, read_only: bool) -> None:
+        """Refuse to run a query as read-only on a connection which can write.
+
+        Ladybug has no read-only mode for one query, so on a connection which can write
+        there is nothing to make the promise good. Running the query anyway would be
+        the worst way to fail; a read-only connection runs every query read-only.
+
+        Args:
+            read_only (bool): whether the query was asked to be read-only.
+        """
+        if read_only and not self.read_only:
+            self._require(Capability.READ_ONLY_QUERIES)
 
     # -- the catalog --------------------------------------------------------
 
@@ -1187,6 +1218,8 @@ class LadybugConfig(GraphEngineConfig):
             written to it. Off by default: Ladybug is schema first, so
             `initialise_graph()` declares the schema and a write to an undeclared label
             is an error saying so. Turn it on to have tables follow the models instead.
+        read_only (bool): open the database read-only, so nothing can be written to it.
+            Only an on-disk database can be: an in-memory one starts empty.
     """
 
     engine: ClassVar[type[GraphEngineBase]] = LadybugEngine
@@ -1218,3 +1251,21 @@ class LadybugConfig(GraphEngineConfig):
                 data["db_path"] = from_env
 
         return data
+
+    @model_validator(mode="after")
+    def check_read_only_is_on_disk(self) -> "LadybugConfig":
+        """Refuse a read-only in-memory database, which Ladybug cannot open and would be empty.
+
+        Returns:
+            LadybugConfig: this config.
+
+        Raises:
+            ValueError: if it asks for an in-memory database read-only.
+        """
+        if self.read_only and self.db_path == ":memory:":
+            raise ValueError(
+                "An in-memory Ladybug database cannot be read-only: it starts empty, and Ladybug"
+                " refuses to open one that way. Give the db_path of a database on disk."
+            )
+
+        return self

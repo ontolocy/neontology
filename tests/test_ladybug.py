@@ -13,7 +13,15 @@ from typing import Any, ClassVar, Optional
 
 import pytest
 
-from neontology import BaseNode, BaseRelationship, GraphConnection, Table, get_ontology_schema, init_neontology
+from neontology import (
+    BaseNode,
+    BaseRelationship,
+    CapabilityNotSupportedError,
+    GraphConnection,
+    Table,
+    get_ontology_schema,
+    init_neontology,
+)
 from neontology.graphengines.dbschema import SchemaEntity
 
 ladybug = pytest.importorskip("ladybug", reason="needs the [ladybug] extra")
@@ -289,6 +297,35 @@ class TestWhereTheDatabaseLives:
         with ladybug_connection():
             with pytest.raises(RuntimeError, match="initialise_graph"):
                 Isolated(name="y").merge()
+
+
+class TestReadOnly:
+    """Ladybug opens a whole database read-only, and has no read-only mode for one query."""
+
+    def test_an_in_memory_database_cannot_be_read_only(self):
+        with pytest.raises(ValueError, match="in-memory"):
+            LadybugConfig(read_only=True)
+
+    def test_a_read_only_query_on_a_connection_which_can_write_is_refused(self):
+        """Rather than run without the promise it asked for."""
+        with ladybug_connection() as gc:
+            with pytest.raises(CapabilityNotSupportedError, match="read_only=True"):
+                gc.evaluate_query_single("RETURN 1", read_only=True)
+
+    def test_a_read_only_connection_runs_read_only_queries(self, tmp_path):
+        Stored = _node("LbugReadOnly")
+        path = str(tmp_path / "graph.lbdb")
+
+        with ladybug_connection(db_path=path) as gc:
+            gc.initialise_graph(get_ontology_schema(models=[Stored]))
+
+            Stored(name="x").merge()
+
+        with ladybug_connection(db_path=path, read_only=True) as gc:
+            assert gc.evaluate_query_single("MATCH (n:LbugReadOnly) RETURN count(n)", read_only=True) == 1
+
+            with pytest.raises(RuntimeError, match="read-only"):
+                gc.evaluate_query_single("CREATE (n:LbugReadOnly {name: 'y'})")
 
 
 class TestMatchingAClass:

@@ -50,6 +50,11 @@ class Capability(str, Enum):
     # implements no mutation clauses.
     GRAPH_MUTATIONS = "graph_mutations"
 
+    # Running one query read-only on a connection which can write, so the database refuses
+    # it if it writes - evaluate_query(..., read_only=True). LadybugDB can only be read
+    # only as a whole: it opens a database read-only or not, with no mode for a query.
+    READ_ONLY_QUERIES = "read_only_queries"
+
     # `RETURN *` projections. grand-cypher's parser rejects the '*'.
     RETURN_STAR = "return_star"
 
