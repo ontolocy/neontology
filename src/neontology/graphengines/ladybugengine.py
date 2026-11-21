@@ -494,10 +494,14 @@ class LadybugEngine(GraphEngineBase):
         Returns:
             dict[str, str]: the tables.
         """
-        if self._tables is None:
-            self._tables = {row[1]: row[2] for row in self._run("CALL show_tables() RETURN *")}
+        # read into a local and returned from it: another thread's DDL can clear the cache
+        # between storing it and reading it back
+        tables = self._tables
 
-        return self._tables
+        if tables is None:
+            tables = self._tables = {row[1]: row[2] for row in self._run("CALL show_tables() RETURN *")}
+
+        return tables
 
     def _table_columns(self, table: str) -> dict[str, str]:
         """The columns of a table, by name, mapped to their Ladybug type.
@@ -508,10 +512,14 @@ class LadybugEngine(GraphEngineBase):
         Returns:
             dict[str, str]: the columns.
         """
-        if table not in self._columns:
-            self._columns[table] = {row[1]: row[2] for row in self._run(f"CALL table_info('{table}') RETURN *")}
+        # returned from a local, for the same reason as _catalog
+        columns = self._columns.get(table)
 
-        return self._columns[table]
+        if columns is None:
+            columns = {row[1]: row[2] for row in self._run(f"CALL table_info('{table}') RETURN *")}
+            self._columns[table] = columns
+
+        return columns
 
     def _pairs(self, table: str) -> set[tuple[str, str]]:
         """The FROM/TO node table pairs a relationship table connects.

@@ -153,12 +153,26 @@ class' primary property, so uniqueness there is enforced by the database - a sec
 property tagged `unique` is not, and there is nothing to index. See the capability
 matrix below.
 
+#### Threads and processes
+
+Neontology opens one Ladybug connection, which every thread shares - a web server's
+request threads included. That is safe: Ladybug runs the queries on a connection one at
+a time, so threads take turns rather than running in parallel, and each query uses every
+core on its own. Neontology does not pool connections because Ladybug allows one write
+at a time per database, and a write arriving on a second connection while another is
+running fails rather than waiting.
+
+An on-disk database can be open in one process at a time. A second process opening the
+same `db_path` - a development server and a command line import, say - fails to
+connect, with Ladybug's error saying the file is locked.
+
 ### Engine capability matrix
 
 Where an engine cannot offer something, it is named as a capability and declared on the
 engine itself. The table below is generated from those declarations and checked by a
 test, so it cannot drift - see `Capability` in `neontology.graphengines.capabilities`
-for what each one means.
+for what each one means. Sharing a connection across threads is not listed, because every
+engine supports it.
 
 <!-- BEGIN CAPABILITY MATRIX -->
 | Capability | Neo4j | Memgraph | NetworkX | Ladybug |
@@ -449,8 +463,12 @@ To ask whether the connection still works - from a health check, say -
 `GraphConnection().engine.verify_connection()` answers `True` or `False`, and
 `GraphConnection().engine.check_connection()` raises the driver's error saying why not.
 
-The connection belongs to the whole process, and every thread shares it. Calling
-`init_neontology` again switches all of them at once, so it is not a way to talk to a
+The connection belongs to the whole process, and every thread shares it - safely, on every
+engine. Neo4j and Memgraph run queries from several threads in parallel, through the
+driver's own pool of connections, while [Ladybug](#threads-and-processes) runs them one at
+a time. Two threads merging the same node at once are only guaranteed to leave one node
+where a uniqueness constraint backs it, which `initialise_graph()` applies on the
+servers. Calling `init_neontology` again switches every thread at once, so it is not a way to talk to a
 different database per request. If you need to talk to two databases at once, run a
 process per database, or work with the native driver at `.engine.driver` rather than
 trying to hold two Neontology connections.
