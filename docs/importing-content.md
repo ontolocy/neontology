@@ -398,6 +398,8 @@ content/dns.yaml
       graph, and ResolvesTo has no property by that name. Did you mean 'TARGET_PROPERTY'?
 ```
 
+Validation checks each record the way writing it would: against its model, and that the graph can store every value. Some values a model accepts cannot be stored as a property - a dict, or a list mixing types such as `[1, "a"]` - and those are reported against their record, naming the property, rather than failing the write later.
+
 Validating writes nothing, so relationship endpoints resolve against the graph **and** against the content being imported — a relationship pointing at a node the content itself defines is not reported as unresolved.
 
 ### Errors

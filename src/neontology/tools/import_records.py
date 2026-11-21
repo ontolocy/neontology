@@ -164,7 +164,7 @@ def _locate_failure(
 
     raise ImportContentError(
         f"Writing {len(records)} records failed, and no single record accounts for it, so it is the"
-        f" write itself rather than the content: {error}."
+        f" write itself rather than the content: {str(error).rstrip('.')}."
         f" The batch covered: {', '.join(sources)}."
         " Run the import with validate_only=True to check the content against your models."
     ) from error
@@ -205,7 +205,7 @@ def _import_nodes(
                 node_class.merge_records(batch, partial=partial)
 
             except Exception as exc:
-                _locate_failure(exc, batch, batch_origins, lambda x, cls=node_class: cls(**x), context)
+                _locate_failure(exc, batch, batch_origins, lambda x, cls=node_class: _hydrate_node(x, cls), context)
 
         report.nodes[label] = report.nodes.get(label, 0) + len(records)
 
@@ -411,6 +411,28 @@ def _group_relationships(
     return grouped
 
 
+def _hydrate_node(record: dict, node_class: type) -> Any:
+    """Build one node's model the way merging it does, converting its values for the engine.
+
+    Used to validate content and to find which record in a failed batch was at fault, so
+    it has to fail wherever the write would. Building the model checks it against the
+    class; the write then converts every value to one the engine can store, which rejects
+    some that validate - a dict, or a list mixing types - so that is done here too.
+
+    Args:
+        record (dict): the node record.
+        node_class (type): the node class.
+
+    Returns:
+        Any: the node.
+    """
+    node = node_class(**record)
+
+    node._get_merge_parameters()
+
+    return node
+
+
 def _hydrate_relationship(
     record: dict,
     rel_class: type,
@@ -419,11 +441,12 @@ def _hydrate_relationship(
     source_prop: Optional[str],
     target_prop: Optional[str],
 ) -> Any:
-    """Build one relationship's model the way merging it does.
+    """Build one relationship's model the way merging it does, converting its values for the engine.
 
-    Used to find which record in a failed batch was at fault, so this has to construct
-    the model exactly as `BaseRelationship.merge_records` does - the endpoints as
-    partial nodes carrying only the property they are matched on.
+    Used to validate content and to find which record in a failed batch was at fault, so
+    this has to construct the model exactly as `BaseRelationship.merge_records` does - the
+    endpoints as partial nodes carrying only the property they are matched on - and then
+    convert its values as the write does, as `_hydrate_node` explains.
 
     Args:
         record (dict): the relationship record.
@@ -444,7 +467,11 @@ def _hydrate_relationship(
     hydrated["source"] = source_type._matching_node(resolved_source_prop, record["source"])
     hydrated["target"] = target_type._matching_node(resolved_target_prop, record["target"])
 
-    return rel_class(**hydrated)
+    relationship = rel_class(**hydrated)
+
+    relationship._get_merge_parameters(resolved_source_prop, resolved_target_prop)
+
+    return relationship
 
 
 def _validate_records(
@@ -452,7 +479,7 @@ def _validate_records(
     rel_records: list[NeontologyRelationshipRecord],
     context: ImportContext,
 ) -> None:
-    """Check every record against the model it describes, without writing anything.
+    """Check every record against the model it describes, and that the engine can store it, without writing anything.
 
     Args:
         node_records (list[NeontologyNodeRecord]): the combined node records.
@@ -461,7 +488,7 @@ def _validate_records(
     """
     for record in node_records:
         with context.collector.catching(record.origin):
-            node_class_for_label(record.label)(**(record.output_record or {}))
+            _hydrate_node(record.output_record or {}, node_class_for_label(record.label))
 
     for rel_record in rel_records:
         with context.collector.catching(rel_record.origin):

@@ -131,7 +131,7 @@ class GraphEngineBase:
             TypeError: If the value is a dict, or if it is a list with mixed types.
         """
         if isinstance(value, dict):
-            raise TypeError("Neontology doesn't support dict types for properties.")
+            raise TypeError("a dict - model it as nodes and relationships instead")
 
         elif isinstance(value, (tuple, set)):
             new_value = list(value)
@@ -144,7 +144,10 @@ class GraphEngineBase:
             item_type = type(value[0])
             for item in value:
                 if isinstance(item, item_type) is False:
-                    raise TypeError("For neo4j, all items in a list must be of the same type.")
+                    raise TypeError(
+                        f"a list mixing {item_type.__name__} and {type(item).__name__} items"
+                        " - every item in a list property must be the same type"
+                    )
 
             return [cls._export_type_converter(x) for x in value]
 
@@ -166,11 +169,19 @@ class GraphEngineBase:
 
         Returns:
             dict[str, Any]: A new dictionary with values converted to types supported by the graph engine.
+
+        Raises:
+            TypeError: naming the property, if a value cannot be stored - a dict, or a list
+                mixing types.
         """
         export_dict = original_dict.copy()
 
         for k, v in export_dict.items():
-            export_dict[k] = cls._export_type_converter(v)
+            try:
+                export_dict[k] = cls._export_type_converter(v)
+
+            except TypeError as exc:
+                raise TypeError(f"Property {k!r} has a value the graph cannot store: {exc}.") from exc
 
         return export_dict
 
