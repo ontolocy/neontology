@@ -150,10 +150,17 @@ class BoltEngine(GraphEngineBase):
 
         Args:
             config (Union[Neo4jConfig, MemgraphConfig]): the engine's connection details.
+
+        Raises:
+            ValueError: if the config has no password.
         """
+        # the config's validator fills it, so this is for the type checker
+        if config.password is None:
+            raise ValueError("No password was set on the config.")
+
         self.driver = GraphDatabase.driver(
             config.connection_uri,
-            auth=(config.connection_username, config.connection_password),
+            auth=(config.connection_username, config.password.get_secret_value()),
         )
 
     def verify_connection(self) -> bool:

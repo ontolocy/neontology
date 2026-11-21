@@ -1,5 +1,6 @@
 from typing import ClassVar, Optional, Sequence, Union
 
+from pydantic import SecretStr
 from typing_extensions import LiteralString, cast
 
 from .bolt import BoltEngine
@@ -219,12 +220,14 @@ class MemgraphEngine(BoltEngine):
 
 
 class MemgraphConfig(GraphEngineConfig):
-    """Configuration for a Neo4j graph engine."""
+    """Configuration for a Memgraph graph engine."""
 
     engine: ClassVar[type[MemgraphEngine]] = MemgraphEngine
     uri: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None
+    # a SecretStr, so printing, logging or dumping a config never shows it. A plain
+    # string is accepted and wrapped; password.get_secret_value() gives it back.
+    password: Optional[SecretStr] = None
 
     env_fields: ClassVar[dict[str, str]] = {
         "uri": "MEMGRAPH_URI",
@@ -248,11 +251,3 @@ class MemgraphConfig(GraphEngineConfig):
             raise ValueError("Username should be set by validator")
 
         return self.username
-
-    @property
-    def connection_password(self) -> str:
-        """Get the password, guaranteed to be non-None after validation."""
-        if self.password is None:
-            raise ValueError("Password should be set by validator")
-
-        return self.password

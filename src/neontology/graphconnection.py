@@ -414,6 +414,16 @@ class GraphConnection(object):
             rel_props,
         )
 
+    def __repr__(self) -> str:
+        """Name the config this connection was made with, so it shows what is connected.
+
+        Passwords are SecretStr, so they show masked.
+
+        Returns:
+            str: the representation.
+        """
+        return f"GraphConnection({self._config!r})"
+
     def close(self) -> None:
         """Close the connection to the graph database.
 
@@ -602,5 +612,5 @@ def init_neontology(config: Optional[GraphEngineConfig] = None, reuse_connection
         logger.info("Neontology is already connected with this config, reusing the connection.")
         return
 
-    GraphConnection._establish(config)
-    logger.info("Neontology initialized.")
+    connection = GraphConnection._establish(config)
+    logger.info(f"Neontology initialized: {connection!r}.")

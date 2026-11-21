@@ -3,7 +3,7 @@ from typing import ClassVar, Optional
 import pytest
 from pydantic import Field
 
-from neontology import NeontologyWarning
+from neontology import MemgraphConfig, Neo4jConfig, NeontologyWarning
 from neontology.basenode import BaseNode
 from neontology.baserelationship import BaseRelationship
 from neontology.graphconnection import GraphConnection, init_neontology
@@ -668,6 +668,12 @@ class TestConnectionIsUniversal:
         assert GraphConnection().engine is engine
         assert PracticeNodeGC.match("kept") is not None
 
+    def test_the_connection_shows_the_config_it_was_made_with(self, use_graph, get_graph_config):
+        # compared without pytest printing either side, which holds the suite's connection details
+        shows_config = repr(GraphConnection()) == f"GraphConnection({get_graph_config!r})"
+
+        assert shows_config
+
     def test_change_engine_is_deprecated(self, use_graph, get_graph_config):
         """Superseded by init_neontology, which now does the same thing."""
         with pytest.warns(DeprecationWarning, match="change_engine"):
@@ -747,6 +753,12 @@ class TestReuseConnection:
 
         assert GraphConnection().engine is engine
 
+    def test_logs_the_config_it_connected_with(self, caplog):
+        with caplog.at_level("INFO", logger="neontology.graphconnection"):
+            init_neontology(NamedNetworkxConfig(name="logged"))
+
+        assert "NamedNetworkxConfig(name='logged')" in caplog.text
+
     def test_reconnects_by_default(self):
         init_neontology(NamedNetworkxConfig())
         engine = GraphConnection().engine
@@ -754,3 +766,33 @@ class TestReuseConnection:
         init_neontology(NamedNetworkxConfig())
 
         assert GraphConnection().engine is not engine
+
+
+@pytest.mark.parametrize("config_class", [Neo4jConfig, MemgraphConfig])
+class TestPasswordsAreSecret:
+    """A password is a SecretStr, so printing, logging or dumping a config does not show it."""
+
+    def test_a_config_never_shows_its_password(self, config_class):
+        config = config_class(uri="bolt://localhost:7687", username="user", password="dummy-password")
+
+        assert "dummy-password" not in repr(config)
+        assert "dummy-password" not in str(config)
+        assert "dummy-password" not in config.model_dump_json()
+
+        assert config.password.get_secret_value() == "dummy-password"
+
+    def test_a_password_from_the_environment_is_secret_too(self, config_class, monkeypatch):
+        for field, env_var in config_class.env_fields.items():
+            monkeypatch.setenv(env_var, f"dummy-{field}")
+
+        config = config_class()
+
+        assert "dummy-password" not in repr(config)
+        assert config.password.get_secret_value() == "dummy-password"
+
+    def test_configs_compare_by_password(self, config_class):
+        """So reuse_connection still tells one connection from another."""
+        details = {"uri": "bolt://localhost:7687", "username": "user"}
+
+        assert config_class(**details, password="dummy-a") == config_class(**details, password="dummy-a")
+        assert config_class(**details, password="dummy-a") != config_class(**details, password="dummy-b")

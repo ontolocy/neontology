@@ -427,8 +427,27 @@ environment, so a config built the same way again counts as the same one.
 Use `GraphConnection().close()` to close the connection. Neontology can be initialised
 again afterwards.
 
-If you need to talk to two databases at once, work with the native driver at
-`.engine.driver` rather than trying to hold two Neontology connections.
+### Which connection am I using?
+
+`GraphConnection()` shows the config it was made with, so in a notebook or a debugger you
+can see what you are talking to:
+
+```python
+>>> GraphConnection()
+GraphConnection(Neo4jConfig(uri='bolt://localhost:7687', username='neo4j', password=SecretStr('**********')))
+```
+
+`init_neontology` logs the same thing, at `INFO`, each time it connects. Passwords are
+pydantic `SecretStr`s, so they show masked wherever a config is printed, logged or
+dumped; pydantic's `config.password.get_secret_value()` gives the value back if you need it. Use
+`GraphConnection().supports(Capability.X)` to ask what the engine can do, and
+`GraphConnection()` raises a `RuntimeError` if nothing is connected yet.
+
+The connection belongs to the whole process, and every thread shares it. Calling
+`init_neontology` again switches all of them at once, so it is not a way to talk to a
+different database per request. If you need to talk to two databases at once, run a
+process per database, or work with the native driver at `.engine.driver` rather than
+trying to hold two Neontology connections.
 
 ## Neo4j
 

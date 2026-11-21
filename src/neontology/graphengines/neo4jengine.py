@@ -1,5 +1,6 @@
 from typing import Any, ClassVar, Optional, Sequence, Union
 
+from pydantic import SecretStr
 from typing_extensions import LiteralString, cast
 
 from .bolt import BoltEngine
@@ -256,7 +257,9 @@ class Neo4jConfig(GraphEngineConfig):
     engine: ClassVar[type[GraphEngineBase]] = Neo4jEngine
     uri: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None
+    # a SecretStr, so printing, logging or dumping a config never shows it. A plain
+    # string is accepted and wrapped; password.get_secret_value() gives it back.
+    password: Optional[SecretStr] = None
 
     env_fields: ClassVar[dict[str, str]] = {
         "uri": "NEO4J_URI",
@@ -280,11 +283,3 @@ class Neo4jConfig(GraphEngineConfig):
             raise ValueError("Username should be set by validator")
 
         return self.username
-
-    @property
-    def connection_password(self) -> str:
-        """Get the password, guaranteed to be non-None after validation."""
-        if self.password is None:
-            raise ValueError("Password should be set by validator")
-
-        return self.password
