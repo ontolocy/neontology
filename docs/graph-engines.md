@@ -404,7 +404,9 @@ init_neontology(MemgraphConfig(...))   # now talking to Memgraph
 ```
 
 The new connection is established and checked before the old one is closed, so a config
-that cannot connect leaves the existing connection working. `GraphConnection()` returns
+that cannot connect leaves the existing connection working. The `RuntimeError` it raises
+includes the driver's own reason, such as an authentication failure, a server that is not
+running, or a Ladybug database file locked by another process. `GraphConnection()` returns
 the same object either way, so anything holding one keeps working after a reconnect.
 
 Because `init_neontology` replaces the connection, it is an application startup call
@@ -442,6 +444,10 @@ pydantic `SecretStr`s, so they show masked wherever a config is printed, logged 
 dumped; pydantic's `config.password.get_secret_value()` gives the value back if you need it. Use
 `GraphConnection().supports(Capability.X)` to ask what the engine can do, and
 `GraphConnection()` raises a `RuntimeError` if nothing is connected yet.
+
+To ask whether the connection still works - from a health check, say -
+`GraphConnection().engine.verify_connection()` answers `True` or `False`, and
+`GraphConnection().engine.check_connection()` raises the driver's error saying why not.
 
 The connection belongs to the whole process, and every thread shares it. Calling
 `init_neontology` again switches all of them at once, so it is not a way to talk to a

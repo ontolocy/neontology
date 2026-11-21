@@ -163,17 +163,14 @@ class BoltEngine(GraphEngineBase):
             auth=(config.connection_username, config.password.get_secret_value()),
         )
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the database.
+    def check_connection(self) -> None:
+        """Check the database can be reached and the credentials are accepted.
 
-        Returns:
-            bool: True if the connection is successful, False otherwise.
+        Raises:
+            Exception: the driver's error saying why not, such as `AuthError` or
+                `ServiceUnavailable`.
         """
-        try:
-            self.driver.verify_connectivity()
-            return True
-        except:  # noqa: E722
-            return False
+        self.driver.verify_connectivity()
 
     def close_connection(self) -> None:
         """Close the connection to the database."""

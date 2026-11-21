@@ -459,6 +459,11 @@ def test_evaluate_query_node_links_simple(use_graph):
     assert len(node_link_data["edges"]) == 1
 
 
+def _refuse_connection(self):
+    """Stands in for check_connection on a database that cannot be reached."""
+    raise ConnectionError("refused")
+
+
 class TestConnectionVerification:
     """The connection is verified where it is established, not on every access.
 
@@ -472,8 +477,8 @@ class TestConnectionVerification:
 
         monkeypatch.setattr(
             type(use_graph.engine),
-            "verify_connection",
-            lambda self: calls.append(1) or True,
+            "check_connection",
+            lambda self: calls.append(1),
         )
 
         for _ in range(5):
@@ -494,8 +499,8 @@ class TestConnectionVerification:
 
         monkeypatch.setattr(
             type(use_graph.engine),
-            "verify_connection",
-            lambda self: calls.append(1) or True,
+            "check_connection",
+            lambda self: calls.append(1),
         )
 
         VerifyCountNode.merge_records([{"pp": f"n{i}"} for i in range(20)])
@@ -519,7 +524,7 @@ class TestConnectionVerification:
         """Connecting establishes a connection, so that is checked."""
         engine_class = type(use_graph.engine)
 
-        monkeypatch.setattr(engine_class, "verify_connection", lambda self: False)
+        monkeypatch.setattr(engine_class, "check_connection", _refuse_connection)
 
         with pytest.raises(RuntimeError, match="could not connect"):
             init_neontology(get_graph_config)
@@ -546,7 +551,7 @@ class TestConnectionLifecycle:
         """
         original_engine = GraphConnection().engine
 
-        monkeypatch.setattr(type(original_engine), "verify_connection", lambda self: False)
+        monkeypatch.setattr(type(original_engine), "check_connection", _refuse_connection)
 
         with pytest.raises(RuntimeError, match="could not connect"):
             init_neontology(get_graph_config)
@@ -589,20 +594,20 @@ class TestConnectionLifecycle:
             GraphConnection._instance = session_instance
 
     def test_a_failed_connection_is_not_cached(self):
-        """A verify_connection that raises used to leave the broken instance cached.
+        """A verification that raises used to leave the broken instance cached.
 
-        Only a False return was rolled back, so an engine raising from
-        verify_connection poisoned every later GraphConnection() call.
+        Only a False return was rolled back, so an engine raising while it was verified
+        poisoned every later GraphConnection() call.
         """
 
         class ExplodingConfig:
-            """Stands in for an engine whose verify_connection raises."""
+            """Stands in for an engine whose check_connection raises."""
 
             class engine:  # noqa: N801 - mimics the config.engine(config) call
                 def __init__(self, config):
                     pass
 
-                def verify_connection(self):
+                def check_connection(self):
                     raise OSError("boom")
 
                 def close_connection(self):
@@ -796,3 +801,70 @@ class TestPasswordsAreSecret:
 
         assert config_class(**details, password="dummy-a") == config_class(**details, password="dummy-a")
         assert config_class(**details, password="dummy-a") != config_class(**details, password="dummy-b")
+
+
+class TestConnectionErrorsSayWhy:
+    """A failed connection names the driver's own reason, not only its exception type.
+
+    The reason - a server that is not up, a wrong password, a database file locked by
+    another process - used to be visible only further up a chained traceback, or not at
+    all: the Bolt engines swallowed it and returned False.
+    """
+
+    @pytest.mark.parametrize("config_class", [Neo4jConfig, MemgraphConfig])
+    def test_a_server_that_is_not_up(self, config_class):
+        before = GraphConnection._instance
+        config = config_class(uri="bolt://localhost:1", username="user", password="dummy-password")
+
+        with pytest.raises(RuntimeError, match="ServiceUnavailable: .*localhost:1") as raised:
+            init_neontology(config)
+
+        assert "dummy-password" not in str(raised.value)
+        assert GraphConnection._instance is before, "a failed connection leaves the live one in place"
+
+    @pytest.mark.parametrize("config_class", [Neo4jConfig, MemgraphConfig])
+    def test_verify_connection_answers_false_rather_than_raising(self, config_class):
+        """So it can be polled, or back a health check; check_connection says why."""
+        config = config_class(uri="bolt://localhost:1", username="user", password="dummy-password")
+        engine = config_class.engine(config)
+
+        try:
+            assert engine.verify_connection() is False
+
+            with pytest.raises(Exception, match="localhost:1"):
+                engine.check_connection()
+
+        finally:
+            engine.close_connection()
+
+    def test_a_database_file_that_cannot_be_opened(self, tmp_path):
+        pytest.importorskip("ladybug", reason="needs the [ladybug] extra")
+        from neontology.graphengines.ladybugengine import LadybugConfig
+
+        path = tmp_path / "missing" / "graph.lbdb"
+
+        with pytest.raises(RuntimeError, match="could not connect") as raised:
+            init_neontology(LadybugConfig(db_path=str(path)))
+
+        assert str(path) in str(raised.value)
+
+    def test_an_engine_that_fails_to_verify_is_closed(self):
+        closed = []
+
+        class FailingConfig:
+            """Stands in for an engine whose driver opens and then fails to verify."""
+
+            class engine:  # noqa: N801 - mimics the config.engine(config) call
+                def __init__(self, config):
+                    pass
+
+                def check_connection(self):
+                    raise OSError("the reason")
+
+                def close_connection(self):
+                    closed.append(True)
+
+        with pytest.raises(RuntimeError, match="OSError: the reason"):
+            init_neontology(FailingConfig())  # pyrefly: ignore[bad-argument-type]
+
+        assert closed == [True]

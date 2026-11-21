@@ -174,13 +174,32 @@ class GraphEngineBase:
 
         return export_dict
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the graph engine.
+    def check_connection(self) -> None:
+        """Check the connection works, raising the driver's error saying why if it does not.
 
-        Returns:
-            bool: True if the connection is valid, False otherwise.
+        This is what each engine implements. `init_neontology` calls it, so the error it
+        raises can give the reason - a wrong password, a server that is not up, a database
+        file locked by another process. `verify_connection` asks the same as True or False.
+
+        Raises:
+            Exception: the driver's own error, if the connection does not work.
         """
         raise NotImplementedError
+
+    def verify_connection(self) -> bool:
+        """Report whether the connection works.
+
+        Returns:
+            bool: True if it does, False if `check_connection` raised. Call that instead
+                to be told why.
+        """
+        try:
+            self.check_connection()
+
+            return True
+
+        except Exception:
+            return False
 
     def close_connection(self) -> None:
         """Close the connection to the graph engine."""

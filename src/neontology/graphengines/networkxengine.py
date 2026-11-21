@@ -283,14 +283,8 @@ class NetworkxEngine(GraphEngineBase):
 
         return found
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the backend.
-
-        Returns:
-            bool: True if the connection is successful, False otherwise.
-        """
-        # There is no remote connection to verify
-        return True
+    def check_connection(self) -> None:
+        """Check the connection, which always works: the graph is in memory."""
 
     def close_connection(self) -> None:
         """Close the connection to the backend."""

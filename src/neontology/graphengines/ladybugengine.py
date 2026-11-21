@@ -387,17 +387,13 @@ class LadybugEngine(GraphEngineBase):
 
     # -- connection ---------------------------------------------------------
 
-    def verify_connection(self) -> bool:
-        """Verify the database is open and answering.
+    def check_connection(self) -> None:
+        """Check the database is open and answering.
 
-        Returns:
-            bool: True if it is.
+        Raises:
+            Exception: Ladybug's error saying why it is not.
         """
-        try:
-            return self._run("RETURN 1") == [[1]]
-
-        except Exception:
-            return False
+        self._run("RETURN 1")
 
     def close_connection(self) -> None:
         """Close the connection and the database, releasing an on-disk database's lock."""

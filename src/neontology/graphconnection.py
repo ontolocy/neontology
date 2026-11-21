@@ -107,24 +107,31 @@ class GraphConnection(object):
         Raises:
             RuntimeError: if a connection could not be established.
         """
+
+        # the driver's own message says why - a wrong password, a server that is not up, a
+        # database file locked by another process - so it is part of this one
+        def could_not_connect(exc: Exception) -> RuntimeError:
+            return RuntimeError(
+                f"Error: could not connect using the given {type(config).__name__}: {type(exc).__name__}: {exc}"
+            )
+
         try:
             new_engine = config.engine(config)
 
+        except Exception as exc:
+            raise could_not_connect(exc) from exc
+
+        try:
             # Verify here, where the connection is actually established, rather than on
             # every access. GraphConnection() is used throughout the library as a way to
             # reach the singleton - including once per model dump - so verifying there
             # cost a database round trip for every one of those.
-            connected = new_engine.verify_connection()
+            new_engine.check_connection()
 
         except Exception as exc:
-            raise RuntimeError(
-                f"Error: could not connect using the given {type(config).__name__}. Underlying exception: {type(exc).__name__}"
-            ) from exc
-
-        if connected is False:
             _close_quietly(new_engine)
 
-            raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
+            raise could_not_connect(exc) from exc
 
         # copied, so changing the caller's config afterwards does not change what the
         # live connection is recorded as having been made with
