@@ -11,9 +11,11 @@ Neontology is an object-graph mapper: Pydantic models define nodes/relationships
 The project uses `uv`.
 
 ```bash
-uv sync --all-extras          # --all-extras is mandatory: conftest.py imports
-                              # NetworkxConfig unconditionally, so without the
-                              # [grand] extra the suite fails at collection
+uv sync --all-extras          # every extra, so every engine and dataframe test runs.
+                              # The suite must also collect with none installed - a
+                              # CI job runs it that way - so a test module needing an
+                              # extra skips without it (pytest.importorskip), and
+                              # conftest.py guards its NetworkxConfig import
 uv build
 
 uv run pytest -x
