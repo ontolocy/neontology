@@ -245,8 +245,14 @@ class BaseNode(CommonModel):
         return cast(str, cls.__primarylabel__)
 
     @classmethod
-    def _query_label(cls) -> str:
+    def query_label(cls) -> str:
         """The label a query scoped to this class matches: the nodes carrying it are the class' nodes.
+
+        Every class scoped query Neontology runs - `match_nodes()`, `match()`, `get_count()`,
+        `delete()` - matches this label, so a query of your own scoped to a class finds the
+        same nodes by matching it too, written with the engine's `label_pattern()`:
+
+            f"MATCH (n{GraphConnection().engine.label_pattern(Vulnerability.query_label())})"
 
         A concrete class' is its primary label. An abstract class has none, but one which
         declares an inheritable label of its own passes it to every class below it, so its
@@ -591,7 +597,7 @@ class BaseNode(CommonModel):
         gc = GraphConnection()
 
         cypher = f"""
-        MATCH (n{gc.engine.label_pattern(cls._query_label())})
+        MATCH (n{gc.engine.label_pattern(cls.query_label())})
         WHERE n.{gc.engine.identifier(cls.__primaryproperty__)} = $pp
         RETURN n
         """
@@ -618,7 +624,7 @@ class BaseNode(CommonModel):
         Args:
             pp (str): Primary property value to match on.
         """
-        label = cls._query_label()
+        label = cls.query_label()
 
         pp_key = cls.__primaryproperty__
         pp_value = pp

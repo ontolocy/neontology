@@ -307,7 +307,7 @@ class TestInheritableLabels:
 
         assert LblLivingThing.get_count() == 3
 
-        pattern = use_graph.engine.label_pattern("LblOrganism")
+        pattern = use_graph.engine.label_pattern(LblLivingThing.query_label())
 
         assert use_graph.evaluate_query_single(f"MATCH (n{pattern}) RETURN COUNT(n)") == 3
 
@@ -319,6 +319,33 @@ class TestInheritableLabels:
         """Its parent's label would find its siblings' nodes too."""
         with pytest.raises(NotImplementedError, match="of its own"):
             LblExtinctThing.match_nodes()
+
+        with pytest.raises(NotImplementedError, match="of its own"):
+            LblExtinctThing.query_label()
+
+    def test_the_query_label_of_each_kind_of_class(self):
+        assert LblDog.query_label() == "LblDog"
+        assert LblLivingThing.query_label() == "LblOrganism"
+
+    def test_a_query_of_your_own_finds_what_match_nodes_does(self, use_graph):
+        """Code writing its own class scoped Cypher - paged and ordered, say - matches the query label."""
+        for name in ["d", "a", "c", "b"]:
+            LblDog(name=name).create()
+
+        LblPuppy(name="e").create()
+
+        for cls in [LblLivingThing, LblAnimal, LblDog, LblPuppy]:
+            pattern = use_graph.engine.label_pattern(cls.query_label())
+
+            names = use_graph.evaluate_query(
+                f"MATCH (n{pattern}) RETURN n.name AS name ORDER BY name SKIP $skip LIMIT $limit",
+                {"skip": 1, "limit": 3},
+            )
+
+            with _no_label_warnings():
+                expected = sorted(node.name for node in cls.match_nodes())[1:4]
+
+            assert [record["values"]["name"] for record in names.records] == expected
 
 
 def _evolving_model(secondary: list):
