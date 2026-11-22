@@ -370,6 +370,41 @@ def test_validating_without_a_database(tmp_path_factory):
     assert report.relationships == {"RESOLVES_TO": 1}
 
 
+def test_content_a_program_produces(use_graph):
+    from neontology.tools import record_model
+
+    Records = record_model(models=[Host, IPAddress, ResolvesTo])
+
+    schema = Records.model_json_schema()
+
+    assert schema["$defs"]["HostRecord"]["properties"]["LABEL"]["const"] == "Host"
+
+    response_text = json.dumps(
+        [
+            {"LABEL": "Host", "hostname": "web1"},
+            {"LABEL": "IPAddress", "ip": "10.0.0.1"},
+            {
+                "RELATIONSHIP_TYPE": "RESOLVES_TO",
+                "SOURCE_LABEL": "Host",
+                "TARGET_LABEL": "IPAddress",
+                "SOURCE": "web1",
+                "TARGET": "10.0.0.1",
+            },
+        ]
+    )
+
+    records = Records.model_validate_json(response_text)
+
+    import_records([record.model_dump(exclude_unset=True) for record in records.root])
+
+    assert ResolvesTo.get_count() == 1
+
+    # a strict structured-output mode writes null for what it does not know, which would clear it
+    strict = Records.model_validate([{"LABEL": "Host", "hostname": "web1", "owner": None}])
+
+    assert strict.root[0].model_dump(exclude_none=True) == {"LABEL": "Host", "hostname": "web1"}
+
+
 def test_the_dump_container_round_trips(use_graph):
     host = Host(hostname="web1", owner="platform-team")
     host.merge()
