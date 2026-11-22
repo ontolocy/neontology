@@ -10,6 +10,8 @@ decoding does with it.
 
 from __future__ import annotations
 
+import functools
+import operator
 from copy import copy
 from typing import Any, Iterable, Literal, Optional, Union, cast
 
@@ -23,8 +25,8 @@ from ..utils import generate_relationship_type_data, get_node_types, get_rels_by
 _RECORD_CONFIG = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 
-# Literal and Union built from values known only at runtime - the labels and types of
-# whichever models are defined - which a type annotation cannot spell, hence __getitem__
+# Literal and unions built from values known only at runtime - the labels and types of
+# whichever models are defined - which a type annotation cannot spell
 
 
 def _literal(values: Iterable[str]) -> Any:
@@ -34,7 +36,9 @@ def _literal(values: Iterable[str]) -> Any:
 
 def _union(types: list[Any]) -> Any:
     """One type accepting any of several, or the type itself where there is only one."""
-    return types[0] if len(types) == 1 else cast(Any, Union).__getitem__(tuple(types))
+    # joined with |, not Union.__getitem__: from Python 3.14 Union is a class, whose
+    # __getitem__ is not a way to subscript it
+    return functools.reduce(operator.or_, types)
 
 
 def _record_fields(model: type[BaseModel], skip: tuple[str, ...] = ()) -> dict[str, Any]:
