@@ -245,6 +245,35 @@ class BaseNode(CommonModel):
         return cast(str, cls.__primarylabel__)
 
     @classmethod
+    def _query_label(cls) -> str:
+        """The label a query scoped to this class matches: the nodes carrying it are the class' nodes.
+
+        A concrete class' is its primary label. An abstract class has none, but one which
+        declares an inheritable label of its own passes it to every class below it, so its
+        nodes are those carrying that label - the first, where it declares several. One
+        only inheriting such a label from a parent shares it with its siblings, so it has
+        no label of its own to query by.
+
+        Returns:
+            str: the label.
+
+        Raises:
+            NotImplementedError: if the class is abstract with no inheritable label of its own.
+        """
+        if not cls._is_abstract():
+            return cls._primary_label()
+
+        own = vars(cls).get("__inheritablelabels__") or []
+
+        if own:
+            return own[0]
+
+        raise NotImplementedError(
+            f"{cls._abstract_error()} To query it as the nodes of every class inheriting from it, give it"
+            " an __inheritablelabels__ of its own, which those classes then carry."
+        )
+
+    @classmethod
     def _all_labels(cls) -> list[str]:
         """Every label this node carries in the graph, primary first.
 
@@ -562,7 +591,7 @@ class BaseNode(CommonModel):
         gc = GraphConnection()
 
         cypher = f"""
-        MATCH (n{gc.engine.label_pattern(cls._primary_label())})
+        MATCH (n{gc.engine.label_pattern(cls._query_label())})
         WHERE n.{gc.engine.identifier(cls.__primaryproperty__)} = $pp
         RETURN n
         """
@@ -589,7 +618,7 @@ class BaseNode(CommonModel):
         Args:
             pp (str): Primary property value to match on.
         """
-        label = cls._primary_label()
+        label = cls._query_label()
 
         pp_key = cls.__primaryproperty__
         pp_value = pp

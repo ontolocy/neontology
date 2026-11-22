@@ -637,59 +637,85 @@ class LadybugEngine(GraphEngineBase):
         return f"`{super().identifier(name)}`"
 
     def label_pattern(self, label: str) -> str:
-        """Match a class as the union of its own primary label and those of the subclasses carrying it.
+        """Match a label as the union of the tables of every class carrying it.
 
         A Ladybug node carries one label, so a subclass node inheriting its parent's label
         is not labelled with it the way it is on Neo4j. Several labels in a Ladybug pattern
-        are a union rather than an intersection, so naming the class and those subclasses
-        matches exactly the nodes the parent's label matches elsewhere.
+        are a union rather than an intersection, so naming every class carrying the label -
+        a class and its subclasses, or every class below an abstract one passing it down -
+        matches exactly the nodes the label matches elsewhere.
 
         Labels with no table are left out: Ladybug rejects a pattern naming one, where
         the other engines simply match nothing.
 
         Args:
-            label (str): the class' primary label.
+            label (str): the label - a class' primary label, or one it passes down.
 
         Returns:
             str: the fragment to follow the node variable with, such as ":`Person`:`Employee`".
 
         Raises:
-            RuntimeError: if the class itself has no table.
+            RuntimeError: if no table holds nodes with the label.
         """
         return ":" + ":".join(self.identifier(table) for table in self._class_tables(label))
 
-    def _class_tables(self, label: str) -> list[str]:
-        """The tables holding a class' nodes: its own, then those of the subclasses carrying its label.
+    def _tables_carrying(self, label: str) -> list[str]:
+        """The tables holding the nodes a label matches: those of every class carrying it.
+
+        A Ladybug node carries one label, its table's name, so a node matches a label it
+        carries elsewhere - an inherited one - by being in the table of a class carrying
+        it. That is a class' own table and its subclasses' for its primary label, and the
+        tables of every class below an abstract one for the label it passes down. Tables
+        not declared yet are left out, since Ladybug rejects a pattern naming one.
 
         Args:
-            label (str): the class' primary label.
+            label (str): the label.
 
         Returns:
-            list[str]: the table names, the class' own first.
-
-        Raises:
-            RuntimeError: if the class itself has no table.
+            list[str]: the table names, the one named by the label first where there is one.
         """
         from ..utils import get_node_types
 
-        primary = gql_identifier_adapter.validate_strings(label)
+        label = gql_identifier_adapter.validate_strings(label)
 
-        self._require_table(primary, "node")
-
-        node_class = get_node_types().get(primary)
-
-        if node_class is None:
-            return [primary]
-
-        # only the subclasses carrying the class' label, which is what that label matches
-        # on the other engines: a subclass not inheriting it is a different kind of node
-        return [primary] + [
-            other
-            for other, other_class in get_node_types(node_class).items()
-            if other != primary
-            and primary in other_class._all_labels()
-            and self._has_table(gql_identifier_adapter.validate_strings(other))
+        tables = [
+            table
+            for table, node_class in get_node_types().items()
+            if label in node_class._all_labels() and self._has_table(gql_identifier_adapter.validate_strings(table))
         ]
+
+        # a table no model class describes still holds the nodes its name labels
+        if not tables and self._has_table(label):
+            tables = [label]
+
+        return sorted(tables, key=lambda table: table != label)
+
+    def _class_tables(self, label: str) -> list[str]:
+        """The tables holding the nodes a label matches, as `_tables_carrying`, which have to exist.
+
+        Args:
+            label (str): the label.
+
+        Returns:
+            list[str]: the table names, the one named by the label first where there is one.
+
+        Raises:
+            RuntimeError: if no table holds nodes with the label.
+        """
+        from ..utils import get_node_types
+
+        tables = self._tables_carrying(label)
+
+        if tables:
+            return tables
+
+        if label in get_node_types():
+            self._require_table(label, "node")
+
+        raise RuntimeError(
+            f"LadybugDB has no table holding nodes labelled {label}: no class carrying it has a table yet."
+            " Declare the schema with GraphConnection().initialise_graph()."
+        )
 
     def _column_definitions(self, properties: Iterable["PropertySchema"]) -> dict[str, str]:
         """Read a described class' properties as validated column names and Ladybug types.
@@ -1099,7 +1125,8 @@ class LadybugEngine(GraphEngineBase):
             pp_key (str): the primary property key to match on.
             pp_values (list[Any]): the primary property values to delete.
         """
-        if not pp_values or not self._has_table(gql_identifier_adapter.validate_strings(label)):
+        # nothing labelled so has been written where no table holds it
+        if not pp_values or not self._tables_carrying(label):
             return
 
         super().delete_nodes(label, pp_key, pp_values)

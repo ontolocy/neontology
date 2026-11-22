@@ -299,6 +299,13 @@ class TestWhereTheDatabaseLives:
                 Isolated(name="y").merge()
 
 
+class TestALabelNoTableHolds:
+    def test_a_pattern_for_it_says_so(self):
+        with ladybug_connection() as gc:
+            with pytest.raises(RuntimeError, match="no table holding nodes labelled LbugNoSuchLabel"):
+                gc.engine.label_pattern("LbugNoSuchLabel")
+
+
 class TestReadOnly:
     """Ladybug opens a whole database read-only, and has no read-only mode for one query."""
 

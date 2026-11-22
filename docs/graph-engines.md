@@ -151,9 +151,11 @@ Querying through your models is unaffected: `match_nodes()`, `match()`, `get_cou
 `delete()` and `related_nodes()` match a class as the union of its own primary label and
 those of the subclasses which [inherit it](advanced-usage.md#inheritable-labels), so they
 find the same nodes as on any other engine. If `Employee` inherits the `Person` label,
-asking for `Person` still returns the `Employee` nodes and builds each one as itself.
-What does not work is a raw query naming a secondary label directly, since there is no
-table behind it.
+asking for `Person` still returns the `Employee` nodes and builds each one as itself, and
+an abstract class is matched as every table below it carrying the label it passes down.
+`engine.label_pattern(label)` writes that union for your own queries, so
+`f"MATCH (n{engine.label_pattern('Vulnerability')})"` runs on every engine. What does not
+work is a raw query naming a secondary label directly, since there is no table behind it.
 
 Constraints and indexes are not available either. A node table's primary key is its
 class' primary property, so uniqueness there is enforced by the database - a second
