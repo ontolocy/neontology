@@ -953,7 +953,7 @@ class GraphEngineBase:
             limit = non_negative_int_adapter.validate_python(limit)
         where_clause, params = self._filters_to_where_clause(node_class, filters)
 
-        cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.query_label())})"
         if where_clause:
             cypher += where_clause
         cypher += " RETURN n"
@@ -986,7 +986,7 @@ class GraphEngineBase:
         """
         # checked before the label, which a schema first engine looks up in the database
         where_clause, params = self._filters_to_where_clause(node_class, filters)
-        cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
+        cypher = f"MATCH (n{self.label_pattern(node_class.query_label())})"
         if where_clause:
             cypher += where_clause
         cypher += " RETURN COUNT(DISTINCT n)"

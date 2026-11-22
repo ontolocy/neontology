@@ -89,9 +89,20 @@ class GHSA(Vulnerability):
 Vulnerability.match_nodes()   # [CVE(id='CVE-2021-44228'), GHSA(id='GHSA-jfh8-c2jp-5v3q')]
 ```
 
-`match_nodes()`, `match()`, `get_count()` and `delete()` all work this way, and
-`GraphConnection().engine.label_pattern("Vulnerability")` gives the pattern for your own
-queries on any engine. `match()` looks across every class below, so if two of them could
+`match_nodes()`, `match()`, `get_count()` and `delete()` all work this way. Each matches
+the class' `query_label()` - its primary label, or for an abstract class the label it
+passes down - so a query of your own scoped to a class finds the same nodes, on any engine,
+by matching it with `label_pattern()`:
+
+```python
+gc = GraphConnection()
+
+gc.evaluate_query(
+    f"MATCH (n{gc.engine.label_pattern(Vulnerability.query_label())}) RETURN n ORDER BY n.id LIMIT 10"
+)
+```
+
+`match()` looks across every class below, so if two of them could
 share a primary property value, it returns one of them. An abstract class which only
 inherits its label from its parent has none of its own to be queried by - its parent's
 would find its siblings' nodes too - so querying it raises an error saying so.
