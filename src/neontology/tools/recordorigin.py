@@ -109,9 +109,10 @@ class SourcedRecord:
     """One raw record, and where it came from.
 
     Attributes:
-        data: the record as it was written.
+        data: the record as it was written - a mapping, unless it was written as
+            something else, which is reported as it is prepared.
         origin: where it was read from.
     """
 
-    data: dict[str, Any] = field(default_factory=dict)
+    data: Any = field(default_factory=dict)
     origin: RecordOrigin = field(default_factory=lambda: RecordOrigin(source="<records>"))

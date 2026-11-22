@@ -45,9 +45,13 @@ class GraphConnection(object):
 
     _instance: Optional["GraphConnection"] = None
 
-    # set in __new__ on the instance it publishes, declared here so it is annotated
-    # without __init__ having to reassign it
+    # set in _establish on the instance it publishes, declared here so they are annotated
+    # without __init__ having to reassign them
     engine: GraphEngineBase
+
+    # a copy of the config the engine was made with, so init_neontology can tell whether
+    # a config describes the live connection. Private because it holds credentials.
+    _config: GraphEngineConfig
 
     def __new__(cls, *args: Any, **kwargs: Any) -> "GraphConnection":
         """Return the connection established by `init_neontology`.
@@ -103,34 +107,47 @@ class GraphConnection(object):
         Raises:
             RuntimeError: if a connection could not be established.
         """
+
+        # the driver's own message says why - a wrong password, a server that is not up, a
+        # database file locked by another process - so it is part of this one
+        def could_not_connect(exc: Exception) -> RuntimeError:
+            return RuntimeError(
+                f"Error: could not connect using the given {type(config).__name__}: {type(exc).__name__}: {exc}"
+            )
+
         try:
             new_engine = config.engine(config)
 
+        except Exception as exc:
+            raise could_not_connect(exc) from exc
+
+        try:
             # Verify here, where the connection is actually established, rather than on
             # every access. GraphConnection() is used throughout the library as a way to
             # reach the singleton - including once per model dump - so verifying there
             # cost a database round trip for every one of those.
-            connected = new_engine.verify_connection()
+            new_engine.check_connection()
 
         except Exception as exc:
-            raise RuntimeError(
-                f"Error: could not connect using the given {type(config).__name__}. Underlying exception: {type(exc).__name__}"
-            ) from exc
-
-        if connected is False:
             _close_quietly(new_engine)
 
-            raise RuntimeError(f"Error: could not connect using the given {type(config).__name__}.")
+            raise could_not_connect(exc) from exc
+
+        # copied, so changing the caller's config afterwards does not change what the
+        # live connection is recorded as having been made with
+        established_with = config.model_copy(deep=True)
 
         if cls._instance is None:
             instance = object.__new__(cls)
             instance.engine = new_engine
+            instance._config = established_with
 
             cls._instance = instance
 
         else:
             previous_engine = cls._instance.engine
             cls._instance.engine = new_engine
+            cls._instance._config = established_with
 
             _close_quietly(previous_engine)
 
@@ -204,7 +221,7 @@ class GraphConnection(object):
 
         return get_rels_by_type()
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query against the graph database which returns a single result.
 
         Calls the underlying engine's evaluate_query_single method.
@@ -212,11 +229,14 @@ class GraphConnection(object):
         Args:
             cypher (str): The Cypher query to execute.
             params (dict): Parameters to pass to the Cypher query.
+            read_only (bool): have the database refuse the query if it writes - for a query
+                you did not write yourself, say. A read-only connection runs every query this
+                way. Defaults to False.
 
         Returns:
             Optional[Any]: The single result of the query execution, or None if no result.
         """
-        return self.engine.evaluate_query_single(cypher, params)
+        return self.engine.evaluate_query_single(cypher, params, read_only=read_only)
 
     def evaluate_query(
         self,
@@ -225,6 +245,8 @@ class GraphConnection(object):
         node_classes: dict = {},
         relationship_classes: dict = {},
         refresh_classes: Optional[bool] = None,
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query against the graph database.
 
@@ -235,6 +257,10 @@ class GraphConnection(object):
             relationship_classes (dict): Optional dictionary of relationship classes to use.
             refresh_classes (Optional[bool]): Deprecated and ignored. Model classes register
                 themselves as they are defined, so the type maps are never stale.
+            read_only (bool): have the database refuse the query if it writes - for a query
+                you did not write yourself, say. A read-only connection runs every query this
+                way. Ladybug can only promise it on a read-only connection, and raises
+                otherwise. Defaults to False.
 
         Returns:
             NeontologyResult: The result of the query execution.
@@ -256,7 +282,7 @@ class GraphConnection(object):
         if not relationship_classes:
             relationship_classes = get_rels_by_type()
 
-        return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes)
+        return self.engine.evaluate_query(cypher, params, node_classes, relationship_classes, read_only=read_only)
 
     def create_nodes(self, labels: list, pp_key: str, properties: list, node_class: type[BaseNodeT]) -> list[BaseNodeT]:
         """Create nodes in the graph database.
@@ -404,6 +430,16 @@ class GraphConnection(object):
             rel_props,
         )
 
+    def __repr__(self) -> str:
+        """Name the config this connection was made with, so it shows what is connected.
+
+        Passwords are SecretStr, so they show masked.
+
+        Returns:
+            str: the representation.
+        """
+        return f"GraphConnection({self._config!r})"
+
     def close(self) -> None:
         """Close the connection to the graph database.
 
@@ -524,14 +560,21 @@ class GraphConnection(object):
         return self.engine.initialise_graph(schema)
 
 
-def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
+def init_neontology(config: Optional[GraphEngineConfig] = None, reuse_connection: bool = False) -> None:
     """Initialise neontology.
+
+    Every call connects, replacing any existing connection, unless `reuse_connection`
+    is set and the existing one was made with an equal config.
 
     Args:
         config (Optional[GraphEngineConfig]): configuration for the engine to connect
             with. If not given, the NEONTOLOGY_ENGINE environment variable selects the
             engine and its own environment variables supply the connection details,
             defaulting to Neo4j.
+        reuse_connection (bool): if a connection made with an equal config is already
+            live, keep it rather than reconnecting - which for an in-memory database
+            would start a new, empty one. Configs are compared by value, after missing
+            fields are filled from the environment. Otherwise connect as usual.
     """
     graph_engines: dict[str, type[GraphEngineConfig]] = {
         "NEO4J": Neo4jConfig,
@@ -579,5 +622,11 @@ def init_neontology(config: Optional[GraphEngineConfig] = None) -> None:
             logger.info("No GraphConfig provided and no Graph Engine specified, using Neo4j.")
             config = Neo4jConfig()
 
-    GraphConnection._establish(config)
-    logger.info("Neontology initialized.")
+    live = GraphConnection._instance
+
+    if reuse_connection and live is not None and live._config == config:
+        logger.info("Neontology is already connected with this config, reusing the connection.")
+        return
+
+    connection = GraphConnection._establish(config)
+    logger.info(f"Neontology initialized: {connection!r}.")

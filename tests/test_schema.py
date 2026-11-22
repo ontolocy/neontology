@@ -17,8 +17,8 @@ from uuid import UUID
 import pytest
 from pydantic import Field
 
-from neontology import BaseNode, BaseRelationship, get_ontology_schema
-from neontology.schema import index_markdown, mermaid_diagram, node_markdown
+from neontology import BaseNode, BaseRelationship, Capability, get_ontology_schema
+from neontology.schema import cypher_patterns, node_markdown
 
 
 class Colour(enum.Enum):
@@ -390,37 +390,84 @@ class TestMarkdown:
 
         assert "- Inherited by: [SchemaOrganisation](SchemaOrganisation.md), [SchemaPerson](SchemaPerson.md)\n" in page
 
-    def test_an_index_page(self, schema):
-        page = index_markdown(schema, link=link)
 
-        assert "[SchemaPerson](SchemaPerson.md)" in page
-        assert "Anyone we know about." in page
-        assert "SCHEMA_WORKS_FOR" in page
+class PatternAgent(BaseNode):
+    """Abstract, and carrying no label of its own for its subclasses to share."""
+
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
 
 
-class TestMermaid:
+class PatternActor(PatternAgent):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternActor"
+    __inheritablelabels__: ClassVar[list[str]] = ["PatternActor"]
+
+    motivation: Optional[Literal["espionage", "financial"]] = None
+
+
+class PatternSubActor(PatternActor):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternSubActor"
+
+
+class PatternGroup(PatternAgent):
+    __primarylabel__: ClassVar[Optional[str]] = "PatternGroup"
+
+
+class PatternUses(BaseRelationship):
+    __relationshiptype__: ClassVar[Optional[str]] = "PATTERN_USES"
+
+    source: PatternAgent
+    target: PatternGroup
+
+    weights: list[int] | None = None
+
+
+PATTERN_MODELS = [PatternAgent, PatternActor, PatternSubActor, PatternGroup, PatternUses]
+
+
+class TestCypherPatterns:
     def test_the_whole_ontology(self, schema):
-        diagram = mermaid_diagram(schema)
+        assert cypher_patterns(schema) == (
+            "(:SchemaOrganisation:SchemaThing {ident: str PP, founded: date})\n"
+            "  // An organisation people can work for.\n"
+            "  // ident: Unique identifier.\n"
+            '(:SchemaPerson:SchemaThing {ident: str PP, name: str, known_as: str, favourite: "red"|"blue",'
+            " created: datetime, updated: datetime})\n"
+            "  // Anyone we know about.\n"
+            "  // ident: Unique identifier.\n"
+            "  // name: Full name.\n"
+            '(:SchemaEmployee:SchemaPerson:SchemaThing {ident: str PP, name: str, known_as: str, favourite: "red"|"blue",'
+            " created: datetime, updated: datetime, staff_number: int})\n"
+            "  // A person employed by an organisation.\n"
+            "  // ident: Unique identifier.\n"
+            "  // name: Full name.\n"
+            "\n"
+            "(:SchemaPerson)-[:SCHEMA_WORKS_FOR {role: str, since: date}]->(:SchemaOrganisation)\n"
+            "  // Employment.\n"
+            "  // role: Job title.\n"
+            "(:SchemaThing)-[:SCHEMA_KNOWS]->(:SchemaPerson)\n"
+        )
 
-        assert diagram.startswith("classDiagram\n")
-        assert "SchemaThing <|-- SchemaPerson" in diagram
-        assert "SchemaPerson <|-- SchemaEmployee" in diagram
-        assert "SchemaPerson --> SchemaOrganisation : SCHEMA_WORKS_FOR" in diagram
-        assert "<<abstract>>" in diagram
+    def test_without_secondary_labels_every_class_at_an_end_is_named(self, schema):
+        patterns = cypher_patterns(schema, capabilities=set(Capability) - {Capability.SECONDARY_LABELS}, descriptions=False)
 
-    def test_a_diagram_around_one_node(self, schema):
-        diagram = mermaid_diagram(schema, focus=node(schema, SchemaOrganisation))
+        assert "(:SchemaPerson {ident: str PP," in patterns
+        assert "(:SchemaOrganisation|SchemaPerson|SchemaEmployee)-[:SCHEMA_KNOWS]->(:SchemaPerson|SchemaEmployee)\n" in patterns
 
-        assert "SchemaThing <|-- SchemaOrganisation" in diagram
-        assert "SchemaPerson --> SchemaOrganisation : SCHEMA_WORKS_FOR" in diagram
-        assert "SchemaEmployee" not in diagram
+    def test_a_class_is_found_by_a_label_it_inherits_where_no_label_is_shared(self):
+        patterns = cypher_patterns(get_ontology_schema(models=PATTERN_MODELS), descriptions=False)
 
-    def test_relationships_leaving_a_scoped_schema_are_still_drawn(self):
-        # the organisation is outside the schema, as the Markdown pages still name it
-        diagram = mermaid_diagram(get_ontology_schema(SchemaPerson))
+        assert "(:PatternActor|PatternGroup)-[:PATTERN_USES {weights: list[int]}]->(:PatternGroup)\n" in patterns
 
-        assert "SchemaPerson --> SchemaOrganisation : SCHEMA_WORKS_FOR" in diagram
-        assert "SchemaThing --> SchemaPerson : SCHEMA_KNOWS" in diagram
+    def test_abstract_classes_are_left_out(self):
+        patterns = cypher_patterns(get_ontology_schema(models=PATTERN_MODELS), descriptions=False)
+
+        assert "PatternAgent" not in patterns
+        assert '(:PatternSubActor:PatternActor {name: str PP, motivation: "espionage"|"financial"})\n' in patterns
+
+    def test_descriptions_can_be_left_out(self, schema):
+        assert "//" not in cypher_patterns(schema, descriptions=False)
 
 
 class TestDeprecatedMarkdownMethods:

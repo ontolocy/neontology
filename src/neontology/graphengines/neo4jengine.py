@@ -1,8 +1,8 @@
 from typing import Any, ClassVar, Optional, Sequence, Union
 
+from pydantic import SecretStr
 from typing_extensions import LiteralString, cast
 
-from ..gql import gql_identifier_adapter
 from .bolt import BoltEngine
 from .capabilities import Capability
 from .dbschema import Constraint, ConstraintType, Index, SchemaEntity, normalise_properties
@@ -61,7 +61,7 @@ class Neo4jEngine(BoltEngine):
         Returns:
             str: the rendered pattern.
         """
-        rendered = ", ".join(f"n.{gql_identifier_adapter.validate_strings(x)}" for x in properties)
+        rendered = ", ".join(f"n.{self.identifier(x)}" for x in properties)
 
         return f"({rendered})"
 
@@ -77,7 +77,7 @@ class Neo4jEngine(BoltEngine):
 
         cypher = f"""
         CREATE CONSTRAINT IF NOT EXISTS
-        FOR (n:{gql_identifier_adapter.validate_strings(label)})
+        FOR (n:{self.identifier(label)})
         REQUIRE {self._property_pattern(normalise_properties(properties))} IS UNIQUE
         """
 
@@ -98,8 +98,8 @@ class Neo4jEngine(BoltEngine):
         for property_name in normalise_properties(properties):
             cypher = f"""
             CREATE CONSTRAINT IF NOT EXISTS
-            FOR (n:{gql_identifier_adapter.validate_strings(label)})
-            REQUIRE n.{gql_identifier_adapter.validate_strings(property_name)} IS NOT NULL
+            FOR (n:{self.identifier(label)})
+            REQUIRE n.{self.identifier(property_name)} IS NOT NULL
             """
 
             self.evaluate_query_single(cypher)
@@ -118,7 +118,7 @@ class Neo4jEngine(BoltEngine):
         RETURN name, type, entityType, labelsOrTypes, properties
         """
 
-        result = self.driver.execute_query(cast(LiteralString, cypher))
+        result = self.driver.execute_query(cast(LiteralString, cypher), routing_=self._routing())
 
         constraints = []
 
@@ -158,7 +158,7 @@ class Neo4jEngine(BoltEngine):
             return
 
         cypher = f"""
-        DROP CONSTRAINT {gql_identifier_adapter.validate_strings(name)} IF EXISTS
+        DROP CONSTRAINT {self.identifier(name)} IF EXISTS
         """
 
         self.evaluate_query_single(cypher)
@@ -184,7 +184,7 @@ class Neo4jEngine(BoltEngine):
 
         cypher = f"""
         CREATE INDEX IF NOT EXISTS
-        FOR (n:{gql_identifier_adapter.validate_strings(label)})
+        FOR (n:{self.identifier(label)})
         ON {self._property_pattern(property_names)}
         """
 
@@ -210,7 +210,7 @@ class Neo4jEngine(BoltEngine):
         RETURN name, entityType, labelsOrTypes, properties
         """
 
-        result = self.driver.execute_query(cast(LiteralString, cypher))
+        result = self.driver.execute_query(cast(LiteralString, cypher), routing_=self._routing())
 
         indexes = []
 
@@ -245,7 +245,7 @@ class Neo4jEngine(BoltEngine):
             return
 
         cypher = f"""
-        DROP INDEX {gql_identifier_adapter.validate_strings(name)} IF EXISTS
+        DROP INDEX {self.identifier(name)} IF EXISTS
         """
 
         self.evaluate_query_single(cypher)
@@ -257,7 +257,9 @@ class Neo4jConfig(GraphEngineConfig):
     engine: ClassVar[type[GraphEngineBase]] = Neo4jEngine
     uri: Optional[str] = None
     username: Optional[str] = None
-    password: Optional[str] = None
+    # a SecretStr, so printing, logging or dumping a config never shows it. A plain
+    # string is accepted and wrapped; password.get_secret_value() gives it back.
+    password: Optional[SecretStr] = None
 
     env_fields: ClassVar[dict[str, str]] = {
         "uri": "NEO4J_URI",
@@ -281,11 +283,3 @@ class Neo4jConfig(GraphEngineConfig):
             raise ValueError("Username should be set by validator")
 
         return self.username
-
-    @property
-    def connection_password(self) -> str:
-        """Get the password, guaranteed to be non-None after validation."""
-        if self.password is None:
-            raise ValueError("Password should be set by validator")
-
-        return self.password

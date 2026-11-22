@@ -217,6 +217,29 @@ Because records are combined before anything is written, the inline record canno
 !!! note
     Give every node record an explicit primary property value, or one your model computes deterministically from the record. That value is how other content points at the node, and how records describing the same node are recognised as being about one node.
 
+## Nodes already in the graph
+
+A node the graph already holds changes only in the properties the content gives it. Content from different sources can therefore be imported separately and add to the same node, rather than each import replacing what the last one stored:
+
+```yaml
+# inventory.yaml
+LABEL: Host
+hostname: dns1
+owner: network-team
+asset_tag: asset-0091
+```
+
+```yaml
+# scan.yaml
+LABEL: Host
+hostname: dns1
+description: internal resolver
+```
+
+Importing `inventory.yaml` and then `scan.yaml` leaves `dns1` with its owner, its asset tag and its description. A node the graph does not yet hold is written in full, so the properties the content does not give take your model's defaults.
+
+To clear a property, give it as `null`. If your content is the complete record of its nodes - so that removing a property from a file should remove it from the graph - pass `partial=False`, which writes every property the way `merge_records()` does by default.
+
 ## Matching on another property
 
 Where nodes carry a second unique identifier, a relationship can match on it instead of the primary property:
@@ -269,7 +292,7 @@ report.files             # the files it read
 report.unresolved        # endpoints which did not identify exactly one node
 ```
 
-`import_records()` takes records you already have as dictionaries, rather than files.
+`import_records()` takes records you already have as dictionaries, rather than files: a list of them, a single one, or the `nodes` and `edges` container a query result dumps.
 
 Markdown files hold one record as YAML frontmatter, and name the property their body belongs in:
 
@@ -311,7 +334,7 @@ import_csv(
 
 Two rules are worth knowing:
 
-- **An empty cell means the property was not given**, so the model's default applies rather than the property being set to an empty string. A CSV cannot express an empty string as a value.
+- **An empty cell means the property was not given**, rather than being an empty string: a new node takes the model's default, and one already in the graph [keeps its value](#nodes-already-in-the-graph). A CSV cannot express an empty string as a value.
 - **Every value is read as text and converted by the model**, so columns of numbers, booleans and dates arrive as the type the model declares. A property holding a list needs a format that nests.
 
 A row which does not validate is reported with the line it is on, counting the header as line 1.
@@ -325,6 +348,7 @@ A row which does not validate is reported with the line it is on, counting the h
 | `error_on_unmatched` | `False` | raise rather than warn where one does not |
 | `validate_only` | `False` | check the content, write nothing |
 | `batch_size` | `None` | how many records to write per query |
+| `partial` | `True` | change a node already in the graph only in the properties the content gives it; `False` writes every property |
 
 `batch_size` limits the size of each write. It does not limit what a relationship can refer to.
 
@@ -374,7 +398,45 @@ content/dns.yaml
       graph, and ResolvesTo has no property by that name. Did you mean 'TARGET_PROPERTY'?
 ```
 
+Validation checks each record the way writing it would: against its model, and that the graph can store every value. Some values a model accepts cannot be stored as a property - a dict, or a list mixing types such as `[1, "a"]` - and those are reported against their record, naming the property, rather than failing the write later.
+
 Validating writes nothing, so relationship endpoints resolve against the graph **and** against the content being imported — a relationship pointing at a node the content itself defines is not reported as unresolved.
+
+#### Without a database
+
+Validation needs no database. With nothing connected, it runs exactly the same checks, with two differences:
+
+```python
+from neontology.tools import import_yaml
+
+# no init_neontology() - nothing is connected
+report = import_yaml("content/", validate_only=True, error_on_unmatched=True)
+```
+
+- Relationship endpoints resolve against the content alone. A relationship to a node that is in your database but not in the content is reported as unresolved, saying that only the content was checked — so content which relies on nodes already in the graph is best validated connected, or without `error_on_unmatched`. Nor can an endpoint be seen to match more than one node already in the graph.
+- Values are checked against what every engine can store, rather than against the one you will import into.
+
+That makes it a check that can run anywhere — in a pull request against a content repository, or on records generated by a program, before anything touches a graph.
+
+### Content a program produces
+
+When a program writes the content - a language model with structured output, most often - `record_model()` gives it something to be held to. It builds a pydantic type for a list of records from your models: a node record per concrete node class, with its `LABEL` and properties, and a relationship record per relationship class, naming the `SOURCE_LABEL` and `TARGET_LABEL` it allows and a single `SOURCE` and `TARGET`. A key the import would reject is not allowed.
+
+```python
+from neontology.tools import import_records, record_model
+
+Records = record_model(models=[Host, IPAddress, ResolvesTo])
+
+schema = Records.model_json_schema()   # for a structured-output API, or a file other tools check against
+
+records = Records.model_validate_json(response_text)
+
+import_records([record.model_dump(exclude_unset=True) for record in records.root])
+```
+
+It describes only the simplest form of the format - flat records, one node or relationship each - since the less a schema allows, the better constrained decoding does with it. It checks the shape of the content, not everything the import does: your models' validators are not part of it, and endpoints are not resolved, so validate with `validate_only=True` too. Pass `models` to describe only the classes one extraction covers.
+
+A structured-output API in a strict mode usually makes every property required, so a model writes `null` for one it does not know. An imported `null` clears that property, so dump those records with `exclude_none=True` instead, leaving out what was not given.
 
 ### Errors
 
@@ -400,7 +462,7 @@ data = result.neontology_dump()       # {'nodes': [...], 'edges': [...]}
 
 Path("content/graph.json").write_text(result.neontology_dump_json())
 
-import_records([data])
+import_records(data)
 ```
 
 That container — `nodes` and `edges` — is accepted by the importer as a third layout alongside combined and split.

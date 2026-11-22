@@ -8,6 +8,7 @@ from neontology.baserelationship import BaseRelationship
 from neontology.utils import (
     get_node_types,
     get_rels_by_source,
+    get_rels_by_target,
     get_rels_by_type,
 )
 
@@ -28,6 +29,40 @@ def test_get_rels_by_source():
     rels_by_source = get_rels_by_source()
 
     assert rels_by_source["MyNodeType"] == {"MY_REL_TYPE"}
+
+
+def test_get_rels_by_node_with_abstract_subclasses():
+    """An abstract class between the declared end and a concrete one is skipped, however it is spelled.
+
+    One which never declared __primarylabel__ used to raise AttributeError, from every
+    lookup rather than only those involving it.
+    """
+
+    class UtilAnimal(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        pp: str
+
+    class UtilPet(UtilAnimal):  # abstract: never declares a label
+        pass
+
+    class UtilWild(UtilAnimal):  # abstract: label is None
+        __primarylabel__: ClassVar[Optional[str]] = None
+
+    class UtilDog(UtilPet):
+        __primarylabel__: ClassVar[Optional[str]] = "UtilDog"
+
+    class UtilWolf(UtilWild):
+        __primarylabel__: ClassVar[Optional[str]] = "UtilWolf"
+
+    class UtilChases(BaseRelationship):
+        source: UtilAnimal
+        target: UtilAnimal
+        __relationshiptype__: ClassVar[Optional[str]] = "UTIL_CHASES"
+
+    for lookup in (get_rels_by_source, get_rels_by_target):
+        by_node = lookup()
+
+        assert {label for label, rel_types in by_node.items() if "UTIL_CHASES" in rel_types} == {"UtilDog", "UtilWolf"}
 
 
 def test_get_rels_by_type_subclasses():

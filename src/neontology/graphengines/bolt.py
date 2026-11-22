@@ -8,7 +8,7 @@ database names and reports constraints and indexes differs, and stays on the eng
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Iterator, Optional, Union
 
-from neo4j import GraphDatabase
+from neo4j import GraphDatabase, RoutingControl
 from neo4j import Record as Neo4jRecord
 from neo4j import Result as Neo4jResult
 from neo4j.graph import Node as Neo4jNode
@@ -150,23 +150,43 @@ class BoltEngine(GraphEngineBase):
 
         Args:
             config (Union[Neo4jConfig, MemgraphConfig]): the engine's connection details.
+
+        Raises:
+            ValueError: if the config has no password.
         """
+        super().__init__(config)
+
+        # the config's validator fills it, so this is for the type checker
+        if config.password is None:
+            raise ValueError("No password was set on the config.")
+
         self.driver = GraphDatabase.driver(
             config.connection_uri,
-            auth=(config.connection_username, config.connection_password),
+            auth=(config.connection_username, config.password.get_secret_value()),
         )
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the database.
+    def _routing(self, read_only: bool = False) -> RoutingControl:
+        """Say how to route a query: as a read, which the database refuses to let write, or not.
+
+        Both Neo4j and Memgraph refuse a write sent as a read through `execute_query`. Every
+        query here goes that way, so a read-only connection sends every query as a read.
+
+        Args:
+            read_only (bool): whether this query is to be read-only.
 
         Returns:
-            bool: True if the connection is successful, False otherwise.
+            RoutingControl: READ or WRITE.
         """
-        try:
-            self.driver.verify_connectivity()
-            return True
-        except:  # noqa: E722
-            return False
+        return RoutingControl.READ if read_only or self.read_only else RoutingControl.WRITE
+
+    def check_connection(self) -> None:
+        """Check the database can be reached and the credentials are accepted.
+
+        Raises:
+            Exception: the driver's error saying why not, such as `AuthError` or
+                `ServiceUnavailable`.
+        """
+        self.driver.verify_connectivity()
 
     def close_connection(self) -> None:
         """Close the connection to the database."""
@@ -181,6 +201,8 @@ class BoltEngine(GraphEngineBase):
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query and return the results as Neontology records.
 
@@ -190,28 +212,35 @@ class BoltEngine(GraphEngineBase):
             node_classes (dict, optional): mapping of labels to node classes used for populating with results. Defaults to {}.
             relationship_classes (dict, optional): mapping of relationship types to classes used for populating with results.
                 Defaults to {}.
+            read_only (bool): send the query as a read, so the database refuses it if it
+                writes. Defaults to False.
 
         Returns:
             NeontologyResult: Result object containing the records, nodes, relationships, and paths.
         """
         # the driver asks for a literal to discourage interpolating values; ours are
         # passed as parameters, and anything interpolated is a validated identifier
-        result = self.driver.execute_query(cast(LiteralString, cypher), parameters_=params)
+        result = self.driver.execute_query(cast(LiteralString, cypher), parameters_=params, routing_=self._routing(read_only))
 
         return build_result(result.records, bolt_rows(result.records), node_classes, relationship_classes)
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
             cypher (str): query to evaluate.
             params (dict, optional): parameters to pass through. Defaults to {}.
+            read_only (bool): send the query as a read, so the database refuses it if it
+                writes. Defaults to False.
 
         Returns:
             Optional[Any]: Query result, or None if no result is found.
         """
         result = self.driver.execute_query(
-            cast(LiteralString, cypher), parameters_=params, result_transformer_=Neo4jResult.single
+            cast(LiteralString, cypher),
+            parameters_=params,
+            result_transformer_=Neo4jResult.single,
+            routing_=self._routing(read_only),
         )
 
         if result:

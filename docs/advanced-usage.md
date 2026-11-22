@@ -68,6 +68,34 @@ Person.get_count()     # 2
 `delete()` follows the same rule, so `Person.delete("alice")` deletes the employee named
 alice.
 
+An abstract class can be queried the same way, by an inheritable label it declares itself.
+Every class below it carries that label, so its nodes are theirs:
+
+```python
+class Vulnerability(BaseNode):
+    __primaryproperty__: ClassVar[str] = "id"
+    __inheritablelabels__: ClassVar[list[str]] = ["Vulnerability"]
+    id: str
+
+
+class CVE(Vulnerability):
+    __primarylabel__: ClassVar[Optional[str]] = "CVE"    # written as :CVE:Vulnerability
+
+
+class GHSA(Vulnerability):
+    __primarylabel__: ClassVar[Optional[str]] = "GHSA"   # written as :GHSA:Vulnerability
+
+
+Vulnerability.match_nodes()   # [CVE(id='CVE-2021-44228'), GHSA(id='GHSA-jfh8-c2jp-5v3q')]
+```
+
+`match_nodes()`, `match()`, `get_count()` and `delete()` all work this way, and
+`GraphConnection().engine.label_pattern("Vulnerability")` gives the pattern for your own
+queries on any engine. `match()` looks across every class below, so if two of them could
+share a primary property value, it returns one of them. An abstract class which only
+inherits its label from its parent has none of its own to be queried by - its parent's
+would find its siblings' nodes too - so querying it raises an error saying so.
+
 Only a class which inherits from `Person` may carry the `Person` label. A class carrying the
 primary label of a class it does not inherit from - through either kind of label - raises a
 `DuplicateLabelWarning` when it is defined, or a `DuplicateLabelError` in
@@ -115,8 +143,8 @@ already knew about, and go on building results without the new one.
 
 Abstract classes - those with `__primarylabel__ = None`, or which never declare a
 `__primarylabel__` at all - exist to share properties between models. They are never
-registered, because they are never written to the graph, and instantiating one raises
-`NotImplementedError`.
+registered, because they are never written to the graph, and instantiating or querying one
+raises `NotImplementedError`.
 
 To look up the models Neontology knows about, use `get_node_types()` and
 `get_rels_by_type()`. They do not need a database connection, so they work anywhere your

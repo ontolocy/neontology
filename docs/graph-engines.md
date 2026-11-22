@@ -129,16 +129,33 @@ only covers Neontology's own writes: a query you write yourself still has to nam
 labels, relationship types and properties the database already knows about, because
 Ladybug rejects a query naming one that does not exist rather than matching nothing.
 
+So run `initialise_graph()` when your application starts, before it queries - and
+again at startup whenever your models change, rather than leaving `auto_create` to grow
+a table while the application runs. Ladybug 0.20.4 remembers how it ran each query on a
+connection, and does not forget when the schema changes: a query that failed for want of
+a table goes on failing once the table exists, and a read run before a column was added
+goes on returning nodes without it, so that property comes back as its default.
+Reconnecting to an on-disk database clears both.
+
+Ladybug also reserves some words the other engines accept as names, such as `end` and
+`order`. Neontology quotes every name it writes into a Ladybug query, so a model using
+one works as it does elsewhere, but a query you write yourself has to quote it with
+backticks: ``MATCH (n:`Order`) RETURN n.`end` ``.
+
 #### One label per node
 
 A Ladybug node lives in the table named by its primary label, and carries no other
 label, so `__secondarylabels__` and `__inheritablelabels__` are not written to the graph.
 
 Querying through your models is unaffected: `match_nodes()`, `match()`, `get_count()`,
-`delete()` and `related_nodes()` match a class as the union of its own and its
-subclasses' primary labels, so asking for `Person` still returns the `Employee` nodes
-and builds each one as itself. What does not work is a raw query naming a secondary
-label directly, since there is no table behind it.
+`delete()` and `related_nodes()` match a class as the union of its own primary label and
+those of the subclasses which [inherit it](advanced-usage.md#inheritable-labels), so they
+find the same nodes as on any other engine. If `Employee` inherits the `Person` label,
+asking for `Person` still returns the `Employee` nodes and builds each one as itself, and
+an abstract class is matched as every table below it carrying the label it passes down.
+`engine.label_pattern(label)` writes that union for your own queries, so
+`f"MATCH (n{engine.label_pattern('Vulnerability')})"` runs on every engine. What does not
+work is a raw query naming a secondary label directly, since there is no table behind it.
 
 Constraints and indexes are not available either. A node table's primary key is its
 class' primary property, so uniqueness there is enforced by the database - a second
@@ -146,12 +163,26 @@ class' primary property, so uniqueness there is enforced by the database - a sec
 property tagged `unique` is not, and there is nothing to index. See the capability
 matrix below.
 
+#### Threads and processes
+
+Neontology opens one Ladybug connection, which every thread shares - a web server's
+request threads included. That is safe: Ladybug runs the queries on a connection one at
+a time, so threads take turns rather than running in parallel, and each query uses every
+core on its own. Neontology does not pool connections because Ladybug allows one write
+at a time per database, and a write arriving on a second connection while another is
+running fails rather than waiting.
+
+An on-disk database can be open in one process at a time. A second process opening the
+same `db_path` - a development server and a command line import, say - fails to
+connect, with Ladybug's error saying the file is locked.
+
 ### Engine capability matrix
 
 Where an engine cannot offer something, it is named as a capability and declared on the
 engine itself. The table below is generated from those declarations and checked by a
 test, so it cannot drift - see `Capability` in `neontology.graphengines.capabilities`
-for what each one means.
+for what each one means. Sharing a connection across threads is not listed, because every
+engine supports it.
 
 <!-- BEGIN CAPABILITY MATRIX -->
 | Capability | Neo4j | Memgraph | NetworkX | Ladybug |
@@ -160,6 +191,7 @@ for what each one means.
 | `undeclared_schema` | Yes | Yes | Yes | No |
 | `timezone_aware_datetimes` | Yes | Yes | Yes | No |
 | `graph_mutations` | Yes | Yes | No | Yes |
+| `read_only_queries` | Yes | Yes | Yes | No |
 | `return_star` | Yes | Yes | No | Yes |
 | `duplicate_create` | Yes | Yes | No | No |
 | `datetime_filters` | Yes | Yes | No | Yes |
@@ -397,18 +429,88 @@ init_neontology(MemgraphConfig(...))   # now talking to Memgraph
 ```
 
 The new connection is established and checked before the old one is closed, so a config
-that cannot connect leaves the existing connection working. `GraphConnection()` returns
+that cannot connect leaves the existing connection working. The `RuntimeError` it raises
+includes the driver's own reason, such as an authentication failure, a server that is not
+running, or a Ladybug database file locked by another process. `GraphConnection()` returns
 the same object either way, so anything holding one keeps working after a reconnect.
 
 Because `init_neontology` replaces the connection, it is an application startup call
 rather than something to call defensively - calling it repeatedly will reconnect each
-time.
+time. For an in-memory database (Ladybug's default `:memory:`, or NetworkX) a reconnect
+is a new, empty database.
+
+Where it may be called more than once with the same settings - an application factory,
+or a test fixture - pass `reuse_connection=True`. If the live connection was made with an
+equal config it is kept as it is, and otherwise Neontology connects as usual:
+
+```python
+init_neontology(LadybugConfig(), reuse_connection=True)
+init_neontology(LadybugConfig(), reuse_connection=True)   # same database, data kept
+```
+
+Configs are compared by value, after any fields left out have been filled from the
+environment, so a config built the same way again counts as the same one.
 
 Use `GraphConnection().close()` to close the connection. Neontology can be initialised
 again afterwards.
 
-If you need to talk to two databases at once, work with the native driver at
-`.engine.driver` rather than trying to hold two Neontology connections.
+### Which connection am I using?
+
+`GraphConnection()` shows the config it was made with, so in a notebook or a debugger you
+can see what you are talking to:
+
+```python
+>>> GraphConnection()
+GraphConnection(Neo4jConfig(read_only=False, uri='bolt://localhost:7687', username='neo4j', password=SecretStr('**********')))
+```
+
+`init_neontology` logs the same thing, at `INFO`, each time it connects. Passwords are
+pydantic `SecretStr`s, so they show masked wherever a config is printed, logged or
+dumped; pydantic's `config.password.get_secret_value()` gives the value back if you need it. Use
+`GraphConnection().supports(Capability.X)` to ask what the engine can do, and
+`GraphConnection()` raises a `RuntimeError` if nothing is connected yet.
+
+To ask whether the connection still works - from a health check, say -
+`GraphConnection().engine.verify_connection()` answers `True` or `False`, and
+`GraphConnection().engine.check_connection()` raises the driver's error saying why not.
+
+The connection belongs to the whole process, and every thread shares it - safely, on every
+engine. Neo4j and Memgraph run queries from several threads in parallel, through the
+driver's own pool of connections, while [Ladybug](#threads-and-processes) runs them one at
+a time. Two threads merging the same node at once are only guaranteed to leave one node
+where a uniqueness constraint backs it, which `initialise_graph()` applies on the
+servers. Calling `init_neontology` again switches every thread at once, so it is not a way to talk to a
+different database per request. If you need to talk to two databases at once, run a
+process per database, or work with the native driver at `.engine.driver` rather than
+trying to hold two Neontology connections.
+
+### Read-only access
+
+To use Neontology with no possibility of writing, connect read-only:
+
+```python
+init_neontology(Neo4jConfig(..., read_only=True))
+```
+
+Neontology then refuses its own writes - `create()`, `merge()`, `merge_records()`, `delete()`, a relationship's `merge()`, `initialise_graph()`, and applying or dropping constraints and indexes - with a `ReadOnlyError`, before anything reaches the database. Any query you run that writes is refused by the database itself, since Neontology cannot tell what an arbitrary query does. The connection's repr shows `read_only=True`, and a read-only config is never equal to one which can write, so `reuse_connection=True` will not hand back the wrong one.
+
+To run one query read-only on a connection which can write - one a language model wrote from [`cypher_patterns()`](describing-your-ontology.md#cypher-patterns-for-writing-queries), say - pass `read_only=True`:
+
+```python
+gc.evaluate_query(generated_cypher, read_only=True)
+gc.evaluate_query_single(generated_cypher, read_only=True)
+```
+
+How each engine enforces it:
+
+| Engine | Read-only connection | Read-only query |
+| --- | --- | --- |
+| Neo4j | every query is sent as a read, which the server refuses to let write | sent as a read |
+| Memgraph | every query is sent as a read, which the server refuses to let write | sent as a read |
+| Ladybug | the database is opened read-only, which refuses every write. Only an on-disk database can be: `LadybugConfig(db_path=..., read_only=True)` | not supported: raises `CapabilityNotSupportedError` unless the connection is read-only |
+| NetworkX | Neontology refuses its own writes; a query cannot write anyway | every query is read-only already |
+
+Sending a query as a read also routes it to a read replica, where a Neo4j cluster has them. Two caveats: Memgraph only enforces it for queries sent as Neontology sends them, so a session you open on `.engine.driver` yourself with a read access mode can still write; and a read-only Ladybug database cannot have its tables declared, so open it read-only only after `initialise_graph()` has run.
 
 ## Neo4j
 

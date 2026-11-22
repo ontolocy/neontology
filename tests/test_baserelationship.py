@@ -387,6 +387,42 @@ def test_merge_records(use_graph):
     assert result == "New Rel 5"
 
 
+def test_merge_records_does_not_build_defaults_per_record(use_graph):
+    """The nodes standing in for each end are copied, not built with every default again.
+
+    Building them with model_construct() called each default_factory for both ends of
+    every record, which dominated a large import.
+    """
+    calls = 0
+
+    def counted_list() -> list:
+        nonlocal calls
+        calls += 1
+        return []
+
+    class FactoryCountNode(BaseNode):
+        __primaryproperty__: ClassVar[str] = "pp"
+        __primarylabel__: ClassVar[Optional[str]] = "FactoryCountNode"
+        pp: str
+        tags: list[str] = Field(default_factory=counted_list)
+
+    class FactoryCountRel(BaseRelationship):
+        __relationshiptype__: ClassVar[Optional[str]] = "FACTORY_COUNT_REL"
+        source: FactoryCountNode
+        target: FactoryCountNode
+
+    FactoryCountNode.merge_records([{"pp": str(i)} for i in range(51)])
+
+    calls = 0
+
+    FactoryCountRel.merge_records([{"source": str(i), "target": str(i + 1)} for i in range(50)])
+
+    # a constant, rather than once for each end of each of the 50 records
+    assert calls <= 2
+
+    assert FactoryCountRel.get_count() == 50
+
+
 def test_create_mass_rels(engine, use_graph, benchmark):
     practice_records = [{"pp": uuid4().hex} for x in range(1000)]
 
@@ -472,6 +508,18 @@ def test_neontology_dump_uses_uppercase_endpoint_keys(use_graph):
     assert dumped["TARGET"] == "Target Node"
     assert "source" not in dumped
     assert "target" not in dumped
+
+
+def test_neontology_dump_with_node_props_names_each_ends_primary_property_as_pp(use_graph):
+    # __pp__, as node-link data names it, rather than "PK"
+    rel = NewRelType(source=PracticeNode(pp="Source Node"), target=PracticeNode(pp="Target Node"), new_rel_prop="Rel 1")
+
+    dumped = rel.neontology_dump(exclude_node_props=False)
+
+    assert dumped["source"]["__pp__"] == "Source Node"
+    assert dumped["source"]["LABEL"] == "PracticeNodeRel"
+    assert dumped["target"]["__pp__"] == "Target Node"
+    assert "PK" not in dumped["source"]
 
 
 def test_neontology_dump_json_uses_uppercase_endpoint_keys(use_graph):

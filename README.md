@@ -13,6 +13,8 @@ Neontology is a simple object-graph mapper which lets you use [Pydantic](https:/
 
 Neontology is inspired by projects like py2neo (which is no longer maintained), Beanie and SQLModel.
 
+The same models give LLMs and AI agents typed, validated access to a knowledge graph: describing it to a model, holding what a model writes to your ontology with structured output, and validating it before anything is written. See [Knowledge Graphs for LLMs and AI Agents](https://neontology.readthedocs.io/en/latest/llms-and-agents/).
+
 Read the documentation [here](https://neontology.readthedocs.io/en/latest/).
 
 ## Installation

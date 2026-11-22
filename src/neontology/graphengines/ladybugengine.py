@@ -14,7 +14,7 @@ the label, unless the config asks for `auto_create`.
 A node belongs to **exactly one table**, so it carries exactly one label - hence
 `SECONDARY_LABELS` is not supported. Several labels in a pattern are a *union* in
 Ladybug rather than an intersection, which is what makes `label_pattern()` able to
-match a class together with its subclasses.
+match a class together with the subclasses carrying its label.
 
 Two properties of Ladybug's parameter binding drive the way queries are built:
 
@@ -321,12 +321,17 @@ class LadybugEngine(GraphEngineBase):
     )
 
     capability_hints: ClassVar[dict[Capability, str]] = {
+        Capability.READ_ONLY_QUERIES: (
+            "Ladybug opens a database read-only or not, with no read-only mode for one query."
+            " To run queries which cannot write, connect read-only, with"
+            " LadybugConfig(db_path=..., read_only=True)."
+        ),
         Capability.SECONDARY_LABELS: (
             "A Ladybug node lives in the table named by its primary label and carries no"
             " other label, so a query naming a secondary or inheritable label directly"
             " finds nothing. Class scoped queries - match_nodes(), match(), get_count(),"
-            " related_nodes() - still find subclasses, because the engine matches a class"
-            " as the union of its own and its subclasses' primary labels."
+            " related_nodes() - still find the subclasses carrying a class' label, because"
+            " the engine matches a class as the union of its own and their primary labels."
         ),
         Capability.DUPLICATE_CREATE: (
             "Every node table is keyed on its class' primary property, so creating a"
@@ -377,7 +382,10 @@ class LadybugEngine(GraphEngineBase):
             config (LadybugConfig): where the database lives, and whether to declare
                 tables on write.
         """
-        self.database = lb.Database(config.db_path)
+        super().__init__(config)
+
+        # read-only is Ladybug's own: the database refuses every write made through it
+        self.database = lb.Database(config.db_path, read_only=config.read_only)
         self.driver = lb.Connection(self.database)
 
         self.auto_create = config.auto_create
@@ -387,17 +395,13 @@ class LadybugEngine(GraphEngineBase):
 
     # -- connection ---------------------------------------------------------
 
-    def verify_connection(self) -> bool:
-        """Verify the database is open and answering.
+    def check_connection(self) -> None:
+        """Check the database is open and answering.
 
-        Returns:
-            bool: True if it is.
+        Raises:
+            Exception: Ladybug's error saying why it is not.
         """
-        try:
-            return self._run("RETURN 1") == [[1]]
-
-        except Exception:
-            return False
+        self._run("RETURN 1")
 
     def close_connection(self) -> None:
         """Close the connection and the database, releasing an on-disk database's lock."""
@@ -447,6 +451,8 @@ class LadybugEngine(GraphEngineBase):
         params: dict = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query and return the results as Neontology records.
 
@@ -457,10 +463,14 @@ class LadybugEngine(GraphEngineBase):
                 with results. Defaults to {}.
             relationship_classes (dict, optional): mapping of relationship types to classes used
                 for populating with results. Defaults to {}.
+            read_only (bool): require the query to be read-only, which only a read-only
+                connection can promise on Ladybug. Defaults to False.
 
         Returns:
             NeontologyResult: the records, and the nodes, relationships and paths in them.
         """
+        self._check_read_only(read_only)
+
         result = self._execute(cypher, params)
 
         columns = result.get_column_names()
@@ -473,22 +483,39 @@ class LadybugEngine(GraphEngineBase):
             relationship_classes,
         )
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
             cypher (str): query to evaluate.
             params (dict, optional): parameters to pass through. Defaults to {}.
+            read_only (bool): require the query to be read-only, which only a read-only
+                connection can promise on Ladybug. Defaults to False.
 
         Returns:
             Optional[Any]: the first value of the first row, or None if there are no rows.
         """
+        self._check_read_only(read_only)
+
         rows = self._run(cypher, params)
 
         if not rows or not rows[0]:
             return None
 
         return rows[0][0]
+
+    def _check_read_only(self, read_only: bool) -> None:
+        """Refuse to run a query as read-only on a connection which can write.
+
+        Ladybug has no read-only mode for one query, so on a connection which can write
+        there is nothing to make the promise good. Running the query anyway would be
+        the worst way to fail; a read-only connection runs every query read-only.
+
+        Args:
+            read_only (bool): whether the query was asked to be read-only.
+        """
+        if read_only and not self.read_only:
+            self._require(Capability.READ_ONLY_QUERIES)
 
     # -- the catalog --------------------------------------------------------
 
@@ -498,10 +525,14 @@ class LadybugEngine(GraphEngineBase):
         Returns:
             dict[str, str]: the tables.
         """
-        if self._tables is None:
-            self._tables = {row[1]: row[2] for row in self._run("CALL show_tables() RETURN *")}
+        # read into a local and returned from it: another thread's DDL can clear the cache
+        # between storing it and reading it back
+        tables = self._tables
 
-        return self._tables
+        if tables is None:
+            tables = self._tables = {row[1]: row[2] for row in self._run("CALL show_tables() RETURN *")}
+
+        return tables
 
     def _table_columns(self, table: str) -> dict[str, str]:
         """The columns of a table, by name, mapped to their Ladybug type.
@@ -512,10 +543,14 @@ class LadybugEngine(GraphEngineBase):
         Returns:
             dict[str, str]: the columns.
         """
-        if table not in self._columns:
-            self._columns[table] = {row[1]: row[2] for row in self._run(f"CALL table_info('{table}') RETURN *")}
+        # returned from a local, for the same reason as _catalog
+        columns = self._columns.get(table)
 
-        return self._columns[table]
+        if columns is None:
+            columns = {row[1]: row[2] for row in self._run(f"CALL table_info('{table}') RETURN *")}
+            self._columns[table] = columns
+
+        return columns
 
     def _pairs(self, table: str) -> set[tuple[str, str]]:
         """The FROM/TO node table pairs a relationship table connects.
@@ -578,56 +613,109 @@ class LadybugEngine(GraphEngineBase):
 
     # -- declaring the schema -----------------------------------------------
 
-    def label_pattern(self, label: str) -> str:
-        """Match a class as the union of its own and its subclasses' primary labels.
+    def identifier(self, name: str) -> str:
+        """Validate a name and quote it with backticks, as it is written into a query.
 
-        A Ladybug node carries one label, so a subclass node is not also labelled with
-        its parent's label the way it is on Neo4j. Several labels in a Ladybug pattern
-        are a union rather than an intersection, so naming the class and its subclasses
-        matches exactly the nodes the parent's label matches elsewhere.
+        Ladybug reserves some words the other engines accept as names - `end` and `order`
+        among them - so a property, label or relationship type spelled as one would not
+        parse. Every name is quoted rather than only reserved ones, so nothing depends on
+        a list of Ladybug's keywords. Quoting changes nothing else: a quoted name refers
+        to the same table or column as an unquoted one, in any case.
+
+        Names are kept unquoted everywhere else in this engine - the catalog is looked up
+        by name, and `table_info()` takes one as a string - and quoted only here.
+
+        Args:
+            name (str): the name to write.
+
+        Returns:
+            str: the name, validated and quoted.
+
+        Raises:
+            ValidationError: if the name is not a valid identifier.
+        """
+        return f"`{super().identifier(name)}`"
+
+    def label_pattern(self, label: str) -> str:
+        """Match a label as the union of the tables of every class carrying it.
+
+        A Ladybug node carries one label, so a subclass node inheriting its parent's label
+        is not labelled with it the way it is on Neo4j. Several labels in a Ladybug pattern
+        are a union rather than an intersection, so naming every class carrying the label -
+        a class and its subclasses, or every class below an abstract one passing it down -
+        matches exactly the nodes the label matches elsewhere.
 
         Labels with no table are left out: Ladybug rejects a pattern naming one, where
         the other engines simply match nothing.
 
         Args:
-            label (str): the class' primary label.
+            label (str): the label - a class' primary label, or one it passes down.
 
         Returns:
-            str: the fragment to follow the node variable with, such as ":Person:Employee".
+            str: the fragment to follow the node variable with, such as ":`Person`:`Employee`".
 
         Raises:
-            RuntimeError: if the class itself has no table.
+            RuntimeError: if no table holds nodes with the label.
         """
-        return ":" + ":".join(self._class_tables(label))
+        return ":" + ":".join(self.identifier(table) for table in self._class_tables(label))
 
-    def _class_tables(self, label: str) -> list[str]:
-        """The tables holding a class' nodes: its own, then its subclasses' that exist.
+    def _tables_carrying(self, label: str) -> list[str]:
+        """The tables holding the nodes a label matches: those of every class carrying it.
+
+        A Ladybug node carries one label, its table's name, so a node matches a label it
+        carries elsewhere - an inherited one - by being in the table of a class carrying
+        it. That is a class' own table and its subclasses' for its primary label, and the
+        tables of every class below an abstract one for the label it passes down. Tables
+        not declared yet are left out, since Ladybug rejects a pattern naming one.
 
         Args:
-            label (str): the class' primary label.
+            label (str): the label.
 
         Returns:
-            list[str]: the table names, the class' own first.
-
-        Raises:
-            RuntimeError: if the class itself has no table.
+            list[str]: the table names, the one named by the label first where there is one.
         """
         from ..utils import get_node_types
 
-        primary = gql_identifier_adapter.validate_strings(label)
+        label = gql_identifier_adapter.validate_strings(label)
 
-        self._require_table(primary, "node")
-
-        node_class = get_node_types().get(primary)
-
-        if node_class is None:
-            return [primary]
-
-        return [primary] + [
-            other
-            for other in get_node_types(node_class)
-            if other != primary and self._has_table(gql_identifier_adapter.validate_strings(other))
+        tables = [
+            table
+            for table, node_class in get_node_types().items()
+            if label in node_class._all_labels() and self._has_table(gql_identifier_adapter.validate_strings(table))
         ]
+
+        # a table no model class describes still holds the nodes its name labels
+        if not tables and self._has_table(label):
+            tables = [label]
+
+        return sorted(tables, key=lambda table: table != label)
+
+    def _class_tables(self, label: str) -> list[str]:
+        """The tables holding the nodes a label matches, as `_tables_carrying`, which have to exist.
+
+        Args:
+            label (str): the label.
+
+        Returns:
+            list[str]: the table names, the one named by the label first where there is one.
+
+        Raises:
+            RuntimeError: if no table holds nodes with the label.
+        """
+        from ..utils import get_node_types
+
+        tables = self._tables_carrying(label)
+
+        if tables:
+            return tables
+
+        if label in get_node_types():
+            self._require_table(label, "node")
+
+        raise RuntimeError(
+            f"LadybugDB has no table holding nodes labelled {label}: no class carrying it has a table yet."
+            " Declare the schema with GraphConnection().initialise_graph()."
+        )
 
     def _column_definitions(self, properties: Iterable["PropertySchema"]) -> dict[str, str]:
         """Read a described class' properties as validated column names and Ladybug types.
@@ -663,9 +751,12 @@ class LadybugEngine(GraphEngineBase):
         if not self._has_table(label):
             # the primary property is declared like any other column and then named as the
             # key, so a composite definition would be the same statement with more names
-            definitions = ", ".join(f"{name} {column_type}" for name, column_type in columns.items())
+            definitions = ", ".join(f"{self.identifier(name)} {column_type}" for name, column_type in columns.items())
 
-            self._ddl(f"CREATE NODE TABLE IF NOT EXISTS {label} ({definitions}, PRIMARY KEY ({primary}))")
+            self._ddl(
+                f"CREATE NODE TABLE IF NOT EXISTS {self.identifier(label)}"
+                f" ({definitions}, PRIMARY KEY ({self.identifier(primary)}))"
+            )
 
         else:
             self._add_columns(label, columns)
@@ -709,17 +800,19 @@ class LadybugEngine(GraphEngineBase):
 
         if not self._has_table(rel_type):
             definitions = ", ".join(
-                [f"FROM {source} TO {target}" for source, target in pairs]
-                + [f"{name} {column_type}" for name, column_type in columns.items()]
+                [f"FROM {self.identifier(source)} TO {self.identifier(target)}" for source, target in pairs]
+                + [f"{self.identifier(name)} {column_type}" for name, column_type in columns.items()]
             )
 
-            self._ddl(f"CREATE REL TABLE IF NOT EXISTS {rel_type} ({definitions})")
+            self._ddl(f"CREATE REL TABLE IF NOT EXISTS {self.identifier(rel_type)} ({definitions})")
 
         else:
             self._add_columns(rel_type, columns)
 
             for source, target in set(pairs) - self._pairs(rel_type):
-                self._ddl(f"ALTER TABLE {rel_type} ADD FROM {source} TO {target}")
+                self._ddl(
+                    f"ALTER TABLE {self.identifier(rel_type)} ADD FROM {self.identifier(source)} TO {self.identifier(target)}"
+                )
 
         return Table(
             label=rel_type,
@@ -741,7 +834,7 @@ class LadybugEngine(GraphEngineBase):
 
         for name, column_type in columns.items():
             if name not in existing:
-                self._ddl(f"ALTER TABLE {table} ADD IF NOT EXISTS {name} {column_type}")
+                self._ddl(f"ALTER TABLE {self.identifier(table)} ADD IF NOT EXISTS {self.identifier(name)} {column_type}")
 
     def initialise_graph(self, schema: "OntologySchema") -> list[SchemaObject]:
         """Declare the node and relationship tables an ontology needs.
@@ -770,6 +863,26 @@ class LadybugEngine(GraphEngineBase):
                 applied.append(table)
 
         return applied
+
+    def matching_property_values(self, label: str, prop: str, values: Iterable[Any]) -> list[Any]:
+        """Find which of some values a property of nodes with a label holds, once per node holding it.
+
+        A label with no table holds no nodes. The other engines match nothing for a label
+        they have never seen, while Ladybug rejects a query naming one, so it is answered
+        here without asking.
+
+        Args:
+            label (str): the label of the nodes to look in.
+            prop (str): the property to look at.
+            values (Iterable[Any]): the values to look for.
+
+        Returns:
+            list[Any]: each value found, repeated for every node holding it.
+        """
+        if not self._has_table(gql_identifier_adapter.validate_strings(label)):
+            return []
+
+        return super().matching_property_values(label, prop, values)
 
     # -- writing ------------------------------------------------------------
 
@@ -869,12 +982,11 @@ class LadybugEngine(GraphEngineBase):
                     " GraphConnection().initialise_graph() to bring the database up to date."
                 )
 
-            expressions[name] = f"CAST({variable}.{name} AS {column_type})"
+            expressions[name] = f"CAST({variable}.{self.identifier(name)} AS {column_type})"
 
         return expressions
 
-    @staticmethod
-    def _set_clause(keyword: str, variable: str, expressions: dict[str, str]) -> str:
+    def _set_clause(self, keyword: str, variable: str, expressions: dict[str, str]) -> str:
         """Build one SET clause, or nothing where there is nothing to set.
 
         Args:
@@ -888,7 +1000,9 @@ class LadybugEngine(GraphEngineBase):
         if not expressions:
             return ""
 
-        assignments = ", ".join(f"{variable}.{name} = {expression}" for name, expression in expressions.items())
+        assignments = ", ".join(
+            f"{variable}.{self.identifier(name)} = {expression}" for name, expression in expressions.items()
+        )
 
         return f"{keyword} {assignments}"
 
@@ -927,7 +1041,7 @@ class LadybugEngine(GraphEngineBase):
 
         cypher = f"""
         UNWIND $node_list AS node
-        CREATE (n:{label} {{{primary}: {key_expression}}})
+        CREATE (n:{self.identifier(label)} {{{self.identifier(primary)}: {key_expression}}})
         {self._set_clause("SET", "n", expressions)}
         RETURN n
         """
@@ -952,6 +1066,18 @@ class LadybugEngine(GraphEngineBase):
         """
         if not properties:
             return []
+
+        # The SET clauses are read from the first row, so every row of one query has to
+        # carry the same keys in each bucket. A partial merge gives each node only the
+        # properties it was given, so rows differing in that are merged separately.
+        groups: dict[tuple, list] = {}
+
+        for entry in properties:
+            keys = tuple(tuple(sorted(entry.get(bucket) or {})) for bucket in ("always_set", "set_on_match", "set_on_create"))
+            groups.setdefault(keys, []).append(entry)
+
+        if len(groups) > 1:
+            return [node for group in groups.values() for node in self.merge_nodes(labels, pp_key, group, node_class)]
 
         self._ensure_node_table(node_class)
 
@@ -979,7 +1105,7 @@ class LadybugEngine(GraphEngineBase):
 
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{label} {{{primary}: {key_expression}}})
+        MERGE (n:{self.identifier(label)} {{{self.identifier(primary)}: {key_expression}}})
         {clause("ON MATCH SET", "set_on_match")}
         {clause("ON CREATE SET", "set_on_create")}
         {clause("SET", "always_set")}
@@ -999,7 +1125,8 @@ class LadybugEngine(GraphEngineBase):
             pp_key (str): the primary property key to match on.
             pp_values (list[Any]): the primary property values to delete.
         """
-        if not pp_values or not self._has_table(gql_identifier_adapter.validate_strings(label)):
+        # nothing labelled so has been written where no table holds it
+        if not pp_values or not self._tables_carrying(label):
             return
 
         super().delete_nodes(label, pp_key, pp_values)
@@ -1052,7 +1179,7 @@ class LadybugEngine(GraphEngineBase):
         merge_expressions = self._casts(rel_table, merge_on_props, "rel")
 
         merge_pattern = (
-            " {" + ", ".join(f"{name}: {expression}" for name, expression in merge_expressions.items()) + "}"
+            " {" + ", ".join(f"{self.identifier(name)}: {expression}" for name, expression in merge_expressions.items()) + "}"
             if merge_expressions
             else ""
         )
@@ -1092,11 +1219,11 @@ class LadybugEngine(GraphEngineBase):
 
             cypher = f"""
             UNWIND $rel_list AS rel
-            MATCH (source:{source_table})
-            WHERE source.{source_key} = {source_cast}
-            MATCH (target:{target_table})
-            WHERE target.{target_key} = {target_cast}
-            MERGE (source)-[r:{rel_table}{merge_pattern}]->(target)
+            MATCH (source:{self.identifier(source_table)})
+            WHERE source.{self.identifier(source_key)} = {source_cast}
+            MATCH (target:{self.identifier(target_table)})
+            WHERE target.{self.identifier(target_key)} = {target_cast}
+            MERGE (source)-[r:{self.identifier(rel_table)}{merge_pattern}]->(target)
             {clause("ON MATCH SET", "set_on_match")}
             {clause("ON CREATE SET", "set_on_create")}
             {clause("SET", "always_set")}
@@ -1118,6 +1245,8 @@ class LadybugConfig(GraphEngineConfig):
             written to it. Off by default: Ladybug is schema first, so
             `initialise_graph()` declares the schema and a write to an undeclared label
             is an error saying so. Turn it on to have tables follow the models instead.
+        read_only (bool): open the database read-only, so nothing can be written to it.
+            Only an on-disk database can be: an in-memory one starts empty.
     """
 
     engine: ClassVar[type[GraphEngineBase]] = LadybugEngine
@@ -1149,3 +1278,21 @@ class LadybugConfig(GraphEngineConfig):
                 data["db_path"] = from_env
 
         return data
+
+    @model_validator(mode="after")
+    def check_read_only_is_on_disk(self) -> "LadybugConfig":
+        """Refuse a read-only in-memory database, which Ladybug cannot open and would be empty.
+
+        Returns:
+            LadybugConfig: this config.
+
+        Raises:
+            ValueError: if it asks for an in-memory database read-only.
+        """
+        if self.read_only and self.db_path == ":memory:":
+            raise ValueError(
+                "An in-memory Ladybug database cannot be read-only: it starts empty, and Ladybug"
+                " refuses to open one that way. Give the db_path of a database on disk."
+            )
+
+        return self

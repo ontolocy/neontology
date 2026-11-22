@@ -177,6 +177,35 @@ def test_an_inline_record_and_a_definition_of_one_node(use_graph, tmp_path_facto
     assert IPAddress.get_count() == 1
 
 
+def test_content_adds_to_a_node_already_in_the_graph(use_graph, tmp_path_factory):
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "inventory.yaml", "LABEL: Host\nhostname: dns1\nowner: network-team\nasset_tag: asset-0091\n")
+    _write(dir_path, "scan.yaml", "LABEL: Host\nhostname: dns1\ndescription: internal resolver\n")
+
+    import_yaml(dir_path / "inventory.yaml")
+    import_yaml(dir_path / "scan.yaml")
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag, host.description) == ("network-team", "asset-0091", "internal resolver")
+
+    # null clears
+    _write(dir_path, "scan.yaml", "LABEL: Host\nhostname: dns1\nowner: null\n")
+    import_yaml(dir_path / "scan.yaml")
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag) == (None, "asset-0091")
+
+    # partial=False writes every property, so what the file leaves out is cleared
+    import_yaml(dir_path / "inventory.yaml", partial=False)
+
+    host = Host.match("dns1")
+    assert host is not None
+    assert (host.owner, host.asset_tag, host.description) == ("network-team", "asset-0091", None)
+
+
 def test_an_inline_node_cannot_declare_relationships(use_graph):
     records = [
         {
@@ -314,6 +343,68 @@ def test_validating_reports_issues_as_data(use_graph, tmp_path_factory):
         pytest.fail("expected the content not to validate")
 
 
+def test_validating_without_a_database(tmp_path_factory):
+    from neontology import GraphConnection
+
+    dir_path = tmp_path_factory.mktemp("content")
+
+    _write(dir_path, "host.yaml", "LABEL: Host\nhostname: web1\n")
+    _write(dir_path, "ip.yaml", "LABEL: IPAddress\nip: 10.0.0.1\n")
+    _write(
+        dir_path,
+        "resolves.yaml",
+        "RELATIONSHIP_TYPE: RESOLVES_TO\nSOURCE_LABEL: Host\nTARGET_LABEL: IPAddress\nSOURCE: web1\nTARGET: 10.0.0.1\n",
+    )
+
+    # no init_neontology() - nothing is connected
+    session_instance = GraphConnection._instance
+    GraphConnection._instance = None
+
+    try:
+        report = import_yaml(dir_path, validate_only=True, error_on_unmatched=True)
+
+    finally:
+        GraphConnection._instance = session_instance
+
+    assert report.nodes == {"Host": 1, "IPAddress": 1}
+    assert report.relationships == {"RESOLVES_TO": 1}
+
+
+def test_content_a_program_produces(use_graph):
+    from neontology.tools import record_model
+
+    Records = record_model(models=[Host, IPAddress, ResolvesTo])
+
+    schema = Records.model_json_schema()
+
+    assert schema["$defs"]["HostRecord"]["properties"]["LABEL"]["const"] == "Host"
+
+    response_text = json.dumps(
+        [
+            {"LABEL": "Host", "hostname": "web1"},
+            {"LABEL": "IPAddress", "ip": "10.0.0.1"},
+            {
+                "RELATIONSHIP_TYPE": "RESOLVES_TO",
+                "SOURCE_LABEL": "Host",
+                "TARGET_LABEL": "IPAddress",
+                "SOURCE": "web1",
+                "TARGET": "10.0.0.1",
+            },
+        ]
+    )
+
+    records = Records.model_validate_json(response_text)
+
+    import_records([record.model_dump(exclude_unset=True) for record in records.root])
+
+    assert ResolvesTo.get_count() == 1
+
+    # a strict structured-output mode writes null for what it does not know, which would clear it
+    strict = Records.model_validate([{"LABEL": "Host", "hostname": "web1", "owner": None}])
+
+    assert strict.root[0].model_dump(exclude_none=True) == {"LABEL": "Host", "hostname": "web1"}
+
+
 def test_the_dump_container_round_trips(use_graph):
     host = Host(hostname="web1", owner="platform-team")
     host.merge()
@@ -327,7 +418,7 @@ def test_the_dump_container_round_trips(use_graph):
 
     assert {"nodes", "edges"} == set(data)
 
-    report = import_records([data], error_on_unmatched=True)
+    report = import_records(data, error_on_unmatched=True)
 
     assert report.relationships == {"RESOLVES_TO": 1}
 

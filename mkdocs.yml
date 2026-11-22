@@ -8,6 +8,7 @@ nav:
     - Running Queries: queries.md
     - Importing Content: importing-content.md
     - Describing Your Ontology: describing-your-ontology.md
+    - LLMs and AI Agents: llms-and-agents.md
     - Cookbook: recipes.md
     - Graph Engines: graph-engines.md
     - Setting Up Neo4j: setting-up-neo4j.md

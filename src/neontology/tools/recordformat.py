@@ -566,7 +566,7 @@ def _process_sub_records(
     return output_nodes, output_rels
 
 
-def iter_raw_records(entry: Union[list, dict[str, Any]], origin: RecordOrigin) -> list[SourcedRecord]:
+def iter_raw_records(entry: Any, origin: RecordOrigin) -> list[SourcedRecord]:
     """Read the node and relationship records out of one piece of input.
 
     Accepts a single record, a list of records, or the container `neontology_dump()`
@@ -574,7 +574,8 @@ def iter_raw_records(entry: Union[list, dict[str, Any]], origin: RecordOrigin) -
     a file holding several documents each holding a list of records reads that way.
 
     Args:
-        entry (Union[list, dict[str, Any]]): one piece of input.
+        entry (Any): one piece of input. Anything other than a record or a list is passed
+            on as it is, to be reported as not being a record.
         origin (RecordOrigin): where it came from.
 
     Returns:
@@ -594,12 +595,17 @@ def iter_raw_records(entry: Union[list, dict[str, Any]], origin: RecordOrigin) -
 
         return [SourcedRecord(data=entry, origin=origin)]
 
-    records: list[SourcedRecord] = []
+    if isinstance(entry, (list, tuple)):
+        records: list[SourcedRecord] = []
 
-    for position, item in enumerate(entry):
-        records += iter_raw_records(item, origin.at(position))
+        for position, item in enumerate(entry):
+            records += iter_raw_records(item, origin.at(position))
 
-    return records
+        return records
+
+    # anything else is not a record, and is reported as one when prepared - iterated as
+    # a list, a string recursed through its own characters for ever
+    return [SourcedRecord(data=entry, origin=origin)]
 
 
 def _unidentified_record_message(record: dict[str, Any]) -> str:
@@ -672,6 +678,11 @@ def prepare_sourced_records(
         origin = entry.origin
 
         with context.collector.catching(origin):
+            if not isinstance(record, dict):
+                raise ImportContentError(
+                    f"A record is a mapping of keys to values, so there is nothing to import {record!r} as."
+                )
+
             if "LABEL" in record:
                 declared = {block: record.pop(block, None) for block in RELATIONSHIP_BLOCKS}
 

@@ -2,8 +2,9 @@
 
 `get_ontology_schema()` describes the models Neontology knows about as plain data, which
 serialises to JSON, so documentation and tooling can be generated from the models
-themselves. `node_markdown()`, `index_markdown()` and `mermaid_diagram()` render that data;
-anything else can be built from it directly.
+themselves. `node_markdown()` renders a documentation page for a node, and
+`cypher_patterns()` the whole ontology in the notation queries are written in; anything
+else - an index, a diagram, a format of your own - can be built from the data directly.
 
 Property types, descriptions, defaults, allowed values and constraints are read from each
 model's pydantic JSON Schema, so a property is described exactly as pydantic validates it.
@@ -12,15 +13,17 @@ model's pydantic JSON Schema, so a property is described exactly as pydantic val
 from __future__ import annotations
 
 import inspect
+import json
 import types
 import warnings
-from typing import Any, Callable, Iterable, Literal, Optional, Union, get_args, get_origin
+from typing import Any, Callable, Iterable, Literal, Optional, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel
 
 from .basenode import BaseNode
 from .baserelationship import BaseRelationship, RelationshipTypeData
 from .commonmodel import _LenientJsonSchema
+from .graphengines.capabilities import Capability
 from .utils import generate_relationship_type_data, get_node_types, get_rels_by_type
 
 
@@ -600,99 +603,134 @@ def node_markdown(
     return "\n".join(lines).rstrip() + "\n"
 
 
-def index_markdown(
+def _without_none(type_name: str) -> str:
+    """Drop `None` from the top level of a type written as a union, such as `list[str] | None`."""
+    members, depth, start = [], 0, 0
+
+    for position, character in enumerate(type_name):
+        depth += character == "["
+        depth -= character == "]"
+
+        if depth == 0 and type_name.startswith(" | ", position):
+            members.append(type_name[start:position])
+            start = position + 3
+
+    members.append(type_name[start:])
+
+    return " | ".join(member for member in members if member != "None") or type_name
+
+
+def _pattern_properties(properties: list[PropertySchema]) -> str:
+    """Write properties as a Cypher map of their types, such as `{name: str PP, size: "s"|"l"}`."""
+    written = []
+
+    for prop in properties:
+        if prop.allowed_values:
+            # the values themselves, written as a query would write them
+            kind = "|".join(json.dumps(value) for value in prop.allowed_values if value is not None)
+
+        else:
+            kind = _without_none(prop.type)
+
+        written.append(f"{prop.name}: {kind}{' PP' if prop.primary_property else ''}")
+
+    return f" {{{', '.join(written)}}}" if written else ""
+
+
+def _pattern_comments(description: Optional[str], properties: list[PropertySchema]) -> list[str]:
+    """Describe a class and its properties on `//` lines, one per description."""
+    texts = [_summary(description)] + [f"{prop.name}: {_summary(prop.description)}" for prop in properties if prop.description]
+
+    return [f"  // {' '.join(text.split())}" for text in texts if text]
+
+
+def cypher_patterns(
     schema: OntologySchema,
     *,
-    link: Optional[Link] = None,
-    heading_level: int = 1,
-    title: str = "Ontology",
+    capabilities: Optional[Iterable[Capability]] = None,
+    descriptions: bool = True,
 ) -> str:
-    """Render a Markdown index of an ontology's node and relationship classes.
+    """Describe an ontology in Cypher pattern notation, as queries against it are written.
+
+    Each node class is a pattern carrying its labels and its properties' types, and each
+    relationship class a pattern between the labels at its ends:
+
+        (:Person {slug: str PP, name: str, email: str})
+        (:Person)-[:WORKS_FOR {role: str, since: date}]->(:Organisation)
+
+    This is Cypher-like notation for describing the graph - to a person, or to a model
+    writing queries against it - rather than Cypher to run: `PP` and the type names would
+    not parse. A primary property, which a node is identified and merged on, is marked
+    `PP`, a property with a fixed set of values
+    lists them in place of its type, and abstract classes are left out, since their
+    properties appear on the classes inheriting them.
+
+    An end of a relationship names the fewest labels which find every node it can be. A
+    label every class there carries - an inheritable label - is written alone, and
+    otherwise a class carrying another of the classes' labels is found by that label.
+    Without `SECONDARY_LABELS` no node carries one, so every class at an end is named,
+    as `(:Person|Employee)`.
 
     Args:
         schema (OntologySchema): the ontology.
-        link (Optional[Link]): turns a node into the URL of its page. Defaults to naming
-            nodes without links.
-        heading_level (int): the level of the page's title. Defaults to 1.
-        title (str): the page's title. Defaults to "Ontology".
+        capabilities (Optional[Iterable[Capability]]): what the engine the queries are
+            for supports, so nothing is described that it cannot match - pass
+            `GraphConnection().engine.supported_capabilities`. Defaults to everything.
+        descriptions (bool): follow each pattern with the descriptions of its class and
+            properties, on `//` lines. Defaults to True.
 
     Returns:
-        str: the page.
+        str: the patterns, nodes first and then relationships, in the order the schema
+        lists them.
     """
-    heading = "#" * heading_level
-    by_label = {n.label: n for n in schema.nodes if n.label}
+    secondary_labels = capabilities is None or Capability.SECONDARY_LABELS in set(capabilities)
 
-    lines = [f"{heading} {title}", "", f"{heading}# Nodes", "", "| Node | Label | Description |", "| --- | --- | --- |"]
+    by_label = {node.label: node for node in schema.nodes if node.label is not None}
+
+    def labels(node: NodeSchema) -> str:
+        return ":".join([cast(str, node.label), *(node.secondary_labels if secondary_labels else [])])
+
+    def end(end_labels: list[str]) -> str:
+        # an abstract class with no concrete subclass has no node to be
+        if not end_labels:
+            return "()"
+
+        nodes = [by_label.get(label) for label in end_labels]
+
+        if secondary_labels and all(nodes):
+            carried = [[cast(str, n.label), *n.secondary_labels] for n in cast(list[NodeSchema], nodes)]
+
+            # one label every node at this end carries - an inheritable label - finds them all
+            common = [label for label in carried[0] if all(label in held for held in carried)]
+
+            if common:
+                return f"(:{common[0]})"
+
+            # otherwise a label is not needed where its class carries another of them
+            end_labels = [label for label, held in zip(end_labels, carried) if not set(held[1:]) & set(end_labels)]
+
+        return f"(:{'|'.join(end_labels)})"
+
+    lines = []
 
     for node in schema.nodes:
-        label = f"`{node.label}`" if node.label else "abstract"
+        if node.abstract:
+            continue
 
-        lines.append(f"| {_node_ref(node, node.class_name, link)} | {label} | {_cell(_summary(node.description))} |")
+        lines.append(f"(:{labels(node)}{_pattern_properties(node.properties)})")
+
+        if descriptions:
+            lines += _pattern_comments(node.description, node.properties)
 
     if schema.relationships:
-        lines += [
-            "",
-            f"{heading}# Relationships",
-            "",
-            "| Relationship | From | To | Description |",
-            "| --- | --- | --- | --- |",
-        ]
+        lines.append("")
 
-        for rel in schema.relationships:
-            sources = ", ".join(_node_ref(by_label.get(label), label, link) for label in rel.source_labels)
-            targets = ", ".join(_node_ref(by_label.get(label), label, link) for label in rel.target_labels)
+    for rel in schema.relationships:
+        rel_pattern = f"[:{rel.relationship_type}{_pattern_properties(rel.properties)}]"
 
-            lines.append(f"| {rel.relationship_type} | {sources} | {targets} | {_cell(_summary(rel.description))} |")
+        lines.append(f"{end(rel.source_labels)}-{rel_pattern}->{end(rel.target_labels)}")
 
-    return "\n".join(lines) + "\n"
-
-
-def mermaid_diagram(schema: OntologySchema, focus: Optional[NodeSchema] = None) -> str:
-    """Render a Mermaid class diagram of an ontology.
-
-    Node classes are drawn as classes, inheritance as inheritance, and each relationship
-    as an arrow between the classes it is declared on, labelled with its type.
-
-    Args:
-        schema (OntologySchema): the ontology.
-        focus (Optional[NodeSchema]): if given, draw only this node class, the classes it
-            inherits from or is inherited by, and its relationships.
-
-    Returns:
-        str: the diagram, to put in a `mermaid` code block.
-    """
-    if focus is None:
-        nodes = list(schema.nodes)
-        relationships = list(schema.relationships)
-
-    else:
-        rel_types = set(focus.outgoing_relationships) | set(focus.incoming_relationships)
-        relationships = [r for r in schema.relationships if r.relationship_type in rel_types]
-
-        wanted = {focus.qualified_name, *focus.parents}
-        wanted |= {n.qualified_name for n in schema.nodes if focus.qualified_name in n.parents}
-        wanted |= {end for r in relationships for end in (r.source, r.target)}
-
-        nodes = [n for n in schema.nodes if n.qualified_name in wanted]
-
-    drawn = {n.qualified_name for n in nodes}
-
-    def name(qualified_name: str) -> str:
-        return qualified_name.rsplit(".", 1)[-1]
-
-    lines = ["classDiagram"]
-
-    for node in nodes:
-        lines.append(f"    class {node.class_name}")
-
-        if node.abstract:
-            lines.append(f"    <<abstract>> {node.class_name}")
-
-    for node in nodes:
-        lines += [f"    {name(parent)} <|-- {node.class_name}" for parent in node.parents if parent in drawn]
-
-    # an end outside a scoped schema is still drawn, as Mermaid adds any class an arrow names
-    for rel in relationships:
-        lines.append(f"    {name(rel.source)} --> {name(rel.target)} : {rel.relationship_type}")
+        if descriptions:
+            lines += _pattern_comments(rel.description, rel.properties)
 
     return "\n".join(lines) + "\n"

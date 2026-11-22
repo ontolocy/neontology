@@ -8,6 +8,7 @@ from .errors import (
 from .import_files import import_csv, import_json, import_md, import_yaml
 from .import_records import import_records
 from .importreport import ImportReport
+from .record_model import record_model
 from .recordorigin import RecordOrigin
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "import_csv",
     "import_md",
     "import_yaml",
+    "record_model",
     "ImportReport",
     "RecordOrigin",
     "ImportContentError",

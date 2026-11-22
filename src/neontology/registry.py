@@ -322,9 +322,9 @@ class Registry:
 
         if cached is None:
             cached = {label: node_class for label, node_class in dict(self._nodes).items() if _inherits_from(node_class, cls)}
-            # an abstract class has no label of its own to keep
-            if cls.__primarylabel__ is not None:
-                cached[cls.__primarylabel__] = cls
+            # an abstract class has no label of its own to keep, and may never have declared one
+            if not cls._is_abstract():
+                cached[cast(str, cls.__primarylabel__)] = cls
 
             self._result_classes[cls] = cached
 

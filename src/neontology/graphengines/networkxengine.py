@@ -1,7 +1,7 @@
 import re
 import warnings
 from string import Template
-from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Optional, TypeVar
 
 import networkx as nx
 from grandcypher import GrandCypher
@@ -222,6 +222,8 @@ class NetworkxEngine(GraphEngineBase):
             Capability.SECONDARY_LABELS,
             Capability.UNDECLARED_SCHEMA,
             Capability.TIMEZONE_AWARE_DATETIMES,
+            # grand-cypher cannot write, so every query is read-only already
+            Capability.READ_ONLY_QUERIES,
         }
     )
 
@@ -241,6 +243,9 @@ class NetworkxEngine(GraphEngineBase):
         Args:
             config (NetworkxConfig): Takes a NetworkxConfig object.
         """
+        # grand-cypher cannot write, so read-only only has neontology's own writes to refuse
+        super().__init__(config)
+
         self.driver = nx.MultiDiGraph()
 
     def _swap_prop(self, all_props: list[dict], props_key: str, prop_to_update: str, new_prop: str, label: str) -> list[dict]:
@@ -283,14 +288,8 @@ class NetworkxEngine(GraphEngineBase):
 
         return found
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the backend.
-
-        Returns:
-            bool: True if the connection is successful, False otherwise.
-        """
-        # There is no remote connection to verify
-        return True
+    def check_connection(self) -> None:
+        """Check the connection, which always works: the graph is in memory."""
 
     def close_connection(self) -> None:
         """Close the connection to the backend."""
@@ -593,6 +592,8 @@ class NetworkxEngine(GraphEngineBase):
         params: Optional[dict] = None,
         node_classes: Optional[dict] = None,
         relationship_classes: Optional[dict] = None,
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query and return the results as Neontology records.
 
@@ -602,6 +603,8 @@ class NetworkxEngine(GraphEngineBase):
             node_classes (dict, optional): mapping of labels to node classes used for populating with results. Defaults to None.
             relationship_classes (dict, optional): mapping of relationship types to classes used for populating with results.
                 Defaults to None.
+            read_only (bool): accepted for every engine's sake; grand-cypher cannot write,
+                so every query is read-only already. Defaults to False.
 
         Returns:
             NeontologyResult: Result object containing the records, nodes, relationships, and paths.
@@ -616,12 +619,14 @@ class NetworkxEngine(GraphEngineBase):
 
         return build_result(raw_result, networkx_rows(raw_result, self.driver), node_classes, relationship_classes)
 
-    def evaluate_query_single(self, cypher: str, params: dict = {}) -> Optional[Any]:
+    def evaluate_query_single(self, cypher: str, params: dict = {}, *, read_only: bool = False) -> Optional[Any]:
         """Evaluate a Cypher query which returns a single result.
 
         Args:
             cypher (str): query to evaluate.
             params (dict, optional): parameters to pass through. Defaults to {}.
+            read_only (bool): accepted for every engine's sake; grand-cypher cannot write,
+                so every query is read-only already. Defaults to False.
 
         Returns:
             Optional[Any]: Query result, or None if no result is found.
@@ -656,9 +661,9 @@ class NetworkxEngine(GraphEngineBase):
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        # an abstract class has no label, and label_pattern refuses it
-        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
-        where_clause, params = self._filters_to_where_clause(filters)
+        # checked before the label, which a schema first engine looks up in the database
+        where_clause, params = self._filters_to_where_clause(node_class, filters)
+        cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
         if where_clause:
             cypher += where_clause
         cypher += " RETURN COUNT(n)"

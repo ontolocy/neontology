@@ -5,10 +5,10 @@ import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
 from copy import deepcopy
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
-from ..gql import gql_identifier_adapter
 from ..graphconnection import GraphConnection
+from ..graphengines.graphengine import GraphEngineBase
 from .errors import (
     ConflictingNodeRecordError,
     DuplicateNodeDefinitionError,
@@ -165,7 +165,7 @@ def _locate_failure(
 
     raise ImportContentError(
         f"Writing {len(records)} records failed, and no single record accounts for it, so it is the"
-        f" write itself rather than the content: {error}."
+        f" write itself rather than the content: {str(error).rstrip('.')}."
         f" The batch covered: {', '.join(sources)}."
         " Run the import with validate_only=True to check the content against your models."
     ) from error
@@ -176,6 +176,7 @@ def _import_nodes(
     context: ImportContext,
     report: ImportReport,
     batch_size: Optional[int] = None,
+    partial: bool = True,
 ) -> None:
     """Merge node records into the graph, one node at a time however often it is described.
 
@@ -184,6 +185,7 @@ def _import_nodes(
         context (ImportContext): the run they are part of.
         report (ImportReport): counts what was merged.
         batch_size (Optional[int]): how many records to merge per query, or None for all.
+        partial (bool): change existing nodes only in the properties their records give.
     """
     mapped_records = defaultdict(list)
 
@@ -201,10 +203,10 @@ def _import_nodes(
 
         for batch, batch_origins in _batches_with_origins(records, origins, batch_size):
             try:
-                node_class.merge_records(batch)
+                node_class.merge_records(batch, partial=partial)
 
             except Exception as exc:
-                _locate_failure(exc, batch, batch_origins, lambda x, cls=node_class: cls(**x), context)
+                _locate_failure(exc, batch, batch_origins, lambda x, cls=node_class: _hydrate_node(x, cls), context)
 
         report.nodes[label] = report.nodes.get(label, 0) + len(records)
 
@@ -272,7 +274,8 @@ def _check_endpoints(
 
     An endpoint resolves against the graph or against the content being imported, since
     the content brings its own nodes with it. One query is issued per label and property
-    being looked up, rather than one per relationship.
+    being looked up, rather than one per relationship. With no connection, endpoints
+    resolve against the content alone.
 
     Args:
         input_records (list[NeontologyRelationshipRecord]): the relationship records.
@@ -290,19 +293,16 @@ def _check_endpoints(
 
     known = _known_endpoints(node_records)
 
-    gc = GraphConnection()
+    # without a connection there is no graph to look in, which is how content is
+    # validated where no database is available - in CI, or before anything is written
+    try:
+        engine: Optional[GraphEngineBase] = GraphConnection().engine
+
+    except RuntimeError:
+        engine = None
 
     for (label, prop), wanted in required.items():
-        gql_identifier_adapter.validate_strings(label)
-        gql_identifier_adapter.validate_strings(prop)
-
-        cypher = f"""
-            MATCH (n:{label})
-            WHERE n.{prop} IN $values
-            RETURN COLLECT(n.{prop})
-            """
-
-        found = Counter(gc.evaluate_query_single(cypher, {"values": list(wanted)}) or [])
+        found = Counter(engine.matching_property_values(label, prop, wanted) if engine is not None else [])
 
         being_imported = known.get((label, prop), set())
 
@@ -312,7 +312,14 @@ def _check_endpoints(
             if matched == 1 or (matched == 0 and value in being_imported):
                 continue
 
-            if matched == 0:
+            if matched == 0 and engine is None:
+                message = (
+                    f"The content being imported defines no {label} node with {prop} = {value!r}, so"
+                    " relationships to or from it cannot be created. Nothing is connected, so only the"
+                    " content was checked, not a graph."
+                )
+
+            elif matched == 0:
                 message = (
                     f"No {label} node has {prop} = {value!r}, and the content being imported does not"
                     " define one, so relationships to or from it cannot be created. Ensure primary"
@@ -410,6 +417,28 @@ def _group_relationships(
     return grouped
 
 
+def _hydrate_node(record: dict, node_class: type) -> Any:
+    """Build one node's model the way merging it does, converting its values for the engine.
+
+    Used to validate content and to find which record in a failed batch was at fault, so
+    it has to fail wherever the write would. Building the model checks it against the
+    class; the write then converts every value to one the engine can store, which rejects
+    some that validate - a dict, or a list mixing types - so that is done here too.
+
+    Args:
+        record (dict): the node record.
+        node_class (type): the node class.
+
+    Returns:
+        Any: the node.
+    """
+    node = node_class(**record)
+
+    node._get_merge_parameters()
+
+    return node
+
+
 def _hydrate_relationship(
     record: dict,
     rel_class: type,
@@ -418,11 +447,12 @@ def _hydrate_relationship(
     source_prop: Optional[str],
     target_prop: Optional[str],
 ) -> Any:
-    """Build one relationship's model the way merging it does.
+    """Build one relationship's model the way merging it does, converting its values for the engine.
 
-    Used to find which record in a failed batch was at fault, so this has to construct
-    the model exactly as `BaseRelationship.merge_records` does - the endpoints as
-    partial nodes carrying only the property they are matched on.
+    Used to validate content and to find which record in a failed batch was at fault, so
+    this has to construct the model exactly as `BaseRelationship.merge_records` does - the
+    endpoints as partial nodes carrying only the property they are matched on - and then
+    convert its values as the write does, as `_hydrate_node` explains.
 
     Args:
         record (dict): the relationship record.
@@ -440,10 +470,14 @@ def _hydrate_relationship(
     resolved_source_prop = source_prop or source_type.__primaryproperty__
     resolved_target_prop = target_prop or target_type.__primaryproperty__
 
-    hydrated["source"] = source_type.model_construct(**{resolved_source_prop: record["source"]})
-    hydrated["target"] = target_type.model_construct(**{resolved_target_prop: record["target"]})
+    hydrated["source"] = source_type._matching_node(resolved_source_prop, record["source"])
+    hydrated["target"] = target_type._matching_node(resolved_target_prop, record["target"])
 
-    return rel_class(**hydrated)
+    relationship = rel_class(**hydrated)
+
+    relationship._get_merge_parameters(resolved_source_prop, resolved_target_prop)
+
+    return relationship
 
 
 def _validate_records(
@@ -451,7 +485,7 @@ def _validate_records(
     rel_records: list[NeontologyRelationshipRecord],
     context: ImportContext,
 ) -> None:
-    """Check every record against the model it describes, without writing anything.
+    """Check every record against the model it describes, and that the engine can store it, without writing anything.
 
     Args:
         node_records (list[NeontologyNodeRecord]): the combined node records.
@@ -460,7 +494,7 @@ def _validate_records(
     """
     for record in node_records:
         with context.collector.catching(record.origin):
-            node_class_for_label(record.label)(**(record.output_record or {}))
+            _hydrate_node(record.output_record or {}, node_class_for_label(record.label))
 
     for rel_record in rel_records:
         with context.collector.catching(rel_record.origin):
@@ -501,6 +535,7 @@ def import_sourced_records(
     error_on_unmatched: bool = False,
     batch_size: Optional[int] = None,
     report: Optional[ImportReport] = None,
+    partial: bool = True,
 ) -> ImportReport:
     """Import records which already know which file and entry they came from.
 
@@ -514,6 +549,7 @@ def import_sourced_records(
         error_on_unmatched (bool): raise rather than warn where they do not.
         batch_size (Optional[int]): how many records to write per query.
         report (Optional[ImportReport]): a report to add to, if one is already started.
+        partial (bool): change existing nodes only in the properties the content gives.
 
     Returns:
         ImportReport: what the import did.
@@ -547,7 +583,7 @@ def import_sourced_records(
 
         return report
 
-    _import_nodes(combined_nodes, context, report, batch_size)
+    _import_nodes(combined_nodes, context, report, batch_size, partial)
 
     if check_unmatched is True:
         _check_endpoints(input_rels, combined_nodes, error_on_unmatched, context, report)
@@ -558,11 +594,12 @@ def import_sourced_records(
 
 
 def import_records(
-    records: list,
+    records: Union[list, dict[str, Any]],
     validate_only: bool = False,
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
     batch_size: Optional[int] = None,
+    partial: bool = True,
 ) -> ImportReport:
     """Import 'Neontology' records into the graph database.
 
@@ -570,7 +607,9 @@ def import_records(
     node described anywhere in the input, whatever order the records are given in.
 
     Args:
-        records (list): a list of dictionaries representing nodes and relationships.
+        records (Union[list, dict]): a list of dictionaries representing nodes and
+            relationships, a single one, or the `nodes` and `edges` container a result's
+            `neontology_dump()` returns.
         validate_only (bool, optional): check the content against your models and report
             every problem found, without populating the graph. Defaults to False.
         check_unmatched (bool, optional): Check relationship endpoints exist, warn if not.
@@ -581,6 +620,11 @@ def import_records(
         batch_size (int, optional): how many records to write per query. Defaults to
             None, which writes each label and relationship type in one query. It limits
             the size of each write, not what a relationship can refer to.
+        partial (bool): change a node already in the graph only in the properties the
+            content gives it, so content describing a node in part cannot blank what
+            other content stored. A property given as null is still cleared. Defaults to
+            True; False writes every property, as merge_records() does by default, so a
+            property removed from the content is cleared too.
 
     Returns:
         ImportReport: what the import did - how many of each label and relationship type
@@ -591,6 +635,10 @@ def import_records(
         ImportContentError: otherwise, for the first problem found.
     """
     fresh_records = deepcopy(records)
+
+    # one piece of input given on its own, rather than in a list
+    if not isinstance(fresh_records, (list, tuple)):
+        fresh_records = [fresh_records]
 
     origin = RecordOrigin(source="<records>")
 
@@ -609,4 +657,5 @@ def import_records(
         check_unmatched=check_unmatched,
         error_on_unmatched=error_on_unmatched,
         batch_size=batch_size,
+        partial=partial,
     )

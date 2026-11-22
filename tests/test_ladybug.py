@@ -13,7 +13,15 @@ from typing import Any, ClassVar, Optional
 
 import pytest
 
-from neontology import BaseNode, BaseRelationship, GraphConnection, Table, get_ontology_schema, init_neontology
+from neontology import (
+    BaseNode,
+    BaseRelationship,
+    CapabilityNotSupportedError,
+    GraphConnection,
+    Table,
+    get_ontology_schema,
+    init_neontology,
+)
 from neontology.graphengines.dbschema import SchemaEntity
 
 ladybug = pytest.importorskip("ladybug", reason="needs the [ladybug] extra")
@@ -123,6 +131,34 @@ class TestSchemaFirstByDefault:
 
             assert after.match("y").size == 7
             assert after.match("x").size is None
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="Ladybug 0.20.4 caches each query's plan on the connection and keeps it across schema changes",
+    )
+    def test_a_read_run_before_a_column_was_added_returns_it_afterwards(self):
+        """A Ladybug bug, documented rather than worked around: the fix needs its private API.
+
+        A read run before the column existed goes on returning nodes without it, so the
+        property comes back as its default although the database holds a value. The docs
+        say to run initialise_graph() at startup, before querying, which avoids it. Strict,
+        so a Ladybug release that fixes it fails this and says the docs can be relaxed.
+        """
+        before = _node("LbugCachedRead")
+
+        with ladybug_connection() as gc:
+            gc.initialise_graph(get_ontology_schema(models=[before]))
+
+            before(name="x").merge()
+            assert before.match("x") is not None
+
+            after = _node("LbugCachedRead", size=Optional[int])
+
+            gc.initialise_graph(get_ontology_schema(models=[after]))
+
+            after(name="x", size=7).merge()
+
+            assert after.match("x").size == 7
 
     def test_a_write_naming_a_column_the_table_lacks_points_at_initialise_graph(self):
         """The model changed but the database was not re-initialised."""
@@ -263,11 +299,51 @@ class TestWhereTheDatabaseLives:
                 Isolated(name="y").merge()
 
 
+class TestALabelNoTableHolds:
+    def test_a_pattern_for_it_says_so(self):
+        with ladybug_connection() as gc:
+            with pytest.raises(RuntimeError, match="no table holding nodes labelled LbugNoSuchLabel"):
+                gc.engine.label_pattern("LbugNoSuchLabel")
+
+
+class TestReadOnly:
+    """Ladybug opens a whole database read-only, and has no read-only mode for one query."""
+
+    def test_an_in_memory_database_cannot_be_read_only(self):
+        with pytest.raises(ValueError, match="in-memory"):
+            LadybugConfig(read_only=True)
+
+    def test_a_read_only_query_on_a_connection_which_can_write_is_refused(self):
+        """Rather than run without the promise it asked for."""
+        with ladybug_connection() as gc:
+            with pytest.raises(CapabilityNotSupportedError, match="read_only=True"):
+                gc.evaluate_query_single("RETURN 1", read_only=True)
+
+    def test_a_read_only_connection_runs_read_only_queries(self, tmp_path):
+        Stored = _node("LbugReadOnly")
+        path = str(tmp_path / "graph.lbdb")
+
+        with ladybug_connection(db_path=path) as gc:
+            gc.initialise_graph(get_ontology_schema(models=[Stored]))
+
+            Stored(name="x").merge()
+
+        with ladybug_connection(db_path=path, read_only=True) as gc:
+            assert gc.evaluate_query_single("MATCH (n:LbugReadOnly) RETURN count(n)", read_only=True) == 1
+
+            with pytest.raises(RuntimeError, match="read-only"):
+                gc.evaluate_query_single("CREATE (n:LbugReadOnly {name: 'y'})")
+
+
 class TestMatchingAClass:
-    """A node carries one label, so a class is matched as itself and its subclasses."""
+    """A node carries one label, so a class is matched as itself and the subclasses carrying its label."""
 
     def test_a_parent_class_finds_its_subclasses(self):
-        Animal = _node("LbugAnimal")
+        class Animal(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugAnimal"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugAnimal"]
+            name: str
 
         class Dog(Animal):
             __primarylabel__: ClassVar[Optional[str]] = "LbugDog"
@@ -287,7 +363,11 @@ class TestMatchingAClass:
             assert Dog.get_count() == 1
 
     def test_the_pattern_names_the_class_and_its_subclasses(self):
-        Vehicle = _node("LbugVehicle")
+        class Vehicle(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugVehicle"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugVehicle"]
+            name: str
 
         class Car(Vehicle):
             __primarylabel__: ClassVar[Optional[str]] = "LbugCar"
@@ -297,8 +377,8 @@ class TestMatchingAClass:
 
             pattern = gc.engine.label_pattern("LbugVehicle")
 
-        assert pattern.startswith(":LbugVehicle")
-        assert "LbugCar" in pattern
+        # each name is quoted, as every name written into a Ladybug query is
+        assert pattern == ":`LbugVehicle`:`LbugCar`"
 
     def test_a_relationship_declared_to_a_parent_class_reaches_a_subclass_node(self):
         """The end is a parent class, the node is a subclass - and lives in its own table.
@@ -306,7 +386,12 @@ class TestMatchingAClass:
         Ladybug will not create a relationship whose ends are bound by several labels,
         so the union pattern a read uses is not available for the write.
         """
-        Machine = _node("LbugMachine")
+
+        class Machine(BaseNode):
+            __primaryproperty__: ClassVar[str] = "name"
+            __primarylabel__: ClassVar[Optional[str]] = "LbugMachine"
+            __inheritablelabels__: ClassVar[list[str]] = ["LbugMachine"]
+            name: str
 
         class Server(Machine):
             __primarylabel__: ClassVar[Optional[str]] = "LbugServer"

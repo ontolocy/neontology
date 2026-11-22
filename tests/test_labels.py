@@ -119,6 +119,12 @@ class LblPuppy(LblDog):
     __secondarylabels__: ClassVar[list[str]] = ["LblYoung"]
 
 
+class LblExtinctThing(LblLivingThing):
+    """Abstract too, but only inheriting its parent's label, which its siblings carry as well."""
+
+    era: Optional[str] = None
+
+
 def _by_name(nodes: list) -> dict:
     """Map node name to class name, which is what hydration is being tested on."""
     return {node.name: type(node).__name__ for node in nodes}
@@ -255,17 +261,64 @@ class TestInheritableLabels:
         LblDog(name="rex").create()
         LblPuppy(name="fido").create()
 
-        expected = {"generic": "LblAnimal", "rex": "LblDog", "fido": "LblPuppy"}
+        with _no_label_warnings():
+            result = use_graph.evaluate_query("MATCH (n:LblOrganism) RETURN n")
+
+        assert _by_name(result.nodes) == {"generic": "LblAnimal", "rex": "LblDog", "fido": "LblPuppy"}
+
+    def test_a_class_scoped_query_finds_the_subclasses_carrying_its_label(self, use_graph):
+        """Every engine finds the same nodes, whether or not it writes more than one label.
+
+        Ladybug used to match a class with all of its subclasses, so LblDog found puppies
+        there and nowhere else.
+        """
+        LblAnimal(name="generic").create()
+        LblDog(name="rex").create()
+        LblPuppy(name="fido").create()
 
         with _no_label_warnings():
-            assert _by_name(LblAnimal.match_nodes()) == expected
-            assert _by_name(use_graph.evaluate_query("MATCH (n:LblOrganism) RETURN n").nodes) == expected
+            assert _by_name(LblAnimal.match_nodes()) == {"generic": "LblAnimal", "rex": "LblDog", "fido": "LblPuppy"}
+
+            # LblDog does not list its own label as inheritable, so puppies are not :LblDog -
+            # each class decides whether its label passes down
+            assert _by_name(LblDog.match_nodes()) == {"rex": "LblDog"}
+            assert LblDog.match("fido") is None
 
         assert LblAnimal.get_count() == 3
-
-        # LblDog does not list its own label as inheritable, so puppies are not :LblDog -
-        # each class decides whether its label passes down
         assert LblDog.get_count() == 1
+
+        LblDog.delete("fido")
+
+        assert LblPuppy.get_count() == 1
+
+    def test_an_abstract_class_is_queried_by_the_label_it_passes_down(self, use_graph):
+        """LblLivingThing has no label, but everything below it carries LblOrganism.
+
+        So its nodes are the ones carrying that label, on every engine: on Ladybug, which
+        writes one label per node, the union of the tables of every class below it.
+        """
+        LblAnimal(name="generic").create()
+        LblDog(name="rex").create()
+        LblPuppy(name="fido").create()
+
+        with _no_label_warnings():
+            assert _by_name(LblLivingThing.match_nodes()) == {"generic": "LblAnimal", "rex": "LblDog", "fido": "LblPuppy"}
+            assert isinstance(LblLivingThing.match("fido"), LblPuppy)
+
+        assert LblLivingThing.get_count() == 3
+
+        pattern = use_graph.engine.label_pattern("LblOrganism")
+
+        assert use_graph.evaluate_query_single(f"MATCH (n{pattern}) RETURN COUNT(n)") == 3
+
+        LblLivingThing.delete("rex")
+
+        assert LblLivingThing.get_count() == 2
+
+    def test_an_abstract_class_only_inheriting_a_label_cannot_be_queried(self, use_graph):
+        """Its parent's label would find its siblings' nodes too."""
+        with pytest.raises(NotImplementedError, match="of its own"):
+            LblExtinctThing.match_nodes()
 
 
 def _evolving_model(secondary: list):

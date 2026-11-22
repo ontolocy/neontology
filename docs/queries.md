@@ -108,6 +108,10 @@ TeamNode.match_nodes(filters={
 })
 ```
 
+##### Which properties can be filtered
+
+A filter names a property the class declares - by its alias, where it has one, as that is the name the graph holds it under. A query on a class matches its subclasses' nodes too, so their properties can be filtered on as well. Naming any other property raises a `ValueError` listing the ones there are, rather than matching nothing: a mistyped property would otherwise look like there being no such nodes. To filter on a property no model declares, write the query yourself.
+
 #### Get Count
 
 You can use the `get_count` method to return the count for that type of node.

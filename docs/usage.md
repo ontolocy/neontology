@@ -119,6 +119,8 @@ PersonNode.merge_records(node_records)
 
 It returns one node per input record, in the order given, so the results can be matched back to the input. Identical records are merged only once - pass `deduplicate=False` if you would rather each record was merged individually.
 
+Merging writes every property of the model, so a property a record leaves out is set to its default on a node already in the graph. Pass `partial=True` to change existing nodes only in the properties each record gives, leaving the rest as they are; a property given as `None` is still cleared, and a new node is still written in full. `merge_nodes()` and `merge_df()` take it too, and [importing content](importing-content.md#nodes-already-in-the-graph) does it by default.
+
 Similarly, if you have the values for the primary properties of sources and targets, you can push relationships. If the relationship has additional properties, include them in each dictionary.
 
 ```python

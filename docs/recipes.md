@@ -12,41 +12,34 @@ You can also manually override the values by explicitly setting them when creati
 
 ```python
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import Field, field_validator, ValidationInfo
+from pydantic import Field, model_validator
 
 from neontology import BaseNode
 
 class MyBaseNode(BaseNode):
-    merged: datetime = Field(
-        default_factory=datetime.now, 
-    )
+    merged: datetime
 
     # created property will only be set 'on create' - when the node is first created
-    created: Optional[datetime] = Field(
-                                    default=None, 
-                                    validate_default=True,
-                                    json_schema_extra={"set_on_create": True})
+    created: Optional[datetime] = Field(default=None, json_schema_extra={"set_on_create": True})
 
-    # Use Pydantic's validator functionality to set created off the merged value
-    @field_validator("created")
-    def set_created_to_merged(
-        cls, value: Optional[datetime], values: ValidationInfo
-    ) -> datetime:
-        """When the node is first created, we want the created value to be set equal to merged.
-        Otherwise they will be a tiny amount of time different.
+    @model_validator(mode="before")
+    @classmethod
+    def set_timestamps(cls, data: Any) -> Any:
+        """Stamp merged with the current time, and created with the same value.
+
+        Values given explicitly are kept.
         """
+        if isinstance(data, dict):
+            data = dict(data)
+            data.setdefault("merged", datetime.now())
+            data.setdefault("created", data["merged"])
 
-        # set created = merged (which was set to datetime.now())
-        if value is None:
-            return values.data["merged"]
-
-        # if the created value has been manually set, don't override it
-        else:
-            return value
-
+        return data
 ```
+
+The timestamps are supplied by a validator rather than as defaults (`default_factory=datetime.now`) so that they count as given. Merging with `partial=True` - which [importing content](importing-content.md#nodes-already-in-the-graph) does by default - changes an existing node only in the properties it was given, so a `merged` timestamp left to its default would not be updated.
 
 Neontology v0 and v1 included `merged` and `created` fields with this functionality by default but it was removed in v2 to provide greater flexibility to users.
 

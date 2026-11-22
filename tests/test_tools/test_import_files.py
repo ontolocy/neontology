@@ -367,3 +367,12 @@ def test_import_json_with_invalid_json_names_the_file(use_graph, tmp_path_factor
 
     with pytest.raises(ImportContentError, match="broken.json"):
         import_json(dir_path)
+
+
+def test_a_yaml_list_of_values_which_are_not_records_is_reported(tmp_path):
+    """Read as a list of records, each string recursed through its own characters for ever."""
+    path = tmp_path / "strings.yaml"
+    path.write_text("- one\n- two\n")
+
+    with pytest.raises(ImportContentError, match="nothing to import 'one' as"):
+        import_yaml(path)

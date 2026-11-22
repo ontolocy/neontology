@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import functools
 import os
 from datetime import date, datetime, time, timedelta
-from typing import TYPE_CHECKING, Any, ClassVar, Iterable, Optional, Sequence, TypeVar, Union, cast
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterable, Optional, Sequence, TypeVar, Union, cast
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ValidationError, model_validator
@@ -20,6 +21,48 @@ if TYPE_CHECKING:
 
 BaseNodeT = TypeVar("BaseNodeT", bound="BaseNode")
 BaseRelationshipT = TypeVar("BaseRelationshipT", bound="BaseRelationship")
+
+
+class ReadOnlyError(RuntimeError):
+    """Raised when something would write to the graph through a read-only connection."""
+
+
+# every method which writes to the graph or its schema. Each is refused on a read-only
+# engine, wherever it is defined - see GraphEngineBase.__init_subclass__
+WRITE_METHODS = (
+    "create_nodes",
+    "merge_nodes",
+    "delete_nodes",
+    "merge_relationships",
+    "initialise_graph",
+    "apply_constraints",
+    "apply_uniqueness_constraint",
+    "apply_existence_constraint",
+    "drop_constraint",
+    "apply_indexes",
+    "apply_index",
+    "drop_index",
+)
+
+
+def _refused_when_read_only(method: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a write method so a read-only engine refuses it before reaching the database."""
+    if getattr(method, "_refused_when_read_only", False):
+        return method
+
+    @functools.wraps(method)
+    def guarded(self: "GraphEngineBase", *args: Any, **kwargs: Any) -> Any:
+        if self.read_only:
+            raise ReadOnlyError(
+                f"{method.__name__}() would write to the graph, and this connection is read-only."
+                " Connect with read_only=False on the config to write."
+            )
+
+        return method(self, *args, **kwargs)
+
+    setattr(guarded, "_refused_when_read_only", True)
+
+    return guarded
 
 
 class GraphEngineBase:
@@ -49,13 +92,29 @@ class GraphEngineBase:
         timedelta,
     )
 
+    # set from the config each engine is built with. A read-only engine refuses every
+    # method in WRITE_METHODS itself, and has its database refuse any other write
+    read_only: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Refuse the write methods an engine defines whenever it is read-only.
+
+        Done here rather than in each method, so an engine overriding one cannot leave
+        it unguarded.
+        """
+        super().__init_subclass__(**kwargs)
+
+        for name in WRITE_METHODS:
+            if name in cls.__dict__:
+                setattr(cls, name, _refused_when_read_only(cls.__dict__[name]))
+
     def __init__(self, config: Optional["GraphEngineConfig"]) -> None:
-        """Initialise the graph engine.
+        """Initialise the graph engine. Every engine calls this, so it honours `read_only`.
 
         Args:
             config (Optional[dict]): GraphEngine configuration
         """
-        pass
+        self.read_only = bool(config and config.read_only)
 
     @classmethod
     def supports(cls, capability: Capability) -> bool:
@@ -76,12 +135,34 @@ class GraphEngineBase:
 
         return capability in cls.supported_capabilities
 
+    def identifier(self, name: str) -> str:
+        """Validate a name and return it as it is written into a query.
+
+        Every label, relationship type, property key or schema object name interpolated
+        into query text goes through here - values are always passed as parameters.
+        Validation is what keeps the query safe; returning the name lets an engine quote it.
+
+        Here it is returned unchanged: Neo4j, Memgraph and NetworkX accept a reserved word
+        such as `end` or `order` as a name, and NetworkX's query parser rejects backtick
+        quoting. Ladybug reserves some of them, so it overrides this to quote every name.
+
+        Args:
+            name (str): the name to write.
+
+        Returns:
+            str: the name, ready to interpolate.
+
+        Raises:
+            ValidationError: if the name is not a valid identifier.
+        """
+        return gql_identifier_adapter.validate_strings(name)
+
     def label_pattern(self, label: str) -> str:
         """Build the label fragment that matches every node of a class, for a MATCH pattern.
 
-        A class is matched by its primary label, because a subclass node carries its
-        ancestors' labels as well as its own. A backend where that is not true - where a
-        node has exactly one label - overrides this to name the class and its subclasses
+        A class is matched by its primary label, which also matches the subclasses carrying
+        it - through `__inheritablelabels__` - but not those that do not. A backend where a
+        node has exactly one label overrides this to name the class and those subclasses
         instead, which is why every class scoped query goes through here rather than
         interpolating `__primarylabel__` itself.
 
@@ -91,7 +172,7 @@ class GraphEngineBase:
         Returns:
             str: the fragment to follow the node variable with, such as ":Person".
         """
-        return f":{gql_identifier_adapter.validate_strings(label)}"
+        return f":{self.identifier(label)}"
 
     @classmethod
     def _export_type_converter(cls, value: Any) -> Any:
@@ -109,7 +190,7 @@ class GraphEngineBase:
             TypeError: If the value is a dict, or if it is a list with mixed types.
         """
         if isinstance(value, dict):
-            raise TypeError("Neontology doesn't support dict types for properties.")
+            raise TypeError("a dict - model it as nodes and relationships instead")
 
         elif isinstance(value, (tuple, set)):
             new_value = list(value)
@@ -122,7 +203,10 @@ class GraphEngineBase:
             item_type = type(value[0])
             for item in value:
                 if isinstance(item, item_type) is False:
-                    raise TypeError("For neo4j, all items in a list must be of the same type.")
+                    raise TypeError(
+                        f"a list mixing {item_type.__name__} and {type(item).__name__} items"
+                        " - every item in a list property must be the same type"
+                    )
 
             return [cls._export_type_converter(x) for x in value]
 
@@ -144,21 +228,48 @@ class GraphEngineBase:
 
         Returns:
             dict[str, Any]: A new dictionary with values converted to types supported by the graph engine.
+
+        Raises:
+            TypeError: naming the property, if a value cannot be stored - a dict, or a list
+                mixing types.
         """
         export_dict = original_dict.copy()
 
         for k, v in export_dict.items():
-            export_dict[k] = cls._export_type_converter(v)
+            try:
+                export_dict[k] = cls._export_type_converter(v)
+
+            except TypeError as exc:
+                raise TypeError(f"Property {k!r} has a value the graph cannot store: {exc}.") from exc
 
         return export_dict
 
-    def verify_connection(self) -> bool:
-        """Verify the connection to the graph engine.
+    def check_connection(self) -> None:
+        """Check the connection works, raising the driver's error saying why if it does not.
 
-        Returns:
-            bool: True if the connection is valid, False otherwise.
+        This is what each engine implements. `init_neontology` calls it, so the error it
+        raises can give the reason - a wrong password, a server that is not up, a database
+        file locked by another process. `verify_connection` asks the same as True or False.
+
+        Raises:
+            Exception: the driver's own error, if the connection does not work.
         """
         raise NotImplementedError
+
+    def verify_connection(self) -> bool:
+        """Report whether the connection works.
+
+        Returns:
+            bool: True if it does, False if `check_connection` raised. Call that instead
+                to be told why.
+        """
+        try:
+            self.check_connection()
+
+            return True
+
+        except Exception:
+            return False
 
     def close_connection(self) -> None:
         """Close the connection to the graph engine."""
@@ -170,6 +281,8 @@ class GraphEngineBase:
         params: dict[str, Any] = {},
         node_classes: dict = {},
         relationship_classes: dict = {},
+        *,
+        read_only: bool = False,
     ) -> NeontologyResult:
         """Evaluate a Cypher query against the database.
 
@@ -178,18 +291,22 @@ class GraphEngineBase:
             params (dict[str, Any], optional): Parameters for the Cypher query. Defaults to {}.
             node_classes (dict, optional): Mapping of node labels to their classes. Defaults to {}.
             relationship_classes (dict, optional): Mapping of relationship types to their classes. Defaults to {}.
+            read_only (bool): have the database refuse the query if it writes. A read-only
+                connection runs every query this way. Defaults to False.
 
         Returns:
             NeontologyResult: The result of the query execution, containing nodes and relationships.
         """
         raise NotImplementedError
 
-    def evaluate_query_single(self, cypher: str, params: dict[str, Any]) -> Any:
+    def evaluate_query_single(self, cypher: str, params: dict[str, Any], *, read_only: bool = False) -> Any:
         """Evaluate a query which returns a single result.
 
         Args:
             cypher (str): The Cypher query to execute.
             params (dict[str, Any]): Parameters for the Cypher query.
+            read_only (bool): have the database refuse the query if it writes. A read-only
+                connection runs every query this way. Defaults to False.
 
         Returns:
             Any: The result of the query execution.
@@ -543,11 +660,11 @@ class GraphEngineBase:
         Returns:
             list: list of created Nodes
         """
-        label_identifiers = [gql_identifier_adapter.validate_strings(x) for x in labels]
+        label_identifiers = [self.identifier(x) for x in labels]
 
         cypher = f"""
         UNWIND $node_list AS node
-        create (n:{":".join(label_identifiers)} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        create (n:{":".join(label_identifiers)} {{{self.identifier(pp_key)}: node.pp}})
         SET n += node.props
         RETURN n
         """
@@ -575,9 +692,9 @@ class GraphEngineBase:
         Returns:
             list: list of merged Nodes
         """
-        primary_label = gql_identifier_adapter.validate_strings(node_class.__primarylabel__)
+        primary_label = self.identifier(node_class._primary_label())
 
-        other_labels = [gql_identifier_adapter.validate_strings(x) for x in labels if x != node_class.__primarylabel__]
+        other_labels = [self.identifier(x) for x in labels if x != node_class.__primarylabel__]
 
         # MERGE on the primary label alone: with the primary property, that is what
         # identifies a node. Merging on every label stopped matching existing nodes as soon
@@ -587,7 +704,7 @@ class GraphEngineBase:
 
         cypher = f"""
         UNWIND $node_list AS node
-        MERGE (n:{primary_label} {{{gql_identifier_adapter.validate_strings(pp_key)}: node.pp}})
+        MERGE (n:{primary_label} {{{self.identifier(pp_key)}: node.pp}})
         ON MATCH SET n += node.set_on_match
         ON CREATE SET n += node.set_on_create
         SET n += node.always_set
@@ -615,7 +732,7 @@ class GraphEngineBase:
         cypher = f"""
         UNWIND $pp_values AS pp
         MATCH (n{self.label_pattern(label)})
-        WHERE n.{gql_identifier_adapter.validate_strings(pp_key)} = pp
+        WHERE n.{self.identifier(pp_key)} = pp
         DETACH DELETE n
         """
 
@@ -647,15 +764,15 @@ class GraphEngineBase:
                 to set on the relationship.
         """
         # build a string of properties to merge on "prop_name: $prop_name"
-        merge_props = ", ".join([f"{gql_identifier_adapter.validate_strings(x)}: rel.{x}" for x in merge_on_props])
+        merge_props = ", ".join([f"{self.identifier(x)}: rel.{self.identifier(x)}" for x in merge_on_props])
 
         cypher = f"""
         UNWIND $rel_list AS rel
-        MATCH (source:{gql_identifier_adapter.validate_strings(source_label)})
-        WHERE source.{gql_identifier_adapter.validate_strings(source_prop)} = rel.source_prop
-        MATCH (target:{gql_identifier_adapter.validate_strings(target_label)})
-        WHERE target.{gql_identifier_adapter.validate_strings(target_prop)} = rel.target_prop
-        MERGE (source)-[r:{gql_identifier_adapter.validate_strings(rel_type)} {{ {merge_props} }}]->(target)
+        MATCH (source:{self.identifier(source_label)})
+        WHERE source.{self.identifier(source_prop)} = rel.source_prop
+        MATCH (target:{self.identifier(target_label)})
+        WHERE target.{self.identifier(target_prop)} = rel.target_prop
+        MERGE (source)-[r:{self.identifier(rel_type)} {{ {merge_props} }}]->(target)
         ON MATCH SET r += rel.set_on_match
         ON CREATE SET r += rel.set_on_create
         SET r += rel.always_set
@@ -723,16 +840,54 @@ class GraphEngineBase:
 
         return field_name, lookup_type
 
-    def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
+    @staticmethod
+    def _check_filter_property(node_class: type[BaseNode], field_name: str) -> None:
+        """Check that a filter names a property the nodes being queried can hold.
+
+        A node written by Neontology holds only the properties its model declares, so a
+        filter on any other matches nothing - which reads as there being no such nodes,
+        rather than as the mistake it is. Subclasses are queried too, so their properties
+        count.
+
+        Args:
+            node_class (type[BaseNode]): the class being queried.
+            field_name (str): the property the filter names.
+
+        Raises:
+            ValueError: if no class the query matches declares the property.
+        """
+        classes = [node_class, *registry.result_classes(node_class).values()]
+
+        # stored under the alias where a field has one, as every dump is taken by alias
+        properties = {field.alias or name for model in classes for name, field in model.model_fields.items()}
+
+        if field_name in properties:
+            return
+
+        aliases = {name: field.alias for model in classes for name, field in model.model_fields.items() if field.alias}
+        hint = f" It is stored under its alias {aliases[field_name]!r}." if field_name in aliases else ""
+
+        raise ValueError(
+            f"Cannot filter {node_class.__name__} on {field_name!r}, which is not one of its properties: "
+            f"{', '.join(sorted(properties))}.{hint}"
+        )
+
+    def _filters_to_where_clause(
+        self, node_class: type[BaseNode], filters: Optional[dict] = None
+    ) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
+            node_class (type[BaseNode]): the class being queried, whose properties the filters name.
             filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
                                 by '__' and a lookup type (e.g., 'exact', 'contains', 'isnull'). The
                                 value is the filter value. If None, returns an empty WHERE clause.
 
         Returns:
             tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
+
+        Raises:
+            ValueError: if a filter names a property the class does not declare, or an unknown lookup.
         """
         params = {}
         where_clauses = []
@@ -740,28 +895,30 @@ class GraphEngineBase:
         if filters:
             for key, value in filters.items():
                 field_name, lookup_type = self._split_filter_key(key)
+                self._check_filter_property(node_class, field_name)
                 param_name = f"filter_{field_name}_{lookup_type}"
                 params[param_name] = value
+                prop = f"n.{self.identifier(field_name)}"
                 if lookup_type == "exact":
-                    clause = f"n.{field_name} = ${param_name}"
+                    clause = f"{prop} = ${param_name}"
                 elif lookup_type == "iexact":
-                    clause = f"toLower(n.{field_name}) = toLower(${param_name})"
+                    clause = f"toLower({prop}) = toLower(${param_name})"
                 elif lookup_type == "contains":
-                    clause = f"n.{field_name} CONTAINS ${param_name}"
+                    clause = f"{prop} CONTAINS ${param_name}"
                 elif lookup_type == "icontains":
-                    clause = f"toLower(n.{field_name}) CONTAINS toLower(${param_name})"
+                    clause = f"toLower({prop}) CONTAINS toLower(${param_name})"
                 elif lookup_type == "startswith":
-                    clause = f"n.{field_name} STARTS WITH ${param_name}"
+                    clause = f"{prop} STARTS WITH ${param_name}"
                 elif lookup_type == "istartswith":
-                    clause = f"toLower(n.{field_name}) STARTS WITH toLower(${param_name})"
+                    clause = f"toLower({prop}) STARTS WITH toLower(${param_name})"
                 elif lookup_type in ("gt", "lt", "gte", "lte"):
                     operator = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<="}[lookup_type]
 
-                    clause = f"n.{field_name} {operator} ${param_name}"
+                    clause = f"{prop} {operator} ${param_name}"
                 elif lookup_type == "in":
-                    clause = f"n.{field_name} IN ${param_name}"
+                    clause = f"{prop} IN ${param_name}"
                 elif lookup_type == "isnull":
-                    clause = f"n.{field_name} IS NULL" if value else f"n.{field_name} IS NOT NULL"
+                    clause = f"{prop} IS NULL" if value else f"{prop} IS NOT NULL"
 
                 else:
                     raise ValueError(f"Invalid filter: {lookup_type}")
@@ -794,10 +951,9 @@ class GraphEngineBase:
             skip = non_negative_int_adapter.validate_python(skip)
         if limit is not None:
             limit = non_negative_int_adapter.validate_python(limit)
+        where_clause, params = self._filters_to_where_clause(node_class, filters)
 
-        # an abstract class has no label, and label_pattern refuses it
-        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
-        where_clause, params = self._filters_to_where_clause(filters)
+        cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
         if where_clause:
             cypher += where_clause
         cypher += " RETURN n"
@@ -828,13 +984,37 @@ class GraphEngineBase:
         Returns:
             int: The count of nodes that match the given criteria.
         """
-        # an abstract class has no label, and label_pattern refuses it
-        cypher = f"MATCH (n{self.label_pattern(cast(str, node_class.__primarylabel__))})"
-        where_clause, params = self._filters_to_where_clause(filters)
+        # checked before the label, which a schema first engine looks up in the database
+        where_clause, params = self._filters_to_where_clause(node_class, filters)
+        cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
         if where_clause:
             cypher += where_clause
         cypher += " RETURN COUNT(DISTINCT n)"
         return self.evaluate_query_single(cypher, params)
+
+    def matching_property_values(self, label: str, prop: str, values: Iterable[Any]) -> list[Any]:
+        """Find which of some values a property of nodes with a label holds, once per node holding it.
+
+        This is how an import checks relationship endpoints: a value found once identifies
+        one node, a value found twice is ambiguous, and one not found does not exist.
+
+        Args:
+            label (str): the label of the nodes to look in.
+            prop (str): the property to look at.
+            values (Iterable[Any]): the values to look for.
+
+        Returns:
+            list[Any]: each value found, repeated for every node holding it.
+        """
+        prop_id = self.identifier(prop)
+
+        cypher = f"""
+            MATCH (n:{self.identifier(label)})
+            WHERE n.{prop_id} IN $values
+            RETURN COLLECT(n.{prop_id})
+            """
+
+        return self.evaluate_query_single(cypher, {"values": list(values)}) or []
 
     def match_relationships(
         self,
@@ -856,8 +1036,11 @@ class GraphEngineBase:
         """
         from ..utils import get_node_types, get_rels_by_type
 
+        # an abstract relationship has no type, which identifier() rejects
+        rel_type = self.identifier(cast(str, relationship_class.__relationshiptype__))
+
         cypher = f"""
-        MATCH (n)-[r:{gql_identifier_adapter.validate_strings(relationship_class.__relationshiptype__)}]->(o)
+        MATCH (n)-[r:{rel_type}]->(o)
         RETURN n, r, o
         """
 
@@ -885,12 +1068,26 @@ class GraphEngineBase:
         return cast(list[BaseRelationshipT], result.relationships)
 
 
+# the base class' own write methods, which __init_subclass__ does not see
+for _name in WRITE_METHODS:
+    if _name in GraphEngineBase.__dict__:
+        setattr(GraphEngineBase, _name, _refused_when_read_only(GraphEngineBase.__dict__[_name]))
+
+
 class GraphEngineConfig(BaseModel):
-    """Base class for Graph Engine configuration."""
+    """Base class for Graph Engine configuration.
+
+    Attributes:
+        read_only: connect so that nothing can be written. Neontology refuses its own
+            writes - merge(), create(), delete(), initialise_graph() and the rest - and
+            the database refuses any query which writes.
+    """
 
     engine: ClassVar[type[GraphEngineBase]]
 
     env_fields: ClassVar[dict[str, str]] = {}
+
+    read_only: bool = False
 
     @model_validator(mode="before")
     @classmethod

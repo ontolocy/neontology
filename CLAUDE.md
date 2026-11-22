@@ -11,9 +11,11 @@ Neontology is an object-graph mapper: Pydantic models define nodes/relationships
 The project uses `uv`.
 
 ```bash
-uv sync --all-extras          # --all-extras is mandatory: conftest.py imports
-                              # NetworkxConfig unconditionally, so without the
-                              # [grand] extra the suite fails at collection
+uv sync --all-extras          # every extra, so every engine and dataframe test runs.
+                              # The suite must also collect with none installed - a
+                              # CI job runs it that way - so a test module needing an
+                              # extra skips without it (pytest.importorskip), and
+                              # conftest.py guards its NetworkxConfig import
 uv build
 
 uv run pytest -x
@@ -36,7 +38,7 @@ Work happens on branches which get merged when complete to a work-in-progress `d
 
 ### Test environment
 
-Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USER`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers. The networkx engine needs no configuration, but does need the `grand` extra installed.
+Graph-backed tests read connection details from env vars (a `.env` file works): `TEST_NEO4J_URI`, `TEST_NEO4J_USERNAME`, `TEST_NEO4J_PASSWORD`, `TEST_MEMGRAPH_URI`, `TEST_MEMGRAPH_USERNAME`, `TEST_MEMGRAPH_PASSWORD`. The `get_graph_config` fixture asserts they are set, so *all* engine params fail without them — use `-k` to select an engine, or `-m "not uses_graph"`. CI runs neo4j on 7687 and memgraph on 9687 as service containers. The networkx engine needs no configuration, but does need the `grand` extra installed.
 
 ## Architecture
 
@@ -84,7 +86,7 @@ Not every difference is a capability. `records_raw` is the driver's own structur
 
 ### Query safety
 
-Cypher is built with parameters for values. Anything interpolated into the query string (labels, property keys, relationship types) must pass through `gql_identifier_adapter.validate_strings(...)` from [gql.py](src/neontology/gql.py), which enforces `^[a-zA-Z][a-zA-Z0-9_]*$`. Follow this in any new query construction. Identifiers a model class declares are also checked once as the class is defined (`validate_model_identifier`), which raises; counts such as `skip`, `limit` and path `depth` go through `non_negative_int_adapter`, and are passed as parameters wherever Cypher allows it (path length bounds cannot be).
+Cypher is built with parameters for values. Anything interpolated into the query string (labels, property keys, relationship types, schema object names) must pass through the engine's `identifier()` - `self.identifier(...)` in an engine, `GraphConnection().engine.identifier(...)` elsewhere - which validates it with `gql_identifier_adapter` from [gql.py](src/neontology/gql.py), enforcing `^[a-zA-Z][a-zA-Z0-9_]*$`, and returns it ready to write. Ladybug quotes it there, because it reserves words such as `end` and `order` that the other engines accept as names; NetworkX's parser rejects quoting, so it is never done in shared Cypher by hand. Follow this in any new query construction, and use `gql_identifier_adapter.validate_strings(...)` directly only where a name is validated but not written into a query - Ladybug's catalog lookups, NetworkX's stored labels. Parameter names are not quoted, so name a parameter apart from any property it carries (`$_neontology_rel_end`, not `$end`). [tests/test_reserved_words.py](tests/test_reserved_words.py) covers each kind of query. Identifiers a model class declares are also checked once as the class is defined (`validate_model_identifier`), which raises; counts such as `skip`, `limit` and path `depth` go through `non_negative_int_adapter`, and are passed as parameters wherever Cypher allows it (path length bounds cannot be).
 
 ### Results and tooling
 

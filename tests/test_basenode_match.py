@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 from models_basenode import PracticeNode, SampleEnum
+from pydantic import Field
 
 from neontology import (
     BaseNode,
@@ -670,6 +671,7 @@ class TestFilterKeySafety:
             __primaryproperty__: ClassVar[str] = "pp"
             __primarylabel__: ClassVar[str] = "FilterDunderNode"
             pp: str
+            a__b: Optional[int] = None
 
         DunderNode(pp="x").merge()
 
@@ -679,10 +681,8 @@ class TestFilterKeySafety:
         assert engine._split_filter_key("name") == ("name", "exact")
         assert engine._split_filter_key("created__gte") == ("created", "gte")
 
-        # no such property, so no matches - but it must not raise. A schema first
-        # backend has no column to compare against and says so instead.
-        if use_graph.engine.supports(Capability.UNDECLARED_SCHEMA):
-            assert DunderNode.match_nodes(filters={"a__b__gt": 1}) == []
+        # a property with a double underscore in its name filters like any other
+        assert DunderNode.match_nodes(filters={"a__b__gt": 1}) == []
 
     def test_unknown_lookup_is_rejected_rather_than_silently_matching(self, use_graph):
         """A typo'd lookup must be an error, not an exact match that returns nothing."""
@@ -690,3 +690,93 @@ class TestFilterKeySafety:
 
         with pytest.raises(ValueError, match="Invalid filter lookup"):
             engine._split_filter_key("created__startswit")
+
+
+class FilterPerson(BaseNode):
+    __primaryproperty__: ClassVar[str] = "name"
+    __primarylabel__: ClassVar[str] = "FilterPerson"
+    name: str
+    nickname: Optional[str] = Field(default=None, alias="known_as")
+
+
+class FilterEmployee(FilterPerson):
+    __primarylabel__: ClassVar[str] = "FilterEmployee"
+    __secondarylabels__: ClassVar[list[str]] = ["FilterPerson"]
+    salary: Optional[int] = None
+
+
+class TestFilterProperties:
+    """A filter on a property the class does not declare used to match nothing.
+
+    Neontology writes only the properties a model declares, so such a filter can never
+    match - and an empty result reads as there being no such nodes, which a person might
+    question and an agent will not.
+    """
+
+    @pytest.mark.parametrize(
+        "query",
+        [lambda filters: FilterPerson.match_nodes(filters=filters), lambda filters: FilterPerson.get_count(filters=filters)],
+        ids=["match_nodes", "get_count"],
+    )
+    def test_an_undeclared_property_is_rejected(self, use_graph, query):
+        with pytest.raises(ValueError, match="Cannot filter FilterPerson on 'nmae', which is not one of its properties: "):
+            query({"nmae": "alice"})
+
+        # with a lookup too, and naming what can be filtered on
+        with pytest.raises(ValueError, match="known_as, name, salary"):
+            query({"agee__gt": 0})
+
+    def test_an_aliased_property_is_filtered_by_its_alias(self, use_graph):
+        FilterPerson(name="alice", known_as="al").merge()
+
+        assert [p.name for p in FilterPerson.match_nodes(filters={"known_as": "al"})] == ["alice"]
+
+        # the field name is not what the graph holds, and the error says what is
+        with pytest.raises(ValueError, match="It is stored under its alias 'known_as'"):
+            FilterPerson.match_nodes(filters={"nickname": "al"})
+
+    def test_a_subclass_property_filters_the_parent(self, use_graph):
+        """A query on a class matches its subclasses' nodes, so their properties count."""
+        FilterPerson(name="bob").merge()
+        FilterEmployee(name="carol", salary=10).merge()
+
+        results = FilterPerson.match_nodes(filters={"salary__gt": 5})
+
+        assert [(type(p), p.name) for p in results] == [(FilterEmployee, "carol")]
+        assert FilterPerson.get_count(filters={"salary__gt": 5}) == 1
+
+
+class AbstractUndeclared(BaseNode):
+    """Abstract because it never declares a primary label."""
+
+    __primaryproperty__: ClassVar[str] = "pp"
+    pp: str
+
+
+class AbstractNone(BaseNode):
+    """Abstract because its primary label is None."""
+
+    __primaryproperty__: ClassVar[str] = "pp"
+    __primarylabel__: ClassVar[Optional[str]] = None
+    pp: str
+
+
+@pytest.mark.parametrize("abstract", [AbstractUndeclared, AbstractNone], ids=["undeclared", "none"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        lambda cls: cls.match_nodes(),
+        lambda cls: cls.get_count(),
+        lambda cls: cls.match("x"),
+        lambda cls: cls.delete("x"),
+    ],
+    ids=["match_nodes", "get_count", "match", "delete"],
+)
+def test_querying_an_abstract_class_says_it_is_abstract(use_graph, abstract, query):
+    """Both spellings used to fail with errors that did not mention the class being abstract.
+
+    Never declaring a label raised an AttributeError, and setting it to None a pydantic
+    ValidationError - or, from delete(), a ValueError.
+    """
+    with pytest.raises(NotImplementedError, match=f"{abstract.__name__} has no __primarylabel__, so it is an abstract node"):
+        query(abstract)

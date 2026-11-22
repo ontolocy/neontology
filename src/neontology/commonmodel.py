@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from pydantic.json_schema import GenerateJsonSchema
 
 from .graphconnection import GraphConnection
+from .graphengines.graphengine import GraphEngineBase
 
 
 class _LenientJsonSchema(GenerateJsonSchema):
@@ -134,7 +135,10 @@ class CommonModel(BaseModel):
             export_dict = gc.engine.export_dict_converter(pydantic_export_dict)
 
         except RuntimeError:
-            export_dict = pydantic_export_dict
+            # not connected: convert as every engine would, so content checked without a
+            # database is held to what any of them can store, and values read the same
+            # offline as once connected
+            export_dict = GraphEngineBase.export_dict_converter(pydantic_export_dict)
 
         return export_dict
 

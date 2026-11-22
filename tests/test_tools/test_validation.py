@@ -346,3 +346,126 @@ def test_a_write_failure_no_record_explains_points_at_validate(use_graph, monkey
     assert "validate_only=True" in message
     assert "the database said no" in message
     assert raised.value.__cause__ is not None
+
+
+# --- values the graph cannot store ---------------------------------------------------
+#
+# These validate against the model, and are only rejected when the write converts them
+# for the engine, so validation and locating a failed write have to convert them too.
+
+
+class StorableNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "StorableLabel"
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
+    meta: Optional[dict] = None
+    tags: Optional[list] = None
+
+
+class StorableRel(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "STORABLE_LINK"
+
+    source: StorableNode
+    target: StorableNode
+
+    meta: Optional[dict] = None
+    tags: Optional[list] = None
+
+
+def _storable(name, **kwargs):
+    return {"LABEL": "StorableLabel", "name": name, **kwargs}
+
+
+def _storable_link(**kwargs):
+    return {"RELATIONSHIP_TYPE": "STORABLE_LINK", "SOURCE_LABEL": "StorableLabel", "TARGET_LABEL": "StorableLabel", **kwargs}
+
+
+UNSTORABLE = [
+    pytest.param({"meta": {"a": 1}}, "'meta'.*a dict", id="dict"),
+    pytest.param({"tags": [1, "a"]}, "'tags'.*a list mixing int and str", id="mixed-list"),
+]
+
+
+@pytest.mark.parametrize("value, message", UNSTORABLE)
+def test_validate_only_reports_a_node_property_the_graph_cannot_store(use_graph, value, message):
+    with pytest.raises(ImportValidationError, match=message) as raised:
+        import_records([[_storable("fine"), _storable("unstorable", **value)]], validate_only=True)
+
+    assert [str(issue.origin) for issue in raised.value.issues] == ["<records>, record 2"]
+
+
+@pytest.mark.parametrize("value, message", UNSTORABLE)
+def test_validate_only_reports_a_relationship_property_the_graph_cannot_store(use_graph, value, message):
+    # the ends are in the graph already, so the endpoint check has tables to look in on
+    # Ladybug, which rejects a query naming a label it has no table for
+    import_records([[_storable("a"), _storable("b")]])
+
+    records = [[_storable_link(SOURCE="a", TARGET="b"), _storable_link(SOURCE="b", TARGET="a", **value)]]
+
+    with pytest.raises(ImportValidationError, match=message) as raised:
+        import_records(records, validate_only=True)
+
+    assert [str(issue.origin) for issue in raised.value.issues] == ["<records>, record 2"]
+
+
+def test_a_failed_write_names_the_node_record_the_graph_cannot_store(use_graph):
+    records = [[_storable("one"), _storable("two"), _storable("three", meta={"a": 1})]]
+
+    with pytest.raises(ImportContentError, match="record 3") as raised:
+        import_records(records)
+
+    assert "'meta'" in str(raised.value)
+    assert "no single record" not in str(raised.value)
+
+
+def test_a_failed_write_names_the_relationship_record_the_graph_cannot_store(use_graph):
+    records = [
+        [
+            _storable("a"),
+            _storable("b"),
+            _storable_link(SOURCE="a", TARGET="b"),
+            _storable_link(SOURCE="b", TARGET="a", tags=[1, "a"]),
+        ]
+    ]
+
+    with pytest.raises(ImportContentError, match="record 4") as raised:
+        import_records(records)
+
+    assert "'tags'" in str(raised.value)
+    assert "no single record" not in str(raised.value)
+
+
+class NeverWrittenNode(BaseNode):
+    __primarylabel__: ClassVar[str] = "NeverWrittenLabel"
+    __primaryproperty__: ClassVar[str] = "name"
+
+    name: str
+
+
+class NeverWrittenRel(BaseRelationship):
+    __relationshiptype__: ClassVar[str] = "NEVER_WRITTEN_LINK"
+
+    source: NeverWrittenNode
+    target: NeverWrittenNode
+
+
+def test_validate_resolves_endpoints_for_a_label_the_graph_has_never_held(use_graph):
+    """Ladybug rejects a query naming a label it has no table for, where the others match nothing."""
+    records = [
+        [
+            {"LABEL": "NeverWrittenLabel", "name": "a"},
+            {"LABEL": "NeverWrittenLabel", "name": "b"},
+            {
+                "RELATIONSHIP_TYPE": "NEVER_WRITTEN_LINK",
+                "SOURCE_LABEL": "NeverWrittenLabel",
+                "TARGET_LABEL": "NeverWrittenLabel",
+                "SOURCE": "a",
+                "TARGET": "b",
+            },
+        ]
+    ]
+
+    report = import_records(records, validate_only=True)
+
+    assert report.unresolved == []

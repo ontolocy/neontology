@@ -10,7 +10,7 @@ from neontology.graphconnection import GraphConnection
 
 from .basenode import BaseNode
 from .commonmodel import CommonModel
-from .gql import gql_identifier_adapter, validate_model_identifier
+from .gql import validate_model_identifier
 from .optional_deps import require_pandas
 from .registry import registry
 
@@ -323,8 +323,8 @@ class BaseRelationship(CommonModel):
         for record in records:
             hydrated = dict(record)
 
-            hydrated["source"] = source_type.model_construct(**{source_prop: record["source"]})
-            hydrated["target"] = target_type.model_construct(**{target_prop: record["target"]})
+            hydrated["source"] = source_type._matching_node(source_prop, record["source"])
+            hydrated["target"] = target_type._matching_node(target_prop, record["target"])
 
             hydrated_list.append(cls(**hydrated))
 
@@ -407,7 +407,8 @@ class BaseRelationship(CommonModel):
             int: The count of distinct relationships of the specified type.
         """
         gc = GraphConnection()
-        rel_type = gql_identifier_adapter.validate_strings(cls.__relationshiptype__)
+        # an abstract relationship has no type, which identifier() rejects
+        rel_type = gc.engine.identifier(cast(str, cls.get_relationship_type()))
         cypher = f"MATCH (n)-[r:{rel_type}]->(o) RETURN COUNT(r)"
         result = gc.evaluate_query_single(cypher)
 
@@ -441,10 +442,10 @@ class BaseRelationship(CommonModel):
 
         else:
             dumped_model["source"]["LABEL"] = self.source.__primarylabel__
-            dumped_model["source"]["PK"] = self.source.get_pp()
+            dumped_model["source"]["__pp__"] = self.source.get_pp()
 
             dumped_model["target"]["LABEL"] = self.target.__primarylabel__
-            dumped_model["target"]["PK"] = self.target.get_pp()
+            dumped_model["target"]["__pp__"] = self.target.get_pp()
 
         dumped_model["RELATIONSHIP_TYPE"] = self.__relationshiptype__
 

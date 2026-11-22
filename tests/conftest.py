@@ -68,7 +68,7 @@ ENGINES: list[EngineEntry] = [
         "config": MemgraphConfig,
         "env_vars": {
             "uri": "TEST_MEMGRAPH_URI",
-            "username": "TEST_MEMGRAPH_USER",
+            "username": "TEST_MEMGRAPH_USERNAME",
             "password": "TEST_MEMGRAPH_PASSWORD",
         },
         "available": True,

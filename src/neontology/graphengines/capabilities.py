@@ -28,7 +28,8 @@ class Capability(str, Enum):
     # parent's label. LadybugDB stores each label as its own table and a node
     # belongs to exactly one of them, so secondary and inheritable labels are not
     # written and a query naming one directly finds nothing. Class scoped queries
-    # still find subclasses - see GraphEngineBase.label_pattern().
+    # still find the subclasses carrying a class' label - see
+    # GraphEngineBase.label_pattern().
     SECONDARY_LABELS = "secondary_labels"
 
     # Naming a label, relationship type or property the database has not been told
@@ -48,6 +49,11 @@ class Capability(str, Enum):
     # grand-cypher is a query language over an existing NetworkX graph and
     # implements no mutation clauses.
     GRAPH_MUTATIONS = "graph_mutations"
+
+    # Running one query read-only on a connection which can write, so the database refuses
+    # it if it writes - evaluate_query(..., read_only=True). LadybugDB can only be read
+    # only as a whole: it opens a database read-only or not, with no mode for a query.
+    READ_ONLY_QUERIES = "read_only_queries"
 
     # `RETURN *` projections. grand-cypher's parser rejects the '*'.
     RETURN_STAR = "return_star"
