@@ -106,7 +106,8 @@ def test_dump_and_import(use_graph):
     assert len(PersonImportNode.match_nodes()) == 0
     assert len(FollowsImportRel.match_relationships()) == 0
 
-    import_records([import_data])
+    # passed as it is - a dict on its own used to recurse until the stack ran out
+    import_records(import_data)
 
     assert len(PersonImportNode.match_nodes()) == 2
     assert len(FollowsImportRel.match_relationships()) == 1
@@ -614,3 +615,30 @@ def test_import_refreshes_a_merged_timestamp_and_keeps_created(use_graph):
     assert second.merged > first.merged
     assert second.created == first.created
     assert second.name == "Ada"
+
+
+def test_a_single_record_is_imported_as_it_is(use_graph):
+    import_records({"LABEL": "PersonImportLabel", "name": "solo", "age": 1, "import_id": "solo-1"})
+
+    solo = PersonImportNode.match("solo")
+
+    assert solo is not None and solo.age == 1
+
+
+@pytest.mark.parametrize("content", ["not a record", ["not a record"], [3], [["nested", "strings"]]])
+def test_anything_but_a_record_is_reported_rather_than_recursed_through(content):
+    """A string iterated as a list of records recursed through its own characters for ever."""
+    with pytest.raises(ImportContentError, match="A record is a mapping of keys to values"):
+        import_records(content)
+
+
+def test_values_which_are_not_records_are_gathered_with_where_they_are():
+    content = [{"LABEL": "PersonImportLabel", "name": "ok", "age": 1, "import_id": "ok-1"}, "stray", 7]
+
+    with pytest.raises(ImportValidationError) as exc_info:
+        import_records(content, validate_only=True)
+
+    issues = exc_info.value.issues
+
+    assert [issue.origin.index for issue in issues] == [1, 2]
+    assert all("is a mapping of keys to values" in str(issue.error) for issue in issues)

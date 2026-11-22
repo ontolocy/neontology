@@ -5,7 +5,7 @@ import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterator, Sequence
 from copy import deepcopy
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from ..graphconnection import GraphConnection
 from ..graphengines.graphengine import GraphEngineBase
@@ -594,7 +594,7 @@ def import_sourced_records(
 
 
 def import_records(
-    records: list,
+    records: Union[list, dict[str, Any]],
     validate_only: bool = False,
     check_unmatched: bool = True,
     error_on_unmatched: bool = False,
@@ -607,7 +607,9 @@ def import_records(
     node described anywhere in the input, whatever order the records are given in.
 
     Args:
-        records (list): a list of dictionaries representing nodes and relationships.
+        records (Union[list, dict]): a list of dictionaries representing nodes and
+            relationships, a single one, or the `nodes` and `edges` container a result's
+            `neontology_dump()` returns.
         validate_only (bool, optional): check the content against your models and report
             every problem found, without populating the graph. Defaults to False.
         check_unmatched (bool, optional): Check relationship endpoints exist, warn if not.
@@ -633,6 +635,10 @@ def import_records(
         ImportContentError: otherwise, for the first problem found.
     """
     fresh_records = deepcopy(records)
+
+    # one piece of input given on its own, rather than in a list
+    if not isinstance(fresh_records, (list, tuple)):
+        fresh_records = [fresh_records]
 
     origin = RecordOrigin(source="<records>")
 

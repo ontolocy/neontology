@@ -292,7 +292,7 @@ report.files             # the files it read
 report.unresolved        # endpoints which did not identify exactly one node
 ```
 
-`import_records()` takes records you already have as dictionaries, rather than files.
+`import_records()` takes records you already have as dictionaries, rather than files: a list of them, a single one, or the `nodes` and `edges` container a query result dumps.
 
 Markdown files hold one record as YAML frontmatter, and name the property their body belongs in:
 
@@ -462,7 +462,7 @@ data = result.neontology_dump()       # {'nodes': [...], 'edges': [...]}
 
 Path("content/graph.json").write_text(result.neontology_dump_json())
 
-import_records([data])
+import_records(data)
 ```
 
 That container — `nodes` and `edges` — is accepted by the importer as a third layout alongside combined and split.

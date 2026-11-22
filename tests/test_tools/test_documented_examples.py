@@ -418,7 +418,7 @@ def test_the_dump_container_round_trips(use_graph):
 
     assert {"nodes", "edges"} == set(data)
 
-    report = import_records([data], error_on_unmatched=True)
+    report = import_records(data, error_on_unmatched=True)
 
     assert report.relationships == {"RESOLVES_TO": 1}
 
