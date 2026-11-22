@@ -840,16 +840,54 @@ class GraphEngineBase:
 
         return field_name, lookup_type
 
-    def _filters_to_where_clause(self, filters: Optional[dict] = None) -> tuple[Optional[str], dict]:
+    @staticmethod
+    def _check_filter_property(node_class: type[BaseNode], field_name: str) -> None:
+        """Check that a filter names a property the nodes being queried can hold.
+
+        A node written by Neontology holds only the properties its model declares, so a
+        filter on any other matches nothing - which reads as there being no such nodes,
+        rather than as the mistake it is. Subclasses are queried too, so their properties
+        count.
+
+        Args:
+            node_class (type[BaseNode]): the class being queried.
+            field_name (str): the property the filter names.
+
+        Raises:
+            ValueError: if no class the query matches declares the property.
+        """
+        classes = [node_class, *registry.result_classes(node_class).values()]
+
+        # stored under the alias where a field has one, as every dump is taken by alias
+        properties = {field.alias or name for model in classes for name, field in model.model_fields.items()}
+
+        if field_name in properties:
+            return
+
+        aliases = {name: field.alias for model in classes for name, field in model.model_fields.items() if field.alias}
+        hint = f" It is stored under its alias {aliases[field_name]!r}." if field_name in aliases else ""
+
+        raise ValueError(
+            f"Cannot filter {node_class.__name__} on {field_name!r}, which is not one of its properties: "
+            f"{', '.join(sorted(properties))}.{hint}"
+        )
+
+    def _filters_to_where_clause(
+        self, node_class: type[BaseNode], filters: Optional[dict] = None
+    ) -> tuple[Optional[str], dict]:
         """Convert a dictionary of filters into a WHERE clause and parameter dictionary for a query.
 
         Args:
+            node_class (type[BaseNode]): the class being queried, whose properties the filters name.
             filters (dict | None): A dictionary of filters. Each key is a field name possibly followed
                                 by '__' and a lookup type (e.g., 'exact', 'contains', 'isnull'). The
                                 value is the filter value. If None, returns an empty WHERE clause.
 
         Returns:
             tuple: A tuple containing the WHERE clause string and a dictionary of parameters.
+
+        Raises:
+            ValueError: if a filter names a property the class does not declare, or an unknown lookup.
         """
         params = {}
         where_clauses = []
@@ -857,6 +895,7 @@ class GraphEngineBase:
         if filters:
             for key, value in filters.items():
                 field_name, lookup_type = self._split_filter_key(key)
+                self._check_filter_property(node_class, field_name)
                 param_name = f"filter_{field_name}_{lookup_type}"
                 params[param_name] = value
                 prop = f"n.{self.identifier(field_name)}"
@@ -912,9 +951,9 @@ class GraphEngineBase:
             skip = non_negative_int_adapter.validate_python(skip)
         if limit is not None:
             limit = non_negative_int_adapter.validate_python(limit)
+        where_clause, params = self._filters_to_where_clause(node_class, filters)
 
         cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
-        where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause
         cypher += " RETURN n"
@@ -945,8 +984,9 @@ class GraphEngineBase:
         Returns:
             int: The count of nodes that match the given criteria.
         """
+        # checked before the label, which a schema first engine looks up in the database
+        where_clause, params = self._filters_to_where_clause(node_class, filters)
         cypher = f"MATCH (n{self.label_pattern(node_class._query_label())})"
-        where_clause, params = self._filters_to_where_clause(filters)
         if where_clause:
             cypher += where_clause
         cypher += " RETURN COUNT(DISTINCT n)"
